@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/station.dart';
+import '../widgets/recent_catches.dart';
 
 class StationDetailsPage extends StatelessWidget {
   final Station station;
@@ -11,8 +12,10 @@ class StationDetailsPage extends StatelessWidget {
     switch (station.trend) {
       case WaterTrend.rising:
         return Colors.green;
+
       case WaterTrend.falling:
         return Colors.red;
+
       case WaterTrend.stable:
         return Colors.orange;
     }
@@ -22,8 +25,10 @@ class StationDetailsPage extends StatelessWidget {
     switch (station.trend) {
       case WaterTrend.rising:
         return Icons.trending_up;
+
       case WaterTrend.falling:
         return Icons.trending_down;
+
       case WaterTrend.stable:
         return Icons.trending_flat;
     }
@@ -52,8 +57,8 @@ class StationDetailsPage extends StatelessWidget {
                       backgroundColor: Colors.blue,
                       child: Icon(
                         Icons.water_drop,
-                        size: 42,
                         color: Colors.white,
+                        size: 42,
                       ),
                     ),
 
@@ -74,7 +79,7 @@ class StationDetailsPage extends StatelessWidget {
                       style: const TextStyle(fontSize: 18, color: Colors.grey),
                     ),
 
-                    const SizedBox(height: 25),
+                    const SizedBox(height: 24),
 
                     Text(
                       "${station.level.toStringAsFixed(0)} cm",
@@ -85,7 +90,7 @@ class StationDetailsPage extends StatelessWidget {
                       ),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -98,8 +103,8 @@ class StationDetailsPage extends StatelessWidget {
                           station.trendText,
                           style: TextStyle(
                             color: trendColor,
-                            fontWeight: FontWeight.bold,
                             fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
@@ -117,6 +122,7 @@ class StationDetailsPage extends StatelessWidget {
             ),
 
             const SizedBox(height: 24),
+
             const Text(
               "Informații despre stație",
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -160,6 +166,16 @@ class StationDetailsPage extends StatelessWidget {
                 subtitle: Text("Integrare OpenWeather în curând"),
               ),
             ),
+            const SizedBox(height: 24),
+
+            const Text(
+              "Capturi recente",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 16),
+
+            RecentCatches(stationId: station.id),
 
             const SizedBox(height: 24),
 
