@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/main_navigation.dart';
-import 'theme/app_theme.dart';
+import 'core/theme/app_theme.dart';
 
 void main() {
   runApp(const FishTrackApp());

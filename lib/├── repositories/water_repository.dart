@@ -1,7 +1,12 @@
 import '../models/station.dart';
 
-class WaterService {
-  static List<Station> getStations() {
+class WaterRepository {
+  const WaterRepository();
+
+  Future<List<Station>> getStations() async {
+    // În Sprint 4 vom înlocui această listă
+    // cu date reale de la AFDJ.
+
     return [
       Station(
         id: '1',

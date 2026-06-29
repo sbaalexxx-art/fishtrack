@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'app_colors.dart';
+import 'package:fishtrack/core/theme/app_colors.dart';
 
 class AppTextStyles {
   AppTextStyles._();
@@ -27,8 +27,13 @@ class AppTextStyles {
     color: AppColors.textPrimary,
   );
 
-  static const TextStyle cardSubtitle = TextStyle(
-    fontSize: 15,
+  static const TextStyle body = TextStyle(
+    fontSize: 16,
+    color: AppColors.textPrimary,
+  );
+
+  static const TextStyle caption = TextStyle(
+    fontSize: 14,
     color: AppColors.textSecondary,
   );
 
