@@ -1,11 +1,17 @@
+import '../core/network/api_client.dart';
 import '../models/station.dart';
 
 class WaterRepository {
   const WaterRepository();
 
+  final ApiClient _api = const ApiClient();
+
   Future<List<Station>> getStations() async {
-    // În Sprint 4 vom înlocui această listă
-    // cu date reale de la AFDJ.
+    // În Sprint 4 aici vom apela API-ul AFDJ.
+    // Momentan păstrăm date locale.
+
+    // ignore: unused_local_variable
+    final client = _api;
 
     return [
       Station(
