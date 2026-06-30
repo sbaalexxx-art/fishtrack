@@ -1,38 +1,12 @@
 import '../models/station.dart';
+import '../repositories/water_repository.dart';
 
 class WaterService {
-  static List<Station> getStations() {
-    return [
-      Station(
-        id: '1',
-        name: 'Giurgiu',
-        river: 'Dunărea',
-        level: 336,
-        trend: WaterTrend.rising,
-        latitude: 43.9037,
-        longitude: 25.9699,
-        lastUpdate: DateTime.now(),
-      ),
-      Station(
-        id: '2',
-        name: 'Cernavodă',
-        river: 'Dunărea',
-        level: 289,
-        trend: WaterTrend.stable,
-        latitude: 44.3388,
-        longitude: 28.0328,
-        lastUpdate: DateTime.now(),
-      ),
-      Station(
-        id: '3',
-        name: 'Tulcea',
-        river: 'Dunărea',
-        level: 412,
-        trend: WaterTrend.falling,
-        latitude: 45.1716,
-        longitude: 28.7914,
-        lastUpdate: DateTime.now(),
-      ),
-    ];
+  WaterService();
+
+  final WaterRepository _repository = const WaterRepository();
+
+  Future<List<Station>> getStations() async {
+    return await _repository.getStations();
   }
 }

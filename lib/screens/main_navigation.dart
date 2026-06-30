@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'home_page.dart';
-import 'water_level_page.dart';
+import 'map_page.dart';
 import 'weather_page.dart';
 import 'reports_page.dart';
 import 'favorites_page.dart';
@@ -19,7 +19,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final List<Widget> _pages = const [
     HomePage(),
-    WaterLevelPage(),
+    MapPage(),
     WeatherPage(),
     ReportsPage(),
     FavoritesPage(),
@@ -36,42 +36,35 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _pages[_selectedIndex],
-
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: _onItemTapped,
-
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: "Acasă",
           ),
-
           NavigationDestination(
-            icon: Icon(Icons.water_drop_outlined),
-            selectedIcon: Icon(Icons.water_drop),
-            label: "Nivel",
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map),
+            label: "Hartă",
           ),
-
           NavigationDestination(
             icon: Icon(Icons.wb_cloudy_outlined),
             selectedIcon: Icon(Icons.wb_cloudy),
             label: "Meteo",
           ),
-
           NavigationDestination(
             icon: Icon(Icons.campaign_outlined),
             selectedIcon: Icon(Icons.campaign),
             label: "Rapoarte",
           ),
-
           NavigationDestination(
             icon: Icon(Icons.favorite_outline),
             selectedIcon: Icon(Icons.favorite),
             label: "Capturi",
           ),
-
           NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
