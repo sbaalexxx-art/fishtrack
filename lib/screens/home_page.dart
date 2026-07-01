@@ -6,6 +6,8 @@ import '../widgets/quick_actions_row.dart';
 import '../widgets/activity_card.dart';
 import '../widgets/menu_card.dart';
 
+import 'water_level_page.dart';
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -69,12 +71,21 @@ class HomePage extends StatelessWidget {
 
               const SectionTitle(title: "🚀 Acces rapid"),
 
+              const SizedBox(height: 15),
+
               MenuCard(
                 icon: Icons.water_drop,
                 iconColor: Colors.blue,
                 title: "Nivelul apelor",
                 subtitle: "Vezi nivelul Dunării și al râurilor",
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const WaterLevelPage(),
+                    ),
+                  );
+                },
               ),
 
               const SizedBox(height: 15),

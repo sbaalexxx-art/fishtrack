@@ -52,15 +52,19 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Padding(
-                  padding: EdgeInsets.all(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
                   child: Column(
                     children: [
-                      Icon(Icons.water_drop, color: Colors.blue, size: 60),
+                      const Icon(
+                        Icons.water_drop,
+                        color: Colors.blue,
+                        size: 60,
+                      ),
 
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                      Text(
+                      const Text(
                         "Dunărea",
                         style: TextStyle(
                           fontSize: 28,
@@ -68,16 +72,16 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                         ),
                       ),
 
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
 
                       Text(
-                        "13 stații monitorizate",
-                        style: TextStyle(color: Colors.grey),
+                        "${stations.length} stații monitorizate",
+                        style: const TextStyle(color: Colors.grey),
                       ),
 
-                      SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                      Text(
+                      const Text(
                         "Actualizat acum câteva minute",
                         style: TextStyle(
                           color: Colors.green,
