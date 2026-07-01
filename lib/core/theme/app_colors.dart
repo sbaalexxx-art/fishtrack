@@ -3,19 +3,30 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  static const Color primary = Color(0xFF1565C0);
-  static const Color secondary = Color(0xFF42A5F5);
+  // Background
+  static const Color background = Color(0xFF121212);
 
-  static const Color success = Color(0xFF2E7D32);
-  static const Color warning = Color(0xFFFB8C00);
-  static const Color danger = Color(0xFFD32F2F);
+  // Cards
+  static const Color card = Color(0xFF1C1C1E);
 
-  static const Color background = Color(0xFFF5F7FA);
-  static const Color card = Colors.white;
+  // Primary
+  static const Color primary = Color(0xFF1E88E5);
 
-  static const Color textPrimary = Color(0xFF1F2937);
-  static const Color textSecondary = Color(0xFF6B7280);
+  // Trend colors
+  static const Color rising = Color(0xFF2196F3);
+  static const Color stable = Color(0xFFFFC107);
+  static const Color falling = Color(0xFFE53935);
 
-  static const Color darkBackground = Color(0xFF121212);
-  static const Color darkCard = Color(0xFF1E1E1E);
+  // Sections
+  static const Color weather = Color(0xFFFF9800);
+  static const Color community = Color(0xFF4CAF50);
+  static const Color ai = Color(0xFF42A5F5);
+
+  // Text
+  static const Color textPrimary = Colors.white;
+  static const Color textSecondary = Colors.white70;
+  static const Color textMuted = Colors.white54;
+
+  // Divider
+  static const Color divider = Colors.white12;
 }
