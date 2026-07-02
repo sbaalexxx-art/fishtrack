@@ -5,6 +5,16 @@ import 'app_colors.dart';
 class AppTextStyles {
   AppTextStyles._();
 
+  // Section titles
+
+  static const TextStyle title = TextStyle(
+    fontSize: 20,
+    fontWeight: FontWeight.bold,
+    color: AppColors.textPrimary,
+  );
+
+  // Card titles
+
   static const TextStyle cardTitle = TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.bold,

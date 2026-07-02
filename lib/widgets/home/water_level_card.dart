@@ -6,84 +6,72 @@ class WaterLevelCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
+      elevation: 0,
       color: const Color(0xFF1E1E1E),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Row(
               children: [
-                Icon(Icons.water, color: Colors.blue),
-                SizedBox(width: 8),
-                Text(
-                  'Water Level',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                Icon(Icons.water_drop_rounded, color: Colors.blue, size: 18),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Water Level',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
             ),
-
-            const SizedBox(height: 18),
-
-            const Text(
-              'Danube • Giurgiu',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-
-            const SizedBox(height: 8),
 
             const Text(
               '318 cm',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 34,
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
             ),
 
-            const SizedBox(height: 8),
-
-            Row(
-              children: const [
-                Icon(Icons.arrow_upward, color: Colors.blue, size: 18),
-                SizedBox(width: 4),
-                Text(
-                  '+12 cm / 24h',
-                  style: TextStyle(
-                    color: Colors.blue,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 18),
-
-            Container(
-              height: 80,
-              decoration: BoxDecoration(
-                color: Colors.black26,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Center(
-                child: Text(
-                  'Water Level Graph',
-                  style: TextStyle(color: Colors.white38),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
             const Text(
-              'Updated 15 minutes ago',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
+              'Danube • Giurgiu',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Colors.white60, fontSize: 11),
+            ),
+
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.arrow_upward, size: 12, color: Colors.blue),
+                    SizedBox(width: 3),
+                    Text(
+                      '+12 cm',
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
