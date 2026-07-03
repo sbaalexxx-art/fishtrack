@@ -19,6 +19,7 @@ class WeatherCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Row(
               children: [
@@ -48,31 +49,38 @@ class WeatherCard extends StatelessWidget {
             const SizedBox(height: 18),
 
             Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const Icon(
                   Icons.wb_sunny_rounded,
                   color: Colors.orange,
-                  size: 44,
+                  size: 42,
                 ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      temperature,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.bold,
+
+                const SizedBox(width: 14),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        temperature,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 34,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      condition,
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                  ],
+                      SizedBox(height: 2),
+                      Text(
+                        condition,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -80,13 +88,17 @@ class WeatherCard extends StatelessWidget {
             const SizedBox(height: 20),
 
             Container(
+              width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+              child: const Wrap(
+                alignment: WrapAlignment.spaceAround,
+                runAlignment: WrapAlignment.center,
+                spacing: 10,
+                runSpacing: 12,
                 children: [
                   _WeatherInfo(icon: Icons.air, label: 'Wind', value: wind),
                   _WeatherInfo(
@@ -133,24 +145,32 @@ class _WeatherInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.lightBlueAccent, size: 18),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
+    return SizedBox(
+      width: 72,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.lightBlueAccent, size: 18),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white54, fontSize: 11),
-        ),
-      ],
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white54, fontSize: 11),
+          ),
+        ],
+      ),
     );
   }
 }

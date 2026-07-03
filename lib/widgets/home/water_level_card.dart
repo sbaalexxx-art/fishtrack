@@ -53,7 +53,7 @@ class WaterLevelCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.15),
+                  color: Colors.blue.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Row(

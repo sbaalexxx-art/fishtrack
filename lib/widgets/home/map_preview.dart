@@ -41,9 +41,9 @@ class MapPreview extends StatelessWidget {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.black.withOpacity(.08),
+                          Colors.black.withValues(alpha: .08),
                           Colors.transparent,
-                          Colors.black.withOpacity(.18),
+                          Colors.black.withValues(alpha: .18),
                         ],
                       ),
                     ),
