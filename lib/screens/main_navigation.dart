@@ -69,11 +69,19 @@ class _MainNavigationState extends State<MainNavigation> {
                   Expanded(
                     child: Center(
                       child: GestureDetector(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<bool>(
-                            builder: (_) => const AddCatchPage(),
-                          ),
-                        ),
+                        onTap: () async {
+                          final added = await Navigator.of(context).push<bool>(
+                            MaterialPageRoute<bool>(
+                              builder: (_) => const AddCatchPage(),
+                            ),
+                          );
+                          if (added == true && mounted) {
+                            setState(() {
+                              _pages[0] = HomePremiumPage(key: UniqueKey());
+                              _pages[3] = ReportsPage(key: UniqueKey());
+                            });
+                          }
+                        },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 220),
                           width: layout.bottomNavHeight - 12,
@@ -130,6 +138,12 @@ class _MainNavigationState extends State<MainNavigation> {
       borderRadius: BorderRadius.circular(24),
       onTap: () {
         setState(() {
+          if (index == 0 && _selectedIndex != 0) {
+            _pages[0] = HomePremiumPage(key: UniqueKey());
+          }
+          if (index == 3) {
+            _pages[3] = ReportsPage(key: UniqueKey());
+          }
           _selectedIndex = index;
         });
       },

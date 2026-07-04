@@ -1,12 +1,72 @@
 import 'package:flutter/material.dart';
 
 import '../models/station.dart';
+import '../services/water_service.dart';
 import '../widgets/recent_catches.dart';
+import 'add_catch_page.dart';
+import 'favorites_page.dart';
 
-class StationDetailsPage extends StatelessWidget {
+class StationDetailsPage extends StatefulWidget {
   final Station station;
 
   const StationDetailsPage({super.key, required this.station});
+
+  @override
+  State<StationDetailsPage> createState() => _StationDetailsPageState();
+}
+
+class _StationDetailsPageState extends State<StationDetailsPage> {
+  final _favoritesRepository = const FavoriteStationsRepository();
+  bool _isFavorite = false;
+  bool _favoriteLoading = true;
+
+  Station get station => widget.station;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFavorite = station.isFavorite;
+    _loadFavorite();
+  }
+
+  Future<void> _loadFavorite() async {
+    try {
+      final isFavorite = await _favoritesRepository.isFavorite(station.id);
+      if (mounted) setState(() => _isFavorite = isFavorite);
+    } on FavoriteException catch (error) {
+      if (mounted) _showError(error.message);
+    } finally {
+      if (mounted) setState(() => _favoriteLoading = false);
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    setState(() => _favoriteLoading = true);
+    try {
+      final isFavorite = await _favoritesRepository.toggle(
+        station.id,
+        isFavorite: _isFavorite,
+      );
+      if (mounted) setState(() => _isFavorite = isFavorite);
+    } on FavoriteException catch (error) {
+      if (mounted) _showError(error.message);
+    } finally {
+      if (mounted) setState(() => _favoriteLoading = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _reportCatch() async {
+    WaterService().selectStation(station);
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<bool>(builder: (_) => const AddCatchPage()));
+  }
 
   Color get trendColor {
     switch (station.trend) {
@@ -182,9 +242,13 @@ class StationDetailsPage extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.favorite_border),
-                label: const Text("Adaugă la Favorite"),
+                onPressed: _favoriteLoading ? null : _toggleFavorite,
+                icon: Icon(
+                  _isFavorite ? Icons.favorite : Icons.favorite_border,
+                ),
+                label: Text(
+                  _isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+                ),
               ),
             ),
 
@@ -193,9 +257,9 @@ class StationDetailsPage extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () {},
+                onPressed: _reportCatch,
                 icon: const Icon(Icons.campaign),
-                label: const Text("Raportează o captură"),
+                label: const Text('Report a Catch'),
               ),
             ),
 
