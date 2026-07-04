@@ -7,8 +7,8 @@ import 'add_catch_page.dart';
 import 'favorites_page.dart';
 import 'home_premium_page.dart';
 import 'map_page.dart';
+import 'profile_page.dart';
 import 'reports_page.dart';
-import 'settings_page.dart';
 import 'weather_page.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -27,7 +27,7 @@ class _MainNavigationState extends State<MainNavigation> {
     WeatherPage(),
     ReportsPage(),
     FavoritesPage(),
-    SettingsPage(),
+    ProfilePage(),
   ];
 
   @override

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/theme/app_theme.dart';
+import 'screens/auth_page.dart';
 import 'screens/main_navigation.dart';
+import 'services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,7 +27,27 @@ class FishTrackApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'FishTrack',
       theme: AppTheme.lightTheme,
-      home: const MainNavigation(),
+      home: const _AuthGate(),
+    );
+  }
+}
+
+class _AuthGate extends StatelessWidget {
+  const _AuthGate();
+
+  @override
+  Widget build(BuildContext context) {
+    const authService = AuthService();
+    return StreamBuilder<AuthState>(
+      stream: authService.authStateChanges,
+      builder: (context, snapshot) {
+        final authState = snapshot.data;
+        if (authState?.event == AuthChangeEvent.passwordRecovery) {
+          return const UpdatePasswordPage();
+        }
+        final session = authState?.session ?? authService.currentSession;
+        return session == null ? const AuthPage() : const MainNavigation();
+      },
     );
   }
 }
