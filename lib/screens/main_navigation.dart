@@ -21,14 +21,35 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
 
-  final List<Widget> _pages = const [
-    HomePremiumPage(),
-    MapPage(),
-    WeatherPage(),
-    ReportsPage(),
-    FavoritesPage(),
-    ProfilePage(),
-  ];
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      HomePremiumPage(onNavigate: _selectPage),
+      const MapPage(),
+      const WeatherPage(),
+      const ReportsPage(),
+      const FavoritesPage(),
+      const ProfilePage(),
+    ];
+  }
+
+  void _selectPage(int index) {
+    setState(() {
+      if (index == 0 && _selectedIndex != 0) {
+        _pages[0] = HomePremiumPage(
+          key: UniqueKey(),
+          onNavigate: _selectPage,
+        );
+      }
+      if (index == 3) {
+        _pages[3] = ReportsPage(key: UniqueKey());
+      }
+      _selectedIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +98,10 @@ class _MainNavigationState extends State<MainNavigation> {
                           );
                           if (added == true && mounted) {
                             setState(() {
-                              _pages[0] = HomePremiumPage(key: UniqueKey());
+                              _pages[0] = HomePremiumPage(
+                                key: UniqueKey(),
+                                onNavigate: _selectPage,
+                              );
                               _pages[3] = ReportsPage(key: UniqueKey());
                             });
                           }
@@ -136,17 +160,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
     return InkWell(
       borderRadius: BorderRadius.circular(24),
-      onTap: () {
-        setState(() {
-          if (index == 0 && _selectedIndex != 0) {
-            _pages[0] = HomePremiumPage(key: UniqueKey());
-          }
-          if (index == 3) {
-            _pages[3] = ReportsPage(key: UniqueKey());
-          }
-          _selectedIndex = index;
-        });
-      },
+      onTap: () => _selectPage(index),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Column(

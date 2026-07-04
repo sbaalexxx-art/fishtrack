@@ -73,6 +73,17 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     );
   }
 
+  void _submitSearch(String query) {
+    _filterService.updateQuery(query);
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) return;
+
+    final matches = _filterService.apply(_allStations);
+    if (matches.isNotEmpty) {
+      _openStation(matches.first);
+    }
+  }
+
   Future<void> _locateUser({bool recenter = false}) async {
     if (_isLocating) {
       return;
@@ -544,6 +555,8 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                               child: TextField(
                                 controller: _searchController,
                                 onChanged: _filterService.updateQuery,
+                                onSubmitted: _submitSearch,
+                                textInputAction: TextInputAction.search,
                                 maxLines: 1,
                                 style: const TextStyle(
                                   color: Colors.white,

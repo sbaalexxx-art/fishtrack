@@ -8,7 +8,26 @@ import 'water_level_card.dart';
 import 'weather_card.dart';
 
 class PremiumDashboard extends StatelessWidget {
-  const PremiumDashboard({super.key});
+  const PremiumDashboard({
+    super.key,
+    required this.onWaterLevelPressed,
+    required this.onWeatherPressed,
+    required this.onCommunityPressed,
+    required this.onAiPressed,
+  });
+
+  final VoidCallback onWaterLevelPressed;
+  final VoidCallback onWeatherPressed;
+  final VoidCallback onCommunityPressed;
+  final VoidCallback onAiPressed;
+
+  Widget _action({required VoidCallback onTap, required Widget child}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: child,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +40,19 @@ class PremiumDashboard extends StatelessWidget {
           height: layout.dashboardCardHeight,
           child: Row(
             children: [
-              const Expanded(child: WaterLevelCardPremium()),
+              Expanded(
+                child: _action(
+                  onTap: onWaterLevelPressed,
+                  child: const WaterLevelCardPremium(),
+                ),
+              ),
               SizedBox(width: spacing),
-              const Expanded(child: WeatherCardPremium()),
+              Expanded(
+                child: _action(
+                  onTap: onWeatherPressed,
+                  child: const WeatherCardPremium(),
+                ),
+              ),
             ],
           ),
         ),
@@ -32,9 +61,19 @@ class PremiumDashboard extends StatelessWidget {
           height: layout.dashboardCardHeight,
           child: Row(
             children: [
-              const Expanded(child: CommunityCardPremium()),
+              Expanded(
+                child: _action(
+                  onTap: onCommunityPressed,
+                  child: const CommunityCardPremium(),
+                ),
+              ),
               SizedBox(width: spacing),
-              const Expanded(child: AIConditionsCardPremium()),
+              Expanded(
+                child: _action(
+                  onTap: onAiPressed,
+                  child: const AIConditionsCardPremium(),
+                ),
+              ),
             ],
           ),
         ),
