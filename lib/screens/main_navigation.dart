@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../widgets/home_premium/home_premium_layout.dart';
+import 'add_catch_page.dart';
 import 'favorites_page.dart';
 import 'home_premium_page.dart';
 import 'map_page.dart';
@@ -68,7 +69,11 @@ class _MainNavigationState extends State<MainNavigation> {
                   Expanded(
                     child: Center(
                       child: GestureDetector(
-                        onTap: () {},
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<bool>(
+                            builder: (_) => const AddCatchPage(),
+                          ),
+                        ),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 220),
                           width: layout.bottomNavHeight - 12,
