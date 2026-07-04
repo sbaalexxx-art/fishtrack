@@ -96,10 +96,10 @@ class _AddCatchPageState extends State<AddCatchPage> {
       'Your current location is unavailable. Please retry.',
   };
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _takePhoto() async {
     try {
       final image = await _picker.pickImage(
-        source: source,
+        source: ImageSource.camera,
         imageQuality: 85,
         maxWidth: 2000,
       );
@@ -107,7 +107,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
     } on Exception {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('The image could not be selected.')),
+        const SnackBar(content: Text('The photo could not be captured.')),
       );
     }
   }
@@ -116,7 +116,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
     if (_image == null) {
-      setState(() => _submissionError = 'Add a photo from camera or gallery.');
+      setState(() => _submissionError = 'Take a photo with the camera.');
       return;
     }
     if (_station == null) {
@@ -165,158 +165,190 @@ class _AddCatchPageState extends State<AddCatchPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Add Catch')),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-            children: [
-              _PhotoPicker(
-                image: _image,
-                enabled: !_isSubmitting,
-                onCamera: () => _pickImage(ImageSource.camera),
-                onGallery: () => _pickImage(ImageSource.gallery),
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                controller: _speciesController,
-                enabled: !_isSubmitting,
-                decoration: const InputDecoration(
-                  labelText: 'Species',
-                  prefixIcon: Icon(Icons.set_meal_outlined),
+    final theme = Theme.of(context);
+
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF12D8D6),
+          brightness: Brightness.dark,
+        ),
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF121212),
+          foregroundColor: Colors.white,
+        ),
+        textTheme: theme.textTheme.apply(
+          bodyColor: Colors.white,
+          displayColor: Colors.white,
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          filled: true,
+          fillColor: Color(0xFF1C1C1E),
+          labelStyle: TextStyle(color: Colors.white70),
+          prefixIconColor: Colors.white70,
+          enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.white38),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Color(0xFF12D8D6), width: 2),
+          ),
+        ),
+      ),
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Add Catch')),
+        body: SafeArea(
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+              children: [
+                _PhotoPicker(
+                  image: _image,
+                  enabled: !_isSubmitting,
+                  onCamera: _takePhoto,
                 ),
-                validator: _requiredText,
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _weightController,
-                      enabled: !_isSubmitting,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Weight (kg)',
-                      ),
-                      validator: _positiveNumber,
-                    ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _speciesController,
+                  enabled: !_isSubmitting,
+                  decoration: const InputDecoration(
+                    labelText: 'Species',
+                    prefixIcon: Icon(Icons.set_meal_outlined),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _lengthController,
-                      enabled: !_isSubmitting,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                  validator: _requiredText,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _weightController,
+                        enabled: !_isSubmitting,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Weight (kg)',
+                        ),
+                        validator: _positiveNumber,
                       ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _lengthController,
+                        enabled: !_isSubmitting,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Length (cm)',
+                        ),
+                        validator: _positiveNumber,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _notesController,
+                  enabled: !_isSubmitting,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes',
+                    alignLabelWithHint: true,
+                    prefixIcon: Icon(Icons.notes_rounded),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FutureBuilder<List<Station>>(
+                  future: _stationsFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const LinearProgressIndicator();
+                    }
+                    if (snapshot.hasError || (snapshot.data?.isEmpty ?? true)) {
+                      return const ListTile(
+                        leading: Icon(Icons.error_outline),
+                        title: Text('Fishing stations are unavailable.'),
+                      );
+                    }
+                    return DropdownButtonFormField<Station>(
+                      initialValue: _station,
+                      isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: 'Length (cm)',
+                        labelText: 'Station',
+                        prefixIcon: Icon(Icons.location_on_outlined),
                       ),
-                      validator: _positiveNumber,
+                      items: snapshot.data!
+                          .map(
+                            (station) => DropdownMenuItem(
+                              value: station,
+                              child: Text(
+                                station.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _isSubmitting
+                          ? null
+                          : (station) => setState(() => _station = station),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: _isLocating
+                      ? const SizedBox.square(
+                          dimension: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          _position == null
+                              ? Icons.gps_off_rounded
+                              : Icons.gps_fixed_rounded,
+                        ),
+                  title: Text(
+                    _isLocating
+                        ? 'Getting GPS coordinates…'
+                        : _position == null
+                        ? (_locationError ?? 'Location unavailable')
+                        : '${_position!.latitude.toStringAsFixed(5)}, '
+                              '${_position!.longitude.toStringAsFixed(5)}',
+                  ),
+                  trailing: !_isLocating && _position == null
+                      ? TextButton(
+                          onPressed: _loadLocation,
+                          child: const Text('Retry'),
+                        )
+                      : null,
+                ),
+                if (_submissionError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _submissionError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _notesController,
-                enabled: !_isSubmitting,
-                minLines: 3,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  labelText: 'Notes',
-                  alignLabelWithHint: true,
-                  prefixIcon: Icon(Icons.notes_rounded),
-                ),
-              ),
-              const SizedBox(height: 12),
-              FutureBuilder<List<Station>>(
-                future: _stationsFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const LinearProgressIndicator();
-                  }
-                  if (snapshot.hasError || (snapshot.data?.isEmpty ?? true)) {
-                    return const ListTile(
-                      leading: Icon(Icons.error_outline),
-                      title: Text('Fishing stations are unavailable.'),
-                    );
-                  }
-                  return DropdownButtonFormField<Station>(
-                    initialValue: _station,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Station',
-                      prefixIcon: Icon(Icons.location_on_outlined),
-                    ),
-                    items: snapshot.data!
-                        .map(
-                          (station) => DropdownMenuItem(
-                            value: station,
-                            child: Text(
-                              station.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: _isSubmitting ? null : _submit,
+                  icon: _isSubmitting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                        .toList(),
-                    onChanged: _isSubmitting
-                        ? null
-                        : (station) => setState(() => _station = station),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: _isLocating
-                    ? const SizedBox.square(
-                        dimension: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        _position == null
-                            ? Icons.gps_off_rounded
-                            : Icons.gps_fixed_rounded,
-                      ),
-                title: Text(
-                  _isLocating
-                      ? 'Getting GPS coordinates…'
-                      : _position == null
-                      ? (_locationError ?? 'Location unavailable')
-                      : '${_position!.latitude.toStringAsFixed(5)}, '
-                            '${_position!.longitude.toStringAsFixed(5)}',
-                ),
-                trailing: !_isLocating && _position == null
-                    ? TextButton(
-                        onPressed: _loadLocation,
-                        child: const Text('Retry'),
-                      )
-                    : null,
-              ),
-              if (_submissionError != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _submissionError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: Text(_isSubmitting ? 'Saving catch…' : 'Save Catch'),
                 ),
               ],
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: _isSubmitting ? null : _submit,
-                icon: _isSubmitting
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.cloud_upload_outlined),
-                label: Text(_isSubmitting ? 'Saving catch…' : 'Save Catch'),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -329,13 +361,11 @@ class _PhotoPicker extends StatelessWidget {
     required this.image,
     required this.enabled,
     required this.onCamera,
-    required this.onGallery,
   });
 
   final XFile? image;
   final bool enabled;
   final VoidCallback onCamera;
-  final VoidCallback onGallery;
 
   @override
   Widget build(BuildContext context) {
@@ -359,24 +389,13 @@ class _PhotoPicker extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: enabled ? onCamera : null,
-                icon: const Icon(Icons.camera_alt_outlined),
-                label: const Text('Camera'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: enabled ? onGallery : null,
-                icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('Gallery'),
-              ),
-            ),
-          ],
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: enabled ? onCamera : null,
+            icon: const Icon(Icons.camera_alt_outlined),
+            label: const Text('Camera'),
+          ),
         ),
       ],
     );

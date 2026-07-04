@@ -15,17 +15,17 @@ Future<void> main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJieW10YXZyZnJld2V5Znlka2psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTMxNTIsImV4cCI6MjA5ODM4OTE1Mn0.4PS1M079y5chpYV7XU_5xxuO6i9tc4nOAF3XcCS0rzo',
   );
 
-  runApp(const FishTrackApp());
+  runApp(const AIFishMapApp());
 }
 
-class FishTrackApp extends StatelessWidget {
-  const FishTrackApp({super.key});
+class AIFishMapApp extends StatelessWidget {
+  const AIFishMapApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'FishTrack',
+      title: 'AIFishMap',
       theme: AppTheme.lightTheme,
       home: const _AuthGate(),
     );

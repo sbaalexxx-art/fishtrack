@@ -112,156 +112,191 @@ class _AuthPageState extends State<AuthPage> {
   Widget build(BuildContext context) {
     final isRegister = _mode == _AuthMode.register;
     final isForgot = _mode == _AuthMode.forgotPassword;
+    final theme = Theme.of(context);
 
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(Icons.phishing_rounded, size: 54),
-                    const SizedBox(height: 16),
-                    Text(
-                      isRegister
-                          ? 'Create account'
-                          : isForgot
-                          ? 'Reset password'
-                          : 'Welcome back',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      isForgot
-                          ? 'We will send recovery instructions to your email.'
-                          : 'Sign in to continue to AIFishMap.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 28),
-                    if (isRegister) ...[
-                      TextFormField(
-                        controller: _nameController,
-                        enabled: !_loading,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          labelText: 'Name',
-                          prefixIcon: Icon(Icons.person_outline),
-                        ),
-                        validator: _required,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    TextFormField(
-                      controller: _emailController,
-                      enabled: !_loading,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: isForgot
-                          ? TextInputAction.done
-                          : TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined),
-                      ),
-                      validator: _emailValidator,
-                    ),
-                    if (!isForgot) ...[
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _passwordController,
-                        enabled: !_loading,
-                        obscureText: _obscurePassword,
-                        textInputAction: isRegister
-                            ? TextInputAction.next
-                            : TextInputAction.done,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            onPressed: () => setState(
-                              () => _obscurePassword = !_obscurePassword,
-                            ),
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                            ),
-                          ),
-                        ),
-                        validator: _passwordValidator,
-                        onFieldSubmitted: isRegister ? null : (_) => _submit(),
-                      ),
-                    ],
-                    if (isRegister) ...[
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _confirmPasswordController,
-                        enabled: !_loading,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Confirm password',
-                          prefixIcon: Icon(Icons.lock_outline),
-                        ),
-                        validator: (value) => value != _passwordController.text
-                            ? 'Passwords do not match'
-                            : null,
-                        onFieldSubmitted: (_) => _submit(),
-                      ),
-                    ],
-                    if (_message != null) ...[
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF12D8D6),
+          brightness: Brightness.dark,
+        ),
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        textTheme: theme.textTheme.apply(
+          bodyColor: Colors.white,
+          displayColor: Colors.white,
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          filled: true,
+          fillColor: Color(0xFF1C1C1E),
+          labelStyle: TextStyle(color: Colors.white70),
+          hintStyle: TextStyle(color: Colors.white60),
+          prefixIconColor: Colors.white70,
+          suffixIconColor: Colors.white70,
+          enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.white38),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Color(0xFF12D8D6), width: 2),
+          ),
+        ),
+      ),
+      child: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Icon(Icons.phishing_rounded, size: 54),
                       const SizedBox(height: 16),
                       Text(
-                        _message!,
+                        isRegister
+                            ? 'Create account'
+                            : isForgot
+                            ? 'Reset password'
+                            : 'Welcome back',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: _messageIsError
-                              ? Theme.of(context).colorScheme.error
-                              : Theme.of(context).colorScheme.primary,
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          color: Colors.white,
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: _loading ? null : _submit,
-                      child: _loading
-                          ? const SizedBox.square(
-                              dimension: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(
-                              isRegister
-                                  ? 'Register'
-                                  : isForgot
-                                  ? 'Send reset email'
-                                  : 'Login',
+                      const SizedBox(height: 8),
+                      Text(
+                        isForgot
+                            ? 'We will send recovery instructions to your email.'
+                            : 'Sign in to continue to AIFishMap.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 28),
+                      if (isRegister) ...[
+                        TextFormField(
+                          controller: _nameController,
+                          enabled: !_loading,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'Name',
+                            prefixIcon: Icon(Icons.person_outline),
+                          ),
+                          validator: _required,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      TextFormField(
+                        controller: _emailController,
+                        enabled: !_loading,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: isForgot
+                            ? TextInputAction.done
+                            : TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.email_outlined),
+                        ),
+                        validator: _emailValidator,
+                      ),
+                      if (!isForgot) ...[
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _passwordController,
+                          enabled: !_loading,
+                          obscureText: _obscurePassword,
+                          textInputAction: isRegister
+                              ? TextInputAction.next
+                              : TextInputAction.done,
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              onPressed: () => setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              ),
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                              ),
                             ),
-                    ),
-                    if (_mode == _AuthMode.login) ...[
-                      TextButton(
-                        onPressed: _loading
-                            ? null
-                            : () => _setMode(_AuthMode.forgotPassword),
-                        child: const Text('Forgot password?'),
+                          ),
+                          validator: _passwordValidator,
+                          onFieldSubmitted: isRegister
+                              ? null
+                              : (_) => _submit(),
+                        ),
+                      ],
+                      if (isRegister) ...[
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _confirmPasswordController,
+                          enabled: !_loading,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Confirm password',
+                            prefixIcon: Icon(Icons.lock_outline),
+                          ),
+                          validator: (value) =>
+                              value != _passwordController.text
+                              ? 'Passwords do not match'
+                              : null,
+                          onFieldSubmitted: (_) => _submit(),
+                        ),
+                      ],
+                      if (_message != null) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          _message!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: _messageIsError
+                                ? Theme.of(context).colorScheme.error
+                                : Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      FilledButton(
+                        onPressed: _loading ? null : _submit,
+                        child: _loading
+                            ? const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                isRegister
+                                    ? 'Register'
+                                    : isForgot
+                                    ? 'Send reset email'
+                                    : 'Login',
+                              ),
                       ),
-                      TextButton(
-                        onPressed: _loading
-                            ? null
-                            : () => _setMode(_AuthMode.register),
-                        child: const Text('Create an account'),
-                      ),
-                    ] else
-                      TextButton(
-                        onPressed: _loading
-                            ? null
-                            : () => _setMode(_AuthMode.login),
-                        child: const Text('Back to login'),
-                      ),
-                  ],
+                      if (_mode == _AuthMode.login) ...[
+                        TextButton(
+                          onPressed: _loading
+                              ? null
+                              : () => _setMode(_AuthMode.forgotPassword),
+                          child: const Text('Forgot password?'),
+                        ),
+                        TextButton(
+                          onPressed: _loading
+                              ? null
+                              : () => _setMode(_AuthMode.register),
+                          child: const Text('Create an account'),
+                        ),
+                      ] else
+                        TextButton(
+                          onPressed: _loading
+                              ? null
+                              : () => _setMode(_AuthMode.login),
+                          child: const Text('Back to login'),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
