@@ -1,34 +1,97 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import '../../models/station.dart';
+import '../../services/fishing_score_service.dart';
+import '../../services/water_service.dart';
 import 'home_premium_layout.dart';
 
 enum FishingRating { excellent, good, fair, poor }
 
-class AIConditionsCardPremium extends StatelessWidget {
-  const AIConditionsCardPremium({
-    super.key,
-    this.score = 8.6,
-    this.rating = FishingRating.excellent,
-    this.bestTime = '06:00 - 10:00',
+class AIConditionsCardPremium extends StatefulWidget {
+  const AIConditionsCardPremium({super.key});
+
+  @override
+  State<AIConditionsCardPremium> createState() =>
+      _AIConditionsCardPremiumState();
+}
+
+class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
+  final FishingScoreService _scoreService = FishingScoreService();
+  final WaterService _waterService = WaterService();
+  late Future<FishingScoreResult> _scoreFuture;
+  StreamSubscription<Station>? _stationSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _scoreFuture = _scoreService.calculate();
+    _stationSubscription = _waterService.stationSelections.listen((station) {
+      if (mounted) {
+        setState(
+          () =>
+              _scoreFuture = _scoreService.calculate(fallbackStation: station),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _stationSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<FishingScoreResult>(
+      future: _scoreFuture,
+      builder: (context, snapshot) {
+        final result = snapshot.data;
+        final rating = _rating(result?.rating);
+        return _AIConditionsCardView(
+          score: result?.score,
+          rating: rating,
+          recommendation: snapshot.hasError
+              ? 'Conditions unavailable'
+              : result?.recommendation ?? 'Calculating...',
+          bestTime: result?.bestTime ?? '--:--',
+          confidence: result?.confidence,
+        );
+      },
+    );
+  }
+
+  FishingRating _rating(FishingScoreRating? rating) => switch (rating) {
+    FishingScoreRating.excellent => FishingRating.excellent,
+    FishingScoreRating.good => FishingRating.good,
+    FishingScoreRating.fair => FishingRating.fair,
+    FishingScoreRating.poor || null => FishingRating.poor,
+  };
+}
+
+class _AIConditionsCardView extends StatelessWidget {
+  const _AIConditionsCardView({
+    required this.score,
+    required this.rating,
+    required this.recommendation,
+    required this.bestTime,
+    required this.confidence,
   });
 
-  final double score;
+  final double? score;
   final FishingRating rating;
+  final String recommendation;
   final String bestTime;
+  final int? confidence;
 
   Color get _color => switch (rating) {
     FishingRating.excellent => const Color(0xFF4CAF50),
     FishingRating.good => const Color(0xFF8BC34A),
     FishingRating.fair => const Color(0xFFFFB300),
     FishingRating.poor => const Color(0xFFE53935),
-  };
-
-  String get _label => switch (rating) {
-    FishingRating.excellent => 'Excellent',
-    FishingRating.good => 'Good',
-    FishingRating.fair => 'Fair',
-    FishingRating.poor => 'Poor',
   };
 
   @override
@@ -78,7 +141,9 @@ class AIConditionsCardPremium extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${score.toStringAsFixed(1)}/10',
+                          score == null
+                              ? '--/10'
+                              : '${score!.toStringAsFixed(1)}/10',
                           maxLines: 1,
                           style: TextStyle(
                             fontSize:
@@ -90,7 +155,7 @@ class AIConditionsCardPremium extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _label,
+                          recommendation,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -111,7 +176,9 @@ class AIConditionsCardPremium extends StatelessWidget {
                         SizedBox.square(
                           dimension: gaugeSize,
                           child: CircularProgressIndicator(
-                            value: (score / 10).clamp(0, 1),
+                            value: score == null
+                                ? null
+                                : (score! / 10).clamp(0, 1),
                             strokeWidth: compact ? 5 : 6,
                             backgroundColor: Colors.white10,
                             color: _color,
@@ -134,7 +201,9 @@ class AIConditionsCardPremium extends StatelessWidget {
                   const SizedBox(width: 5),
                   Expanded(
                     child: Text(
-                      'Best: $bestTime',
+                      confidence == null
+                          ? 'Best: $bestTime'
+                          : 'Best: $bestTime • $confidence%',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.caption.copyWith(
