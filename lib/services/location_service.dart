@@ -17,6 +17,37 @@ class LocationService {
   const LocationService();
 
   Future<Position> determinePosition() async {
+    final cachedPosition = _cachedPosition;
+    final cachedAt = _cachedAt;
+    if (cachedPosition != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < const Duration(minutes: 2)) {
+      return cachedPosition;
+    }
+
+    final activeRequest = _activeRequest;
+    if (activeRequest != null) {
+      return activeRequest;
+    }
+
+    final request = _determinePosition();
+    _activeRequest = request;
+
+    try {
+      final position = await request;
+      _cachedPosition = position;
+      _cachedAt = DateTime.now();
+      return position;
+    } finally {
+      _activeRequest = null;
+    }
+  }
+
+  static Position? _cachedPosition;
+  static DateTime? _cachedAt;
+  static Future<Position>? _activeRequest;
+
+  Future<Position> _determinePosition() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
         throw const LocationFailure(LocationFailureReason.serviceDisabled);
