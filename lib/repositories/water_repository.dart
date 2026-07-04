@@ -9,7 +9,8 @@ class WaterRepository {
     final response = await Supabase.instance.client
         .from('stations')
         .select()
-        .order('name');
+        .order('name')
+        .timeout(const Duration(seconds: 12));
 
     return response.map(Station.tryFromJson).whereType<Station>().toList();
   }

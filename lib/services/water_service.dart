@@ -1,12 +1,103 @@
+import 'dart:async';
+
+import 'package:geolocator/geolocator.dart';
+
 import '../models/station.dart';
 import '../repositories/water_repository.dart';
+import 'location_service.dart';
 
 class WaterService {
-  WaterService();
+  WaterService({WaterRepository? repository, LocationService? locationService})
+    : _repository = repository ?? const WaterRepository(),
+      _locationService = locationService ?? const LocationService();
 
-  final WaterRepository _repository = const WaterRepository();
+  static const cacheDuration = Duration(minutes: 5);
+  static final StreamController<Station> _stationSelectionController =
+      StreamController<Station>.broadcast(sync: true);
+  static List<Station>? _cachedStations;
+  static DateTime? _cachedAt;
+  static Future<List<Station>>? _activeRequest;
+  static Station? _selectedStation;
 
-  Future<List<Station>> getStations() async {
-    return await _repository.getStations();
+  final WaterRepository _repository;
+  final LocationService _locationService;
+
+  Stream<Station> get stationSelections => _stationSelectionController.stream;
+  Station? get selectedStation => _selectedStation;
+
+  void selectStation(Station station) {
+    _selectedStation = station;
+    _stationSelectionController.add(station);
+  }
+
+  Future<List<Station>> getStations({bool forceRefresh = false}) async {
+    final cachedStations = _cachedStations;
+    final cachedAt = _cachedAt;
+    if (!forceRefresh &&
+        cachedStations != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < cacheDuration) {
+      return cachedStations;
+    }
+
+    final activeRequest = _activeRequest;
+    if (activeRequest != null) {
+      return activeRequest;
+    }
+
+    final request = _repository.getStations();
+    _activeRequest = request;
+
+    try {
+      final stations = List<Station>.unmodifiable(await request);
+      _cachedStations = stations;
+      _cachedAt = DateTime.now();
+      return stations;
+    } on Exception {
+      if (cachedStations != null) {
+        return cachedStations;
+      }
+      rethrow;
+    } finally {
+      _activeRequest = null;
+    }
+  }
+
+  Future<Station?> getNearestStation({Station? fallbackStation}) async {
+    final stations = await getStations();
+    if (stations.isEmpty) {
+      return null;
+    }
+
+    try {
+      final position = await _locationService.determinePosition();
+      return stations.reduce((nearest, candidate) {
+        final nearestDistance = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          nearest.latitude,
+          nearest.longitude,
+        );
+        final candidateDistance = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          candidate.latitude,
+          candidate.longitude,
+        );
+        return candidateDistance < nearestDistance ? candidate : nearest;
+      });
+    } on LocationFailure {
+      final selected = fallbackStation ?? _selectedStation;
+      if (selected == null) {
+        return stations.first;
+      }
+
+      for (final station in stations) {
+        if (station.id == selected.id) {
+          return station;
+        }
+      }
+      return selected;
+    }
   }
 }

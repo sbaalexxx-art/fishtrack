@@ -49,11 +49,12 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
   void _retry() {
     setState(() {
-      _stationsFuture = _waterService.getStations();
+      _stationsFuture = _waterService.getStations(forceRefresh: true);
     });
   }
 
   void _openStation(Station station) {
+    _waterService.selectStation(station);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => StationDetailsPage(station: station),
