@@ -1,9 +1,12 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../models/station.dart';
 import '../../screens/station_details_page.dart';
+import '../../services/location_service.dart';
 import '../../services/water_service.dart';
 import '../home/home_map.dart';
 import '../home/map_preview.dart';
@@ -20,12 +23,28 @@ class HomePremiumMap extends StatefulWidget {
 
 class _HomePremiumMapState extends State<HomePremiumMap> {
   final WaterService _waterService = WaterService();
+  final LocationService _locationService = const LocationService();
+  final MapController _mapController = MapController();
   late Future<List<Station>> _stationsFuture;
+  LatLng? _currentLocation;
+  LocationFailureReason? _locationFailure;
+  bool _isLocating = false;
+  bool _isMapReady = false;
+  bool _pendingRecenter = false;
 
   @override
   void initState() {
     super.initState();
     _stationsFuture = _waterService.getStations();
+    if (widget.child == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _locateUser());
+    }
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
   }
 
   void _retry() {
@@ -42,6 +61,96 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     );
   }
 
+  Future<void> _locateUser({bool recenter = false}) async {
+    if (_isLocating) {
+      return;
+    }
+
+    final knownLocation = _currentLocation;
+    if (knownLocation != null && recenter) {
+      _recenter(knownLocation);
+      return;
+    }
+
+    setState(() {
+      _isLocating = true;
+      _locationFailure = null;
+      _pendingRecenter = recenter;
+    });
+
+    try {
+      final position = await _locationService.determinePosition();
+      if (!mounted) {
+        return;
+      }
+
+      final location = LatLng(position.latitude, position.longitude);
+      setState(() {
+        _currentLocation = location;
+        _locationFailure = null;
+      });
+
+      if (_pendingRecenter) {
+        _recenter(location);
+      }
+    } on LocationFailure catch (failure) {
+      if (mounted) {
+        setState(() {
+          _locationFailure = failure.reason;
+          _pendingRecenter = false;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLocating = false;
+        });
+      }
+    }
+  }
+
+  void _recenter(LatLng location) {
+    if (!_isMapReady) {
+      _pendingRecenter = true;
+      return;
+    }
+
+    _mapController.move(location, 13.5);
+    _pendingRecenter = false;
+  }
+
+  void _onMapReady() {
+    _isMapReady = true;
+    final location = _currentLocation;
+    if (_pendingRecenter && location != null) {
+      _recenter(location);
+    }
+  }
+
+  void _handleLocationAction() {
+    final location = _currentLocation;
+    if (location != null) {
+      _recenter(location);
+      return;
+    }
+
+    _locateUser(recenter: true);
+  }
+
+  String get _locationLabel {
+    if (_isLocating) {
+      return 'Locating...';
+    }
+
+    return switch (_locationFailure) {
+      LocationFailureReason.serviceDisabled => 'Location is off',
+      LocationFailureReason.permissionDenied => 'Permission denied',
+      LocationFailureReason.permissionDeniedForever => 'Enable in settings',
+      LocationFailureReason.unavailable => 'Location unavailable',
+      null => 'Current Location',
+    };
+  }
+
   Widget _buildMapContent() {
     final customChild = widget.child;
     if (customChild != null) {
@@ -52,7 +161,13 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
       future: _stationsFuture,
       builder: (context, snapshot) {
         if (snapshot.hasData) {
-          return HomeMap(stations: snapshot.data!, onStationTap: _openStation);
+          return HomeMap(
+            stations: snapshot.data!,
+            onStationTap: _openStation,
+            mapController: _mapController,
+            currentLocation: _currentLocation,
+            onMapReady: _onMapReady,
+          );
         }
 
         if (snapshot.hasError) {
@@ -189,12 +304,16 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                   right: 14,
                   top: 76,
                   child: Column(
-                    children: const [
-                      _FloatingButton(Icons.my_location_rounded),
-                      SizedBox(height: 10),
-                      _FloatingButton(Icons.layers_rounded),
-                      SizedBox(height: 10),
-                      _FloatingButton(Icons.filter_alt_rounded),
+                    children: [
+                      _FloatingButton(
+                        Icons.my_location_rounded,
+                        onTap: _handleLocationAction,
+                        isLoading: _isLocating,
+                      ),
+                      const SizedBox(height: 10),
+                      const _FloatingButton(Icons.layers_rounded),
+                      const SizedBox(height: 10),
+                      const _FloatingButton(Icons.filter_alt_rounded),
                     ],
                   ),
                 ),
@@ -203,33 +322,48 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 Positioned(
                   left: 14,
                   bottom: 14,
-                  child: _GlassSurface(
-                    borderRadius: 18,
-                    blur: 20,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 13,
-                        vertical: 9,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.location_on_rounded,
-                            color: Color(0xFF67D04B),
-                            size: 17,
-                          ),
-                          SizedBox(width: 6),
-                          Text(
-                            "Current Location",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                              letterSpacing: .1,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _handleLocationAction,
+                    child: _GlassSurface(
+                      borderRadius: 18,
+                      blur: 20,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 9,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isLocating)
+                              const SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFF67D04B),
+                                ),
+                              )
+                            else
+                              const Icon(
+                                Icons.location_on_rounded,
+                                color: Color(0xFF67D04B),
+                                size: 17,
+                              ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _locationLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                letterSpacing: .1,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -325,23 +459,40 @@ class _GlassSurface extends StatelessWidget {
 }
 
 class _FloatingButton extends StatelessWidget {
-  const _FloatingButton(this.icon);
+  const _FloatingButton(this.icon, {this.onTap, this.isLoading = false});
 
   final IconData icon;
+  final VoidCallback? onTap;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
     return _GlassSurface(
       borderRadius: 17,
       blur: 22,
-      child: SizedBox(
-        width: 50,
-        height: 50,
-        child: Center(
-          child: Icon(
-            icon,
-            color: Colors.white.withValues(alpha: .92),
-            size: 22,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(17),
+          child: SizedBox(
+            width: 50,
+            height: 50,
+            child: Center(
+              child: isLoading
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Icon(
+                      icon,
+                      color: Colors.white.withValues(alpha: .92),
+                      size: 22,
+                    ),
+            ),
           ),
         ),
       ),

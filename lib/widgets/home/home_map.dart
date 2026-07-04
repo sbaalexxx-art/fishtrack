@@ -7,18 +7,32 @@ import '../../models/station.dart';
 class HomeMap extends StatelessWidget {
   final List<Station> stations;
   final ValueChanged<Station>? onStationTap;
+  final MapController? mapController;
+  final LatLng? currentLocation;
+  final VoidCallback? onMapReady;
 
-  const HomeMap({super.key, required this.stations, this.onStationTap});
+  const HomeMap({
+    super.key,
+    required this.stations,
+    this.onStationTap,
+    this.mapController,
+    this.currentLocation,
+    this.onMapReady,
+  });
 
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: FlutterMap(
-        options: const MapOptions(
-          initialCenter: LatLng(45.3, 28.0),
+        mapController: mapController,
+        options: MapOptions(
+          initialCenter: const LatLng(45.3, 28.0),
           initialZoom: 6.8,
-          interactionOptions: InteractionOptions(flags: InteractiveFlag.all),
+          interactionOptions: const InteractionOptions(
+            flags: InteractiveFlag.all,
+          ),
+          onMapReady: onMapReady,
         ),
         children: [
           TileLayer(
@@ -26,35 +40,67 @@ class HomeMap extends StatelessWidget {
             userAgentPackageName: 'com.aifishmap.app',
           ),
           MarkerLayer(
-            markers: stations.map((station) {
-              return Marker(
-                point: LatLng(station.latitude, station.longitude),
-                width: 46,
-                height: 46,
-                child: GestureDetector(
-                  onTap: () => onStationTap?.call(station),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade700,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 8,
-                          offset: Offset(0, 3),
-                        ),
-                      ],
+            markers: [
+              ...stations.map((station) {
+                return Marker(
+                  point: LatLng(station.latitude, station.longitude),
+                  width: 46,
+                  height: 46,
+                  child: GestureDetector(
+                    onTap: () => onStationTap?.call(station),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade700,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 8,
+                            offset: Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.phishing,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.phishing,
-                      color: Colors.white,
-                      size: 22,
+                  ),
+                );
+              }),
+              if (currentLocation case final location?)
+                Marker(
+                  point: location,
+                  width: 38,
+                  height: 38,
+                  child: Tooltip(
+                    message: 'You are here',
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF147BFF),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFF147BFF,
+                            ).withValues(alpha: .45),
+                            blurRadius: 12,
+                            spreadRadius: 3,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.person_pin_circle_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                     ),
                   ),
                 ),
-              );
-            }).toList(),
+            ],
           ),
         ],
       ),
