@@ -1,5 +1,9 @@
 enum WaterTrend { rising, falling, stable }
 
+enum WaterBodyType { river, lake }
+
+enum FishingDifficulty { easy, moderate, hard }
+
 class Station {
   final String id;
   final String name;
@@ -9,6 +13,10 @@ class Station {
   final double latitude;
   final double longitude;
   final DateTime lastUpdate;
+  final WaterBodyType waterBodyType;
+  final List<String> species;
+  final FishingDifficulty difficulty;
+  final bool isFavorite;
 
   const Station({
     required this.id,
@@ -19,18 +27,21 @@ class Station {
     required this.latitude,
     required this.longitude,
     required this.lastUpdate,
+    this.waterBodyType = WaterBodyType.river,
+    this.species = const [],
+    this.difficulty = FishingDifficulty.moderate,
+    this.isFavorite = false,
   });
 
   static Station? tryFromJson(Map<String, dynamic> json) {
     final id = _stringValue(json['id']);
     final name = _stringValue(json['name']);
-    final river = _stringValue(json['river']);
+    final river = _stringValue(json['river']) ?? '';
     final latitude = _doubleValue(json['latitude']);
     final longitude = _doubleValue(json['longitude']);
 
     if (id == null ||
         name == null ||
-        river == null ||
         latitude == null ||
         longitude == null ||
         latitude < -90 ||
@@ -55,6 +66,10 @@ class Station {
       latitude: latitude,
       longitude: longitude,
       lastUpdate: _dateValue(json['last_update']),
+      waterBodyType: _waterBodyType(json['water_type'] ?? json['type']),
+      species: _species(json['species']),
+      difficulty: _difficulty(json['difficulty']),
+      isFavorite: _boolValue(json['is_favorite'] ?? json['favorite']),
     );
   }
 
@@ -64,28 +79,45 @@ class Station {
   }
 
   static double? _doubleValue(Object? value) {
-    if (value is num) {
-      return value.toDouble();
-    }
+    if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '');
   }
 
   static DateTime _dateValue(Object? value) {
-    if (value is DateTime) {
-      return value;
-    }
+    if (value is DateTime) return value;
     return DateTime.tryParse(value?.toString() ?? '') ??
         DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   }
 
-  String get trendText {
-    switch (trend) {
-      case WaterTrend.rising:
-        return 'În creștere';
-      case WaterTrend.falling:
-        return 'În scădere';
-      case WaterTrend.stable:
-        return 'Stabil';
-    }
+  static WaterBodyType _waterBodyType(Object? value) =>
+      value?.toString().toLowerCase() == 'lake'
+      ? WaterBodyType.lake
+      : WaterBodyType.river;
+
+  static List<String> _species(Object? value) {
+    final values = value is Iterable
+        ? value
+        : value?.toString().split(',') ?? const <String>[];
+    return List<String>.unmodifiable(
+      values
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty),
+    );
   }
+
+  static FishingDifficulty _difficulty(Object? value) =>
+      switch (value?.toString().toLowerCase()) {
+        'easy' => FishingDifficulty.easy,
+        'hard' => FishingDifficulty.hard,
+        _ => FishingDifficulty.moderate,
+      };
+
+  static bool _boolValue(Object? value) =>
+      value == true || value?.toString().toLowerCase() == 'true';
+
+  String get trendText => switch (trend) {
+    WaterTrend.rising => 'În creștere',
+    WaterTrend.falling => 'În scădere',
+    WaterTrend.stable => 'Stabil',
+  };
 }

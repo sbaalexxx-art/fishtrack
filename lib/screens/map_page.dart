@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/station.dart';
+import '../services/station_filter_service.dart';
 import '../services/water_service.dart';
 
 class MapPage extends StatefulWidget {
@@ -14,6 +15,7 @@ class MapPage extends StatefulWidget {
 
 class _MapPageState extends State<MapPage> {
   final WaterService _waterService = WaterService();
+  final StationFilterService _filterService = StationFilterService.instance;
   late final Future<List<Station>> _stationsFuture;
 
   @override
@@ -39,7 +41,11 @@ class _MapPageState extends State<MapPage> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          return _StationMap(stations: snapshot.data!);
+          return ValueListenableBuilder<StationFilters>(
+            valueListenable: _filterService.filters,
+            builder: (context, filters, _) =>
+                _StationMap(stations: _filterService.apply(snapshot.data!)),
+          );
         },
       ),
     );

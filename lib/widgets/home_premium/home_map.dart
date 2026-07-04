@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../models/station.dart';
 import '../../screens/station_details_page.dart';
 import '../../services/location_service.dart';
+import '../../services/station_filter_service.dart';
 import '../../services/water_service.dart';
 import '../home/home_map.dart';
 import '../home/map_preview.dart';
@@ -25,7 +26,10 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   final WaterService _waterService = WaterService();
   final LocationService _locationService = const LocationService();
   final MapController _mapController = MapController();
+  final StationFilterService _filterService = StationFilterService.instance;
+  final TextEditingController _searchController = TextEditingController();
   late Future<List<Station>> _stationsFuture;
+  List<Station> _allStations = const [];
   LatLng? _currentLocation;
   LocationFailureReason? _locationFailure;
   bool _isLocating = false;
@@ -36,6 +40,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   void initState() {
     super.initState();
     _stationsFuture = _waterService.getStations();
+    _filterService.filters.addListener(_onFiltersChanged);
     if (widget.child == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _locateUser());
     }
@@ -43,8 +48,14 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
   @override
   void dispose() {
+    _filterService.filters.removeListener(_onFiltersChanged);
+    _searchController.dispose();
     _mapController.dispose();
     super.dispose();
+  }
+
+  void _onFiltersChanged() {
+    if (mounted) setState(() {});
   }
 
   void _retry() {
@@ -90,6 +101,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
         _currentLocation = location;
         _locationFailure = null;
       });
+      _filterService.setCurrentLocation(position.latitude, position.longitude);
 
       if (_pendingRecenter) {
         _recenter(location);
@@ -162,8 +174,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
       future: _stationsFuture,
       builder: (context, snapshot) {
         if (snapshot.hasData) {
+          _allStations = snapshot.data!;
           return HomeMap(
-            stations: snapshot.data!,
+            stations: _filterService.apply(snapshot.data!),
             onStationTap: _openStation,
             mapController: _mapController,
             currentLocation: _currentLocation,
@@ -197,6 +210,259 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _openFilters() async {
+    var draft = _filterService.filters.value;
+    var levelRange = RangeValues(
+      draft.minimumWaterLevel ?? 0,
+      draft.maximumWaterLevel ?? 1000,
+    );
+    var filterLevel =
+        draft.minimumWaterLevel != null || draft.maximumWaterLevel != null;
+    final species =
+        _allStations.expand((station) => station.species).toSet().toList()
+          ..sort();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Fishing filters',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                DropdownButtonFormField<WaterBodyType?>(
+                  initialValue: draft.waterBodyType,
+                  decoration: const InputDecoration(labelText: 'Water type'),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('River & lake')),
+                    DropdownMenuItem(
+                      value: WaterBodyType.river,
+                      child: Text('River'),
+                    ),
+                    DropdownMenuItem(
+                      value: WaterBodyType.lake,
+                      child: Text('Lake'),
+                    ),
+                  ],
+                  onChanged: (value) => setSheetState(
+                    () => draft = StationFilters(
+                      query: draft.query,
+                      waterBodyType: value,
+                      species: draft.species,
+                      radiusKm: draft.radiusKm,
+                      minimumWaterLevel: draft.minimumWaterLevel,
+                      maximumWaterLevel: draft.maximumWaterLevel,
+                      trends: draft.trends,
+                      difficulty: draft.difficulty,
+                      favoritesOnly: draft.favoritesOnly,
+                    ),
+                  ),
+                ),
+                DropdownButtonFormField<String?>(
+                  initialValue: draft.species,
+                  decoration: const InputDecoration(labelText: 'Species'),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('All species'),
+                    ),
+                    ...species.map(
+                      (item) =>
+                          DropdownMenuItem(value: item, child: Text(item)),
+                    ),
+                  ],
+                  onChanged: (value) => setSheetState(
+                    () => draft = StationFilters(
+                      query: draft.query,
+                      waterBodyType: draft.waterBodyType,
+                      species: value,
+                      radiusKm: draft.radiusKm,
+                      minimumWaterLevel: draft.minimumWaterLevel,
+                      maximumWaterLevel: draft.maximumWaterLevel,
+                      trends: draft.trends,
+                      difficulty: draft.difficulty,
+                      favoritesOnly: draft.favoritesOnly,
+                    ),
+                  ),
+                ),
+                DropdownButtonFormField<double?>(
+                  initialValue: draft.radiusKm,
+                  decoration: const InputDecoration(labelText: 'GPS radius'),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('Any distance')),
+                    DropdownMenuItem(value: 10, child: Text('10 km')),
+                    DropdownMenuItem(value: 25, child: Text('25 km')),
+                    DropdownMenuItem(value: 50, child: Text('50 km')),
+                    DropdownMenuItem(value: 100, child: Text('100 km')),
+                  ],
+                  onChanged: (value) => setSheetState(
+                    () => draft = StationFilters(
+                      query: draft.query,
+                      waterBodyType: draft.waterBodyType,
+                      species: draft.species,
+                      radiusKm: value,
+                      minimumWaterLevel: draft.minimumWaterLevel,
+                      maximumWaterLevel: draft.maximumWaterLevel,
+                      trends: draft.trends,
+                      difficulty: draft.difficulty,
+                      favoritesOnly: draft.favoritesOnly,
+                    ),
+                  ),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Filter by water level'),
+                  value: filterLevel,
+                  onChanged: (value) =>
+                      setSheetState(() => filterLevel = value),
+                ),
+                if (filterLevel)
+                  RangeSlider(
+                    values: levelRange,
+                    max: 1000,
+                    divisions: 100,
+                    labels: RangeLabels(
+                      '${levelRange.start.round()} cm',
+                      '${levelRange.end.round()} cm',
+                    ),
+                    onChanged: (value) =>
+                        setSheetState(() => levelRange = value),
+                  ),
+                const Text('Water trend'),
+                Wrap(
+                  spacing: 6,
+                  children: WaterTrend.values.map((trend) {
+                    return FilterChip(
+                      label: Text(trend.name),
+                      selected: draft.trends.contains(trend),
+                      onSelected: (selected) {
+                        setSheetState(() {
+                          final trends = {...draft.trends};
+                          if (selected) {
+                            trends.add(trend);
+                          } else {
+                            trends.remove(trend);
+                          }
+                          draft = StationFilters(
+                            query: draft.query,
+                            waterBodyType: draft.waterBodyType,
+                            species: draft.species,
+                            radiusKm: draft.radiusKm,
+                            minimumWaterLevel: draft.minimumWaterLevel,
+                            maximumWaterLevel: draft.maximumWaterLevel,
+                            trends: trends,
+                            difficulty: draft.difficulty,
+                            favoritesOnly: draft.favoritesOnly,
+                          );
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+                DropdownButtonFormField<FishingDifficulty?>(
+                  initialValue: draft.difficulty,
+                  decoration: const InputDecoration(labelText: 'Difficulty'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text('Any difficulty'),
+                    ),
+                    DropdownMenuItem(
+                      value: FishingDifficulty.easy,
+                      child: Text('Easy'),
+                    ),
+                    DropdownMenuItem(
+                      value: FishingDifficulty.moderate,
+                      child: Text('Moderate'),
+                    ),
+                    DropdownMenuItem(
+                      value: FishingDifficulty.hard,
+                      child: Text('Hard'),
+                    ),
+                  ],
+                  onChanged: (value) => setSheetState(
+                    () => draft = StationFilters(
+                      query: draft.query,
+                      waterBodyType: draft.waterBodyType,
+                      species: draft.species,
+                      radiusKm: draft.radiusKm,
+                      minimumWaterLevel: draft.minimumWaterLevel,
+                      maximumWaterLevel: draft.maximumWaterLevel,
+                      trends: draft.trends,
+                      difficulty: value,
+                      favoritesOnly: draft.favoritesOnly,
+                    ),
+                  ),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Favorites only'),
+                  value: draft.favoritesOnly,
+                  onChanged: (value) => setSheetState(
+                    () => draft = StationFilters(
+                      query: draft.query,
+                      waterBodyType: draft.waterBodyType,
+                      species: draft.species,
+                      radiusKm: draft.radiusKm,
+                      minimumWaterLevel: draft.minimumWaterLevel,
+                      maximumWaterLevel: draft.maximumWaterLevel,
+                      trends: draft.trends,
+                      difficulty: draft.difficulty,
+                      favoritesOnly: value,
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        _filterService.update(
+                          StationFilters(query: draft.query),
+                        );
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Reset'),
+                    ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: () {
+                        _filterService.update(
+                          StationFilters(
+                            query: draft.query,
+                            waterBodyType: draft.waterBodyType,
+                            species: draft.species,
+                            radiusKm: draft.radiusKm,
+                            minimumWaterLevel: filterLevel
+                                ? levelRange.start
+                                : null,
+                            maximumWaterLevel: filterLevel
+                                ? levelRange.end
+                                : null,
+                            trends: draft.trends,
+                            difficulty: draft.difficulty,
+                            favoritesOnly: draft.favoritesOnly,
+                          ),
+                        );
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Apply'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -264,34 +530,50 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                     child: SizedBox(
                       width: searchWidth,
                       height: 36,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 15),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 15),
                         child: Row(
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.search_rounded,
                               size: 19,
                               color: Colors.white70,
                             ),
-                            SizedBox(width: 9),
+                            const SizedBox(width: 9),
                             Expanded(
-                              child: Text(
-                                'Search for lake, river, spot...',
+                              child: TextField(
+                                controller: _searchController,
+                                onChanged: _filterService.updateQuery,
                                 maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white70,
+                                style: const TextStyle(
+                                  color: Colors.white,
                                   fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  letterSpacing: .1,
+                                ),
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  border: InputBorder.none,
+                                  hintText: 'Search for lake, river, spot...',
+                                  hintStyle: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ),
                             ),
-                            SizedBox(width: 8),
-                            Icon(
-                              Icons.tune_rounded,
-                              size: 18,
-                              color: Colors.white70,
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: _openFilters,
+                              child: Icon(
+                                Icons.tune_rounded,
+                                size: 18,
+                                color:
+                                    _filterService
+                                        .filters
+                                        .value
+                                        .hasAdvancedFilters
+                                    ? const Color(0xFF67D04B)
+                                    : Colors.white70,
+                              ),
                             ),
                           ],
                         ),
@@ -314,7 +596,10 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                       const SizedBox(height: 10),
                       const _FloatingButton(Icons.layers_rounded),
                       const SizedBox(height: 10),
-                      const _FloatingButton(Icons.filter_alt_rounded),
+                      _FloatingButton(
+                        Icons.filter_alt_rounded,
+                        onTap: _openFilters,
+                      ),
                     ],
                   ),
                 ),
