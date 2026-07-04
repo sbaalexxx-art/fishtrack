@@ -92,13 +92,13 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   Color get trendColor {
     switch (station.trend) {
       case WaterTrend.rising:
-        return Colors.green;
+        return Colors.blue;
 
       case WaterTrend.falling:
         return Colors.red;
 
       case WaterTrend.stable:
-        return Colors.orange;
+        return Colors.green;
     }
   }
 
@@ -194,7 +194,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                     const SizedBox(height: 12),
 
                     Text(
-                      "Actualizat: ${station.lastUpdate.day}.${station.lastUpdate.month}.${station.lastUpdate.year}",
+                      _updatedLabel(station.lastUpdate),
                       style: const TextStyle(color: Colors.grey),
                     ),
                   ],
@@ -321,6 +321,16 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
         ),
       ),
     );
+  }
+
+  static String _updatedLabel(DateTime timestamp) {
+    if (timestamp.millisecondsSinceEpoch == 0) {
+      return 'Update time unavailable';
+    }
+    final local = timestamp.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return 'Updated: ${local.day}.${local.month}.${local.year} $hour:$minute';
   }
 }
 

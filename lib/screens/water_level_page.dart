@@ -44,6 +44,17 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
             return const Center(child: Text("Nu există stații disponibile."));
           }
 
+          final latestUpdate = stations
+              .map((station) => station.lastUpdate)
+              .where((timestamp) => timestamp.millisecondsSinceEpoch > 0)
+              .fold<DateTime?>(
+                null,
+                (latest, timestamp) =>
+                    latest == null || timestamp.isAfter(latest)
+                    ? timestamp
+                    : latest,
+              );
+
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -65,7 +76,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                       const SizedBox(height: 16),
 
                       const Text(
-                        "Dunărea",
+                        "Live Water Levels",
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
@@ -81,9 +92,11 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
 
                       const SizedBox(height: 12),
 
-                      const Text(
-                        "Actualizat acum câteva minute",
-                        style: TextStyle(
+                      Text(
+                        latestUpdate == null
+                            ? 'Update time unavailable'
+                            : _relativeUpdate(latestUpdate),
+                        style: const TextStyle(
                           color: Colors.green,
                           fontWeight: FontWeight.bold,
                         ),
@@ -106,6 +119,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                 (station) => StationCard(
                   station: station,
                   onTap: () {
+                    _waterService.selectStation(station);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -122,5 +136,19 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
         },
       ),
     );
+  }
+
+  static String _relativeUpdate(DateTime timestamp) {
+    final difference = DateTime.now().difference(timestamp.toLocal());
+    if (difference.isNegative || difference.inMinutes < 1) {
+      return 'Updated just now';
+    }
+    if (difference.inMinutes < 60) {
+      return 'Updated ${difference.inMinutes} min ago';
+    }
+    if (difference.inHours < 24) {
+      return 'Updated ${difference.inHours} h ago';
+    }
+    return 'Updated ${difference.inDays} d ago';
   }
 }

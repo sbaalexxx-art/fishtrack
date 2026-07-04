@@ -11,13 +11,13 @@ class StationCard extends StatelessWidget {
   Color get trendColor {
     switch (station.trend) {
       case WaterTrend.rising:
-        return Colors.green;
+        return Colors.blue;
 
       case WaterTrend.falling:
         return Colors.red;
 
       case WaterTrend.stable:
-        return Colors.orange;
+        return Colors.green;
     }
   }
 
