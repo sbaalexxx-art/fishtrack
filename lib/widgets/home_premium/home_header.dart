@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'home_premium_layout.dart';
+
 class HomePremiumHeader extends StatelessWidget {
   const HomePremiumHeader({
     super.key,
@@ -14,54 +16,55 @@ class HomePremiumHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final layout = HomePremiumLayout.of(context);
+
     return SizedBox(
-      height: 52,
+      height: layout.headerHeight,
       child: Row(
         children: [
           _HeaderButton(icon: Icons.menu_rounded, onTap: onMenuPressed),
-
+          const SizedBox(width: 12),
           Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text.rich(
-                    const TextSpan(
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -.4,
-                      ),
-                      children: [
-                        TextSpan(
-                          text: 'AI',
-                          style: TextStyle(color: Color(0xFF2B7FFF)),
-                        ),
-                        TextSpan(
-                          text: 'Fish',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        TextSpan(
-                          text: 'Map',
-                          style: TextStyle(color: Color(0xFF67D04B)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Designed by anglers',
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
                     style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.white54,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 18 * layout.titleFontScale,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -.3,
                     ),
+                    children: const [
+                      TextSpan(
+                        text: 'AI ',
+                        style: TextStyle(color: Color(0xFF12D8D6)),
+                      ),
+                      TextSpan(
+                        text: 'FishMap',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  'Designed by anglers. Built for anglers.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 8 * layout.bodyFontScale,
+                    height: 1,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
-
+          const SizedBox(width: 6),
           Stack(
             clipBehavior: Clip.none,
             children: [
@@ -71,21 +74,21 @@ class HomePremiumHeader extends StatelessWidget {
               ),
               if (notificationCount > 0)
                 Positioned(
-                  right: -2,
-                  top: -2,
+                  right: -1,
+                  top: -1,
                   child: Container(
-                    width: 16,
-                    height: 16,
+                    width: 12 * layout.iconScale,
+                    height: 12 * layout.iconScale,
                     alignment: Alignment.center,
                     decoration: const BoxDecoration(
-                      color: Color(0xFF67D04B),
+                      color: Color(0xFFE53935),
                       shape: BoxShape.circle,
                     ),
                     child: Text(
                       '$notificationCount',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.black,
-                        fontSize: 8,
+                        fontSize: 7 * layout.bodyFontScale,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -107,16 +110,19 @@ class _HeaderButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final layout = HomePremiumLayout.of(context);
+    final buttonSize = 30 * layout.iconScale;
+
     return Material(
-      color: const Color(0xFF1A1F27),
-      borderRadius: BorderRadius.circular(14),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: SizedBox(
-          width: 42,
-          height: 42,
-          child: Icon(icon, color: Colors.white, size: 22),
+          width: buttonSize,
+          height: buttonSize,
+          child: Icon(icon, color: Colors.white, size: 17 * layout.iconScale),
         ),
       ),
     );

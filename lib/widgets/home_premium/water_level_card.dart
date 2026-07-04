@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import 'home_premium_layout.dart';
 
 enum WaterTrend { rising, stable, falling }
 
@@ -20,130 +21,137 @@ class WaterLevelCardPremium extends StatelessWidget {
   final String trendValue;
   final String lastUpdate;
 
-  Color get _trendColor {
-    switch (trend) {
-      case WaterTrend.rising:
-        return const Color(0xFF2196F3);
-      case WaterTrend.stable:
-        return const Color(0xFF43A047);
-      case WaterTrend.falling:
-        return const Color(0xFFE53935);
-    }
-  }
+  Color get _trendColor => switch (trend) {
+    WaterTrend.rising => const Color(0xFF2196F3),
+    WaterTrend.stable => const Color(0xFF43A047),
+    WaterTrend.falling => const Color(0xFFE53935),
+  };
 
-  IconData get _trendIcon {
-    switch (trend) {
-      case WaterTrend.rising:
-        return Icons.arrow_upward_rounded;
-      case WaterTrend.stable:
-        return Icons.remove_rounded;
-      case WaterTrend.falling:
-        return Icons.arrow_downward_rounded;
-    }
-  }
+  IconData get _trendIcon => switch (trend) {
+    WaterTrend.rising => Icons.arrow_upward_rounded,
+    WaterTrend.stable => Icons.remove_rounded,
+    WaterTrend.falling => Icons.arrow_downward_rounded,
+  };
 
-  String get _status {
-    switch (trend) {
-      case WaterTrend.rising:
-        return "Rising";
-      case WaterTrend.stable:
-        return "Stable";
-      case WaterTrend.falling:
-        return "Falling";
-    }
-  }
+  String get _status => switch (trend) {
+    WaterTrend.rising => 'Rising',
+    WaterTrend.stable => 'Stable',
+    WaterTrend.falling => 'Falling',
+  };
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 185,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF17293A),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.water_drop_rounded,
-                color: Color(0xFF42A5F5),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                "Water Level",
-                style: AppTextStyles.cardTitle.copyWith(fontSize: 16),
-              ),
-            ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layout = HomePremiumLayout.of(context);
+        final compact = constraints.maxWidth < 180;
+
+        return Container(
+          padding: EdgeInsets.all(
+            layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
           ),
-
-          const SizedBox(height: 8),
-
-          Text(stationName, style: AppTextStyles.caption),
-
-          const Spacer(),
-
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFF17293A),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      waterLevel,
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+              Row(
+                children: [
+                  Icon(
+                    Icons.water_drop_rounded,
+                    color: Color(0xFF42A5F5),
+                    size: 20 * layout.iconScale,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'WATER LEVEL',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.cardTitle.copyWith(
+                        fontSize: 16 * layout.titleFontScale,
                       ),
                     ),
-
-                    const SizedBox(height: 6),
-
-                    Row(
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                stationName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption,
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(_trendIcon, color: _trendColor, size: 18),
-                        const SizedBox(width: 4),
                         Text(
-                          trendValue,
+                          waterLevel,
+                          maxLines: 1,
                           style: TextStyle(
-                            color: _trendColor,
+                            fontSize:
+                                (compact ? 25 : 30) * layout.titleFontScale,
+                            height: 1,
                             fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Icon(_trendIcon, color: _trendColor, size: 16),
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: Text(
+                                trendValue,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: _trendColor,
+                                  fontSize: compact ? 12 : 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 2),
-
-                    Text(_status, style: AppTextStyles.caption),
-                  ],
-                ),
+                  ),
+                  SizedBox(
+                    width: compact ? 46 : 68,
+                    height: 38,
+                    child: CustomPaint(painter: _MiniChartPainter(_trendColor)),
+                  ),
+                ],
               ),
-
-              SizedBox(
-                width: 80,
-                height: 60,
-                child: CustomPaint(painter: _MiniChartPainter(_trendColor)),
+              const Spacer(),
+              Row(
+                children: [
+                  const Icon(Icons.schedule, size: 14, color: Colors.white54),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      '$_status • $lastUpdate',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.caption.copyWith(
+                        fontSize: compact ? 11 : 13,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-
-          const Spacer(),
-
-          Row(
-            children: [
-              const Icon(Icons.schedule, size: 14, color: Colors.white54),
-              const SizedBox(width: 5),
-              Text(lastUpdate, style: AppTextStyles.caption),
-            ],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -162,7 +170,6 @@ class _MiniChartPainter extends CustomPainter {
       ..lineTo(size.width * .55, size.height * .50)
       ..lineTo(size.width * .75, size.height * .55)
       ..lineTo(size.width, size.height * .20);
-
     final paint = Paint()
       ..color = color
       ..strokeWidth = 3
@@ -173,5 +180,6 @@ class _MiniChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
+  bool shouldRepaint(_MiniChartPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

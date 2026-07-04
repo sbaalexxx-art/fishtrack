@@ -1,12 +1,5 @@
-import '../models/station.dart';
-import '../repositories/water_repository.dart';
+import 'water_service.dart';
 
-class MapService {
+class MapService extends WaterService {
   MapService();
-
-  final WaterRepository _repository = const WaterRepository();
-
-  Future<List<Station>> getStations() async {
-    return await _repository.getStations();
-  }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import 'home_premium_layout.dart';
 
 class CommunityCardPremium extends StatelessWidget {
   const CommunityCardPremium({
@@ -14,108 +15,138 @@ class CommunityCardPremium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 185,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF183021),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layout = HomePremiumLayout.of(context);
+        final compact = constraints.maxWidth < 180;
+
+        return Container(
+          padding: EdgeInsets.all(
+            layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFF183021),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.groups_rounded,
-                color: Color(0xFF4CAF50),
-                size: 20,
-              ),
-
-              const SizedBox(width: 8),
-
-              Text(
-                "Community",
-                style: AppTextStyles.cardTitle.copyWith(fontSize: 16),
-              ),
-
-              const Spacer(),
-
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF4CAF50),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  "LIVE",
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+              Row(
+                children: [
+                  Icon(
+                    Icons.groups_rounded,
+                    color: Color(0xFF4CAF50),
+                    size: 20 * layout.iconScale,
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'COMMUNITY',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.cardTitle.copyWith(
+                        fontSize: 16 * layout.titleFontScale,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? 6 : 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4CAF50),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'LIVE',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-
-          const Spacer(),
-
-          Row(
-            children: const [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: Colors.white24,
-                child: Icon(Icons.person, color: Colors.white),
-              ),
-              SizedBox(width: 8),
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: Colors.white24,
-                child: Icon(Icons.person, color: Colors.white),
-              ),
-              SizedBox(width: 8),
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: Colors.white24,
-                child: Icon(Icons.person, color: Colors.white),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 14),
-
-          Text(
-            "$activeAnglers anglers nearby",
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 4),
-
-          Text("$liveReports new reports today", style: AppTextStyles.caption),
-
-          const Spacer(),
-
-          Row(
-            children: const [
-              Icon(Icons.circle, size: 10, color: Color(0xFF4CAF50)),
-              SizedBox(width: 6),
+              const SizedBox(height: 5),
+              const _AnglerAvatars(),
+              const SizedBox(height: 4),
               Text(
-                "Live activity",
+                '$activeAnglers anglers nearby',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Color(0xFF4CAF50),
-                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  fontSize: (compact ? 15 : 17) * layout.titleFontScale,
+                  fontWeight: FontWeight.bold,
                 ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '$liveReports new reports today',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption.copyWith(
+                  fontSize: compact ? 11 : 13,
+                ),
+              ),
+              const Spacer(),
+              const Row(
+                children: [
+                  Icon(Icons.circle, size: 9, color: Color(0xFF4CAF50)),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Live activity',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color(0xFF4CAF50),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+}
+
+class _AnglerAvatars extends StatelessWidget {
+  const _AnglerAvatars();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 28,
+      width: 68,
+      child: Stack(
+        children: [
+          for (var index = 0; index < 3; index++)
+            Positioned(
+              left: index * 20,
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF415547),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF183021), width: 2),
+                ),
+                child: const Icon(
+                  Icons.person,
+                  color: Colors.white70,
+                  size: 16,
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -2,62 +2,84 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-class MapPage extends StatelessWidget {
+import '../models/station.dart';
+import '../services/water_service.dart';
+
+class MapPage extends StatefulWidget {
   const MapPage({super.key});
+
+  @override
+  State<MapPage> createState() => _MapPageState();
+}
+
+class _MapPageState extends State<MapPage> {
+  final WaterService _waterService = WaterService();
+  late final Future<List<Station>> _stationsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _stationsFuture = _waterService.getStations();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Harta Apelor"), centerTitle: true),
-      body: FlutterMap(
-        options: const MapOptions(
-          initialCenter: LatLng(45.5, 27.2),
-          initialZoom: 6.8,
-        ),
-        children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.fishtrack.app',
-          ),
+      appBar: AppBar(title: const Text('Harta Apelor'), centerTitle: true),
+      body: FutureBuilder<List<Station>>(
+        future: _stationsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(
+              child: Text('Stațiile nu au putut fi încărcate.'),
+            );
+          }
 
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: const LatLng(43.9037, 25.9699),
-                width: 50,
-                height: 50,
-                child: const Icon(
-                  Icons.location_on,
-                  color: Colors.red,
-                  size: 38,
-                ),
-              ),
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-              Marker(
-                point: const LatLng(44.3388, 28.0328),
-                width: 50,
-                height: 50,
-                child: const Icon(
-                  Icons.location_on,
-                  color: Colors.red,
-                  size: 38,
-                ),
-              ),
-
-              Marker(
-                point: const LatLng(45.1716, 28.7914),
-                width: 50,
-                height: 50,
-                child: const Icon(
-                  Icons.location_on,
-                  color: Colors.red,
-                  size: 38,
-                ),
-              ),
-            ],
-          ),
-        ],
+          return _StationMap(stations: snapshot.data!);
+        },
       ),
+    );
+  }
+}
+
+class _StationMap extends StatelessWidget {
+  const _StationMap({required this.stations});
+
+  final List<Station> stations;
+
+  @override
+  Widget build(BuildContext context) {
+    return FlutterMap(
+      options: const MapOptions(
+        initialCenter: LatLng(45.5, 27.2),
+        initialZoom: 6.8,
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.fishtrack.app',
+        ),
+        MarkerLayer(
+          markers: stations
+              .map(
+                (station) => Marker(
+                  point: LatLng(station.latitude, station.longitude),
+                  width: 50,
+                  height: 50,
+                  child: const Icon(
+                    Icons.location_on,
+                    color: Colors.red,
+                    size: 38,
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ],
     );
   }
 }

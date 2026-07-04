@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import 'home_premium_layout.dart';
 
 class WeatherCardPremium extends StatelessWidget {
   const WeatherCardPremium({
@@ -18,91 +19,134 @@ class WeatherCardPremium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 185,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2C2216),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              Icon(Icons.wb_sunny_rounded, color: Color(0xFFFFB300), size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Weather',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layout = HomePremiumLayout.of(context);
+        final compact = constraints.maxWidth < 180;
+
+        return Container(
+          padding: EdgeInsets.all(
+            layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
           ),
-
-          const Spacer(),
-
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFF2C2216),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.wb_sunny_rounded,
-                size: 46,
-                color: Color(0xFFFFC107),
-              ),
-
-              const SizedBox(width: 14),
-
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
                 children: [
-                  Text(
-                    '$temperature°',
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  Icon(
+                    Icons.wb_sunny_rounded,
+                    color: Color(0xFFFFB300),
+                    size: 20 * layout.iconScale,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'WEATHER',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16 * layout.titleFontScale,
+                      ),
                     ),
                   ),
-                  Text(condition, style: AppTextStyles.caption),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(
+                    Icons.wb_sunny_rounded,
+                    size: compact ? 32 : 40,
+                    color: const Color(0xFFFFC107),
+                  ),
+                  SizedBox(width: compact ? 8 : 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$temperature°',
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize:
+                                (compact ? 26 : 32) * layout.titleFontScale,
+                            height: 1,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          condition,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.caption,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  Expanded(
+                    child: _WeatherMetric(
+                      icon: Icons.water_drop_outlined,
+                      value: humidity,
+                      compact: compact,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _WeatherMetric(
+                      icon: Icons.air,
+                      value: wind,
+                      compact: compact,
+                    ),
+                  ),
                 ],
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+}
 
-          const Spacer(),
+class _WeatherMetric extends StatelessWidget {
+  const _WeatherMetric({
+    required this.icon,
+    required this.value,
+    required this.compact,
+  });
 
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.water_drop_outlined,
-                      color: Colors.white70,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(humidity, style: AppTextStyles.caption),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    const Icon(Icons.air, color: Colors.white70, size: 16),
-                    const SizedBox(width: 5),
-                    Text(wind, style: AppTextStyles.caption),
-                  ],
-                ),
-              ),
-            ],
+  final IconData icon;
+  final String value;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.white70, size: 15),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.caption.copyWith(fontSize: compact ? 11 : 13),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

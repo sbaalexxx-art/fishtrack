@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../widgets/home_premium/home_premium_layout.dart';
 import 'favorites_page.dart';
 import 'home_premium_page.dart';
 import 'map_page.dart';
@@ -30,7 +31,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
+    final layout = HomePremiumLayout.of(context);
 
     return Scaffold(
       extendBody: true,
@@ -38,23 +39,31 @@ class _MainNavigationState extends State<MainNavigation> {
       body: _pages[_selectedIndex],
 
       bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.only(left: 14, right: 14, bottom: 10),
+        minimum: EdgeInsets.symmetric(horizontal: layout.horizontalPadding),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(24),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
             child: Container(
-              height: screenHeight * .072,
+              height: layout.bottomNavHeight,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(.07),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: Colors.white.withOpacity(.08)),
+                color: const Color(0xFF171C24).withValues(alpha: .92),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white.withValues(alpha: .09)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: .34),
+                    blurRadius: 24,
+                    spreadRadius: -8,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
-                  Expanded(child: _item(Icons.home_rounded, 0)),
+                  Expanded(child: _item(Icons.home_rounded, 'Home', 0, layout)),
 
-                  Expanded(child: _item(Icons.map_rounded, 1)),
+                  Expanded(child: _item(Icons.map_rounded, 'Map', 1, layout)),
 
                   Expanded(
                     child: Center(
@@ -62,32 +71,39 @@ class _MainNavigationState extends State<MainNavigation> {
                         onTap: () {},
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 220),
-                          width: 60,
-                          height: 60,
+                          width: layout.bottomNavHeight - 12,
+                          height: layout.bottomNavHeight - 12,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF67D04B),
+                            color: const Color(0xFF12D8D6),
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF67D04B).withOpacity(.35),
-                                blurRadius: 18,
-                                spreadRadius: 1,
+                                color: const Color(
+                                  0xFF12D8D6,
+                                ).withValues(alpha: .35),
+                                blurRadius: 20,
+                                spreadRadius: -1,
+                                offset: const Offset(0, 6),
                               ),
                             ],
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.add,
-                            size: 32,
-                            color: Colors.black,
+                            size: 25 * layout.iconScale,
+                            color: const Color(0xFF0F1115),
                           ),
                         ),
                       ),
                     ),
                   ),
 
-                  Expanded(child: _item(Icons.analytics_rounded, 3)),
+                  Expanded(
+                    child: _item(Icons.bar_chart_rounded, 'Reports', 3, layout),
+                  ),
 
-                  Expanded(child: _item(Icons.person_rounded, 5)),
+                  Expanded(
+                    child: _item(Icons.person_rounded, 'Profile', 5, layout),
+                  ),
                 ],
               ),
             ),
@@ -97,7 +113,12 @@ class _MainNavigationState extends State<MainNavigation> {
     );
   }
 
-  Widget _item(IconData icon, int index) {
+  Widget _item(
+    IconData icon,
+    String label,
+    int index,
+    HomePremiumLayout layout,
+  ) {
     final selected = _selectedIndex == index;
 
     return InkWell(
@@ -107,19 +128,42 @@ class _MainNavigationState extends State<MainNavigation> {
           _selectedIndex = index;
         });
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          color: selected
-              ? const Color(0xFF67D04B).withOpacity(.12)
-              : Colors.transparent,
-        ),
-        child: Icon(
-          icon,
-          size: 26,
-          color: selected ? const Color(0xFF67D04B) : Colors.white60,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              width: 34,
+              height: 22,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: selected
+                    ? const Color(0xFF12D8D6).withValues(alpha: .10)
+                    : Colors.transparent,
+              ),
+              child: Icon(
+                icon,
+                size: 20 * layout.iconScale,
+                color: selected ? const Color(0xFF12D8D6) : Colors.white54,
+              ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
+              style: TextStyle(
+                color: selected ? const Color(0xFF12D8D6) : Colors.white54,
+                fontSize: 9 * layout.bodyFontScale,
+                height: 1,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
