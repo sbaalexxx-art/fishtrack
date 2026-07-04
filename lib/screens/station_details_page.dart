@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/station.dart';
+import '../models/weather.dart';
 import '../services/water_service.dart';
+import '../services/weather_service.dart';
 import '../widgets/recent_catches.dart';
 import 'add_catch_page.dart';
 import 'favorites_page.dart';
@@ -19,6 +22,8 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   final _favoritesRepository = const FavoriteStationsRepository();
   bool _isFavorite = false;
   bool _favoriteLoading = true;
+  late final Future<List<WaterLevelReading>> _history;
+  late final Future<WeatherData> _weather;
 
   Station get station => widget.station;
 
@@ -26,6 +31,8 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   void initState() {
     super.initState();
     _isFavorite = station.isFavorite;
+    _history = _loadHistory();
+    _weather = WeatherService().getCurrentWeather(fallbackStation: station);
     _loadFavorite();
   }
 
@@ -38,6 +45,20 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     } finally {
       if (mounted) setState(() => _favoriteLoading = false);
     }
+  }
+
+  Future<List<WaterLevelReading>> _loadHistory() async {
+    final response = await Supabase.instance.client
+        .from('water_levels')
+        .select('value, timestamp, trend')
+        .eq('station_id', station.id)
+        .order('timestamp', ascending: false)
+        .limit(30)
+        .timeout(const Duration(seconds: 12));
+    return response
+        .map(WaterLevelReading.tryFromJson)
+        .whereType<WaterLevelReading>()
+        .toList(growable: false);
   }
 
   Future<void> _toggleFavorite() async {
@@ -207,10 +228,29 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
-              child: const ListTile(
-                leading: Icon(Icons.show_chart, color: Colors.blue),
-                title: Text("Grafic nivel apă"),
-                subtitle: Text("Disponibil în versiunea următoare"),
+              child: FutureBuilder<List<WaterLevelReading>>(
+                future: _history,
+                builder: (context, snapshot) {
+                  final readings = snapshot.data ?? const [];
+                  final subtitle = snapshot.hasError
+                      ? 'Water history unavailable'
+                      : snapshot.connectionState == ConnectionState.waiting
+                      ? 'Loading water history...'
+                      : readings.isEmpty
+                      ? 'No historical measurements'
+                      : readings
+                            .take(4)
+                            .map(
+                              (reading) =>
+                                  '${reading.value.toStringAsFixed(0)} cm',
+                            )
+                            .join(' • ');
+                  return ListTile(
+                    leading: const Icon(Icons.show_chart, color: Colors.blue),
+                    title: const Text('Water level history'),
+                    subtitle: Text(subtitle),
+                  );
+                },
               ),
             ),
 
@@ -220,10 +260,23 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
-              child: const ListTile(
-                leading: Icon(Icons.cloud, color: Colors.orange),
-                title: Text("Meteo"),
-                subtitle: Text("Integrare OpenWeather în curând"),
+              child: FutureBuilder<WeatherData>(
+                future: _weather,
+                builder: (context, snapshot) {
+                  final weather = snapshot.data;
+                  final subtitle = snapshot.hasError
+                      ? 'Weather unavailable'
+                      : weather == null
+                      ? 'Loading weather...'
+                      : '${weather.temperature.round()}° • '
+                            '${weather.condition} • '
+                            '${weather.windSpeed.toStringAsFixed(1)} km/h wind';
+                  return ListTile(
+                    leading: const Icon(Icons.cloud, color: Colors.orange),
+                    title: const Text('Weather'),
+                    subtitle: Text(subtitle),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 24),
@@ -268,5 +321,21 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
         ),
       ),
     );
+  }
+}
+
+class WaterLevelReading {
+  const WaterLevelReading({required this.value, required this.timestamp});
+
+  final double value;
+  final DateTime timestamp;
+
+  static WaterLevelReading? tryFromJson(Map<String, dynamic> json) {
+    final value = json['value'] is num
+        ? (json['value'] as num).toDouble()
+        : double.tryParse(json['value']?.toString() ?? '');
+    final timestamp = DateTime.tryParse(json['timestamp']?.toString() ?? '');
+    if (value == null || timestamp == null) return null;
+    return WaterLevelReading(value: value, timestamp: timestamp.toLocal());
   }
 }

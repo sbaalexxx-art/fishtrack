@@ -1,10 +1,44 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import '../../screens/community_details_page.dart';
+import '../../screens/reports_page.dart';
+import '../../services/community_service.dart';
 import 'home_premium_layout.dart';
 
-class RecentCatchesCardPremium extends StatelessWidget {
+class RecentCatchesCardPremium extends StatefulWidget {
   const RecentCatchesCardPremium({super.key});
+
+  @override
+  State<RecentCatchesCardPremium> createState() =>
+      _RecentCatchesCardPremiumState();
+}
+
+class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
+  late final Future<List<CommunityPost>> _catches;
+
+  @override
+  void initState() {
+    super.initState();
+    _catches = const CommunityService().getFeed().then(
+      (posts) => posts
+          .where((post) => post.type == CommunityPostType.catchPost)
+          .take(10)
+          .toList(),
+    );
+  }
+
+  void _openAll() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const ReportsPage()));
+  }
+
+  void _openCatch(CommunityPost post) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => CatchDetailsPage(post: post)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +65,7 @@ class RecentCatchesCardPremium extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: _openAll,
                   style: TextButton.styleFrom(
                     minimumSize: const Size(0, 32),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -49,21 +83,43 @@ class RecentCatchesCardPremium extends StatelessWidget {
             const SizedBox(height: 4),
             SizedBox(
               height: layout.recentCatchesHeight,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                itemCount: _catches.length,
-                separatorBuilder: (context, index) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final catchData = _catches[index];
-                  return SizedBox(
-                    width: tileWidth,
-                    child: _CatchCard(
-                      fish: catchData.fish,
-                      weight: catchData.weight,
-                      angler: catchData.angler,
-                      color: catchData.color,
-                      layout: layout,
+              child: FutureBuilder<List<CommunityPost>>(
+                future: _catches,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return const Center(
+                      child: Text(
+                        'Recent catches unavailable',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    );
+                  }
+                  final catches = snapshot.data ?? const [];
+                  if (catches.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'No catches yet',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: catches.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) => SizedBox(
+                      width: tileWidth,
+                      child: _CatchCard(
+                        post: catches[index],
+                        layout: layout,
+                        onTap: () => _openCatch(catches[index]),
+                      ),
                     ),
                   );
                 },
@@ -76,105 +132,72 @@ class RecentCatchesCardPremium extends StatelessWidget {
   }
 }
 
-const _catches = <_CatchData>[
-  _CatchData('Carp', '8.4 kg', 'John', Color(0xFF8D6E63)),
-  _CatchData('Pike', '5.8 kg', 'Michael', Color(0xFF546E7A)),
-  _CatchData('Perch', '1.3 kg', 'Daniel', Color(0xFF455A64)),
-];
-
-class _CatchData {
-  const _CatchData(this.fish, this.weight, this.angler, this.color);
-
-  final String fish;
-  final String weight;
-  final String angler;
-  final Color color;
-}
-
 class _CatchCard extends StatelessWidget {
   const _CatchCard({
-    required this.fish,
-    required this.weight,
-    required this.angler,
-    required this.color,
+    required this.post,
     required this.layout,
+    required this.onTap,
   });
 
-  final String fish;
-  final String weight;
-  final String angler;
-  final Color color;
+  final CommunityPost post;
   final HomePremiumLayout layout;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFF202633),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: .06)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .20),
-            blurRadius: 14,
-            spreadRadius: -8,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+    return Material(
+      color: const Color(0xFF202633),
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [color.withValues(alpha: .88), color],
-                  ),
-                ),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Icon(
-                      Icons.water_rounded,
-                      size: 76 * layout.iconScale,
-                      color: Colors.white.withValues(alpha: .07),
-                    ),
-                    Center(
-                      child: Icon(
-                        Icons.image_rounded,
-                        size: 36 * layout.iconScale,
-                        color: Colors.white.withValues(alpha: .52),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (post.imageUrl case final String imageUrl)
+                    Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const ColoredBox(
+                        color: Color(0xFF455A64),
+                        child: Icon(Icons.image_not_supported_outlined),
                       ),
+                    )
+                  else
+                    const ColoredBox(
+                      color: Color(0xFF455A64),
+                      child: Icon(Icons.set_meal_outlined),
                     ),
+                  if (post.weight != null)
                     Positioned(
                       top: 6,
                       right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 4,
-                        ),
+                      child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: .32),
+                          color: Colors.black54,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Text(
-                          weight,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10 * layout.bodyFontScale,
-                            fontWeight: FontWeight.w700,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 4,
+                          ),
+                          child: Text(
+                            '${post.weight!.toStringAsFixed(1)} kg',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10 * layout.bodyFontScale,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
             ),
             Padding(
@@ -186,7 +209,7 @@ class _CatchCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          fish,
+                          post.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -194,9 +217,8 @@ class _CatchCard extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(height: 1),
                         Text(
-                          angler,
+                          post.authorName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppTextStyles.caption.copyWith(
@@ -206,10 +228,9 @@ class _CatchCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Icon(
+                  const Icon(
                     Icons.location_on_rounded,
-                    size: 15 * layout.iconScale,
+                    size: 15,
                     color: Color(0xFF67D04B),
                   ),
                 ],
