@@ -12,6 +12,8 @@ class AuthException implements Exception {
 class AuthService {
   const AuthService({SupabaseClient? client}) : _client = client;
 
+  static const _avatarBucket = 'avatars';
+
   final SupabaseClient? _client;
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
@@ -66,10 +68,12 @@ class AuthService {
       const objectName = 'avatar.jpg';
       final path = '${user.id}/$objectName';
       await _supabase.storage
-          .from('avatars')
+          .from(_avatarBucket)
           .upload(path, image, fileOptions: const FileOptions(upsert: true))
           .timeout(const Duration(seconds: 45));
-      final publicUrl = _supabase.storage.from('avatars').getPublicUrl(path);
+      final publicUrl = _supabase.storage
+          .from(_avatarBucket)
+          .getPublicUrl(path);
       final avatarUrl = '$publicUrl?v=${DateTime.now().millisecondsSinceEpoch}';
       await _supabase.auth.updateUser(
         UserAttributes(data: {'avatar_url': avatarUrl}),
@@ -90,9 +94,19 @@ class AuthService {
     } on AuthApiException catch (error) {
       throw AuthException(error.message);
     } on StorageException catch (error) {
-      if (error.message.toLowerCase().contains('bucket not found')) {
+      final message = error.message.toLowerCase();
+      if (message.contains('bucket') &&
+          (message.contains('not found') ||
+              message.contains('does not exist'))) {
         throw const AuthException(
           'Profile photo storage is not configured yet.',
+        );
+      }
+      if (message.contains('row-level security') ||
+          message.contains('not authorized') ||
+          message.contains('unauthorized')) {
+        throw const AuthException(
+          'Profile photo storage permissions are not configured yet.',
         );
       }
       throw AuthException(error.message);

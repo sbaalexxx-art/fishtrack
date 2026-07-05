@@ -8,6 +8,7 @@ import 'water_level_page.dart';
 import 'weather_page.dart';
 import 'developer_mode_page.dart';
 import 'fishing_insights_page.dart';
+import 'notifications_page.dart';
 
 class HomePremiumPage extends StatelessWidget {
   const HomePremiumPage({super.key, required this.onNavigate});
@@ -80,8 +81,11 @@ class HomePremiumPage extends StatelessWidget {
                     children: [
                       SizedBox(height: layout.sectionGap * .25),
                       HomePremiumHeader(
+                        notificationCount: 0,
                         onMenuPressed: () =>
                             scaffoldKey.currentState?.openDrawer(),
+                        onNotificationPressed: () =>
+                            openPage(const NotificationsPage()),
                         onLogoLongPress: () =>
                             openPage(const DeveloperModePage()),
                       ),

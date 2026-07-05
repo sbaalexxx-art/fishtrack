@@ -15,6 +15,15 @@ class WaterLevelPage extends StatefulWidget {
 class _WaterLevelPageState extends State<WaterLevelPage> {
   final WaterService _waterService = WaterService();
 
+  Future<void> _openStation(Station station) async {
+    _waterService.selectStation(station);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => StationDetailsPage(station: station),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -118,15 +127,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
               ...stations.map(
                 (station) => StationCard(
                   station: station,
-                  onTap: () {
-                    _waterService.selectStation(station);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => StationDetailsPage(station: station),
-                      ),
-                    );
-                  },
+                  onTap: () => _openStation(station),
                 ),
               ),
 

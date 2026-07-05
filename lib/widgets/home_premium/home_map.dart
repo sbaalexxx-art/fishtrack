@@ -685,9 +685,18 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                                   color: Colors.white,
                                   fontSize: 13,
                                 ),
+                                cursorColor: const Color(0xFF67D04B),
                                 decoration: const InputDecoration(
                                   isDense: true,
+                                  filled: false,
+                                  fillColor: Colors.transparent,
                                   border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  disabledBorder: InputBorder.none,
+                                  errorBorder: InputBorder.none,
+                                  focusedErrorBorder: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
                                   hintText: 'Search for lake, river, spot...',
                                   hintStyle: TextStyle(
                                     color: Colors.white70,

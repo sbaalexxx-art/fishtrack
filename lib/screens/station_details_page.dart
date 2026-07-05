@@ -140,6 +140,13 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                       style: const TextStyle(fontSize: 18, color: Colors.grey),
                     ),
 
+                    const SizedBox(height: 4),
+
+                    const Text(
+                      'Official source pending',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+
                     const SizedBox(height: 24),
 
                     Text(
@@ -172,7 +179,10 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                         ],
                       )
                     else
-                      const Text('Trend unavailable'),
+                      const Text(
+                        'Unknown trend',
+                        style: TextStyle(color: Colors.grey),
+                      ),
 
                     const SizedBox(height: 12),
 
@@ -242,7 +252,33 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                         ),
                         const SizedBox(height: 8),
                         Text(subtitle),
-                        if (readings.isNotEmpty) ...[
+                        if (readings.isEmpty &&
+                            snapshot.connectionState !=
+                                ConnectionState.waiting) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            height: 120,
+                            width: double.infinity,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.show_chart, color: Colors.grey),
+                                SizedBox(height: 6),
+                                Text(
+                                  'No chart data',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (readings.isNotEmpty) ...[
                           const SizedBox(height: 12),
                           SizedBox(
                             height: 120,
