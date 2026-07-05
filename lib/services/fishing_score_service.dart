@@ -1,4 +1,7 @@
+import 'dart:developer' as developer;
+
 import '../models/station.dart';
+import '../models/water_level.dart';
 import '../models/weather.dart';
 import 'community_service.dart';
 import 'water_service.dart';
@@ -18,6 +21,7 @@ class FishingScoreResult {
     required this.explanation,
     required this.positiveFactors,
     required this.negativeFactors,
+    required this.missingFactors,
     required this.bestTime,
     required this.confidence,
   });
@@ -29,7 +33,8 @@ class FishingScoreResult {
       explanation = 'Not enough data yet',
       positiveFactors = const [],
       negativeFactors = const [],
-      bestTime = '--:--',
+      missingFactors = const ['No live inputs are currently available.'],
+      bestTime = 'No data',
       confidence = 0;
 
   final double? score;
@@ -38,6 +43,7 @@ class FishingScoreResult {
   final String explanation;
   final List<String> positiveFactors;
   final List<String> negativeFactors;
+  final List<String> missingFactors;
   final String bestTime;
   final int confidence;
 
@@ -61,34 +67,56 @@ class FishingScoreService implements FishingDecisionProvider {
   Future<FishingScoreResult> calculate({Station? fallbackStation}) async {
     Station? station;
     WeatherData? weather;
+    List<WaterLevel> history = const [];
     List<CommunityPost> posts = const [];
+    var weatherAvailable = true;
+    var waterAvailable = true;
     var communityAvailable = true;
 
     try {
       station = await _waterService.getNearestStation(
         fallbackStation: fallbackStation,
       );
-    } on Exception {
+      if (station == null || !station.hasWaterLevel) waterAvailable = false;
+    } on Exception catch (error, stackTrace) {
+      waterAvailable = false;
       station = fallbackStation;
+      _logMissing('water station', error, stackTrace);
+    }
+    if (waterAvailable && station != null) {
+      try {
+        history = await _waterService.getHistory(
+          station.id,
+          stationName: station.name,
+        );
+      } on Exception catch (error, stackTrace) {
+        _logMissing('water history', error, stackTrace);
+      }
     }
     try {
       weather = await _weatherService.getCurrentWeather(
         fallbackStation: station,
       );
-    } on Exception {
-      return const FishingScoreResult.notEnough();
+    } on Exception catch (error, stackTrace) {
+      weatherAvailable = false;
+      _logMissing('weather', error, stackTrace);
     }
     try {
       posts = await _communityService.getFeed();
-    } on Exception {
+    } on Exception catch (error, stackTrace) {
       communityAvailable = false;
+      _logMissing('community reports and catches', error, stackTrace);
     }
 
-    return calculateFrom(
+    return _calculate(
       weather: weather,
       station: station,
+      history: history,
       posts: posts,
+      weatherAvailable: weatherAvailable && weather != null,
+      waterAvailable: waterAvailable,
       communityAvailable: communityAvailable,
+      catchesAvailable: communityAvailable,
       localTime: DateTime.now(),
     );
   }
@@ -96,31 +124,74 @@ class FishingScoreService implements FishingDecisionProvider {
   FishingScoreResult calculateFrom({
     required WeatherData weather,
     Station? station,
+    List<WaterLevel> history = const [],
     List<CommunityPost> posts = const [],
     bool communityAvailable = true,
+    bool catchesAvailable = true,
+    required DateTime localTime,
+  }) => _calculate(
+    weather: weather,
+    station: station,
+    history: history,
+    posts: posts,
+    weatherAvailable: true,
+    waterAvailable: station?.hasWaterLevel == true,
+    communityAvailable: communityAvailable,
+    catchesAvailable: catchesAvailable,
+    localTime: localTime,
+  );
+
+  FishingScoreResult _calculate({
+    required WeatherData? weather,
+    required Station? station,
+    required List<WaterLevel> history,
+    required List<CommunityPost> posts,
+    required bool weatherAvailable,
+    required bool waterAvailable,
+    required bool communityAvailable,
+    required bool catchesAvailable,
     required DateTime localTime,
   }) {
-    final factors = <_Factor>[
-      _temperatureFactor(weather.temperature),
-      _windFactor(weather.windSpeed, weather.windDirectionLabel),
-      _conditionFactor(weather.condition),
-      _solunarFactor(weather.fishingActivity),
-      _timeFactor(localTime.hour),
-      _seasonFactor(localTime.month),
-    ];
-    if (weather.pressure != null) {
-      factors.add(_pressureFactor(weather.pressure!));
+    final factors = <_Factor>[];
+    final missing = <String>[];
+    if (weatherAvailable && weather != null) {
+      factors.addAll(_weatherFactors(weather));
+    } else {
+      missing.add('Score calculated without live weather data.');
     }
 
-    final hasWater =
-        station != null && station.lastUpdate.millisecondsSinceEpoch > 0;
-    if (hasWater) {
-      factors.add(_waterTrendFactor(station.trend));
-      factors.add(_waterLevelFactor(station.level));
+    if (waterAvailable && station != null) {
+      factors.addAll(_waterFactors(station, history, localTime));
+      if (history.length < 2) {
+        missing.add('Water history is insufficient for a verified trend.');
+      }
+    } else {
+      missing.add('Score calculated without live water data.');
     }
+
     if (communityAvailable) {
       factors.addAll(_communityFactors(posts, localTime));
+    } else {
+      missing.add('Score calculated without active community reports.');
     }
+    if (catchesAvailable) {
+      factors.addAll(_catchFactors(posts, localTime));
+    } else {
+      missing.add('Score calculated without recent catch data.');
+    }
+
+    for (final message in missing) {
+      developer.log(message, name: 'AIFishMap.FishingScore');
+    }
+    final confidence =
+        <bool>[
+          weatherAvailable,
+          waterAvailable,
+          communityAvailable,
+          catchesAvailable,
+        ].where((available) => available).length *
+        25;
+    if (confidence == 0) return const FishingScoreResult.notEnough();
 
     final score =
         (50 + factors.fold<double>(0, (sum, item) => sum + item.points))
@@ -136,119 +207,104 @@ class FishingScoreService implements FishingDecisionProvider {
       ..sort((a, b) => b.points.compareTo(a.points));
     final negatives = factors.where((factor) => factor.points < 0).toList()
       ..sort((a, b) => a.points.compareTo(b.points));
-    final confidence = _confidence(
-      weather: weather,
-      station: station,
-      communityAvailable: communityAvailable,
-      localTime: localTime,
-    );
-    if (confidence < 35) return const FishingScoreResult.notEnough();
-
     return FishingScoreResult(
       score: score,
       rating: rating,
-      recommendation: score >= 55 ? 'Merită să mergi' : 'Mai bine aștepți',
+      recommendation: rating.name[0].toUpperCase() + rating.name.substring(1),
       explanation: _explanation(positives, negatives),
-      positiveFactors: positives.map((factor) => factor.text).take(4).toList(),
-      negativeFactors: negatives.map((factor) => factor.text).take(4).toList(),
-      bestTime: _bestTime(localTime.month),
+      positiveFactors: positives.map((factor) => factor.text).take(6).toList(),
+      negativeFactors: negatives.map((factor) => factor.text).take(6).toList(),
+      missingFactors: missing,
+      bestTime: _bestTime(weather),
       confidence: confidence,
     );
   }
 
-  _Factor _temperatureFactor(double value) {
-    if (value >= 10 && value <= 22) {
-      return const _Factor(8, 'Comfortable temperature');
+  List<_Factor> _weatherFactors(WeatherData weather) => [
+    if (weather.temperature >= 10 && weather.temperature <= 24)
+      const _Factor(7, 'Productive water-side temperature')
+    else if (weather.temperature < 2 || weather.temperature > 32)
+      const _Factor(-9, 'Extreme air temperature')
+    else
+      const _Factor(1, 'Usable air temperature'),
+    if (weather.windSpeed >= 3 && weather.windSpeed <= 18)
+      _Factor(6, 'Moderate ${weather.windDirectionLabel} wind')
+    else if (weather.windSpeed > 30)
+      _Factor(-12, 'Strong ${weather.windDirectionLabel} wind')
+    else
+      _Factor(1, 'Light ${weather.windDirectionLabel} wind'),
+    if (weather.windGusts > 40)
+      const _Factor(-10, 'Dangerous wind gusts')
+    else if (weather.windGusts > 25)
+      const _Factor(-5, 'Strong wind gusts'),
+    if (weather.pressure case final pressure?)
+      if (pressure >= 1008 && pressure <= 1024)
+        const _Factor(4, 'Moderate atmospheric pressure')
+      else if (pressure < 990 || pressure > 1040)
+        const _Factor(-5, 'Extreme atmospheric pressure'),
+    if (weather.humidity >= 45 && weather.humidity <= 85)
+      const _Factor(2, 'Moderate humidity')
+    else
+      const _Factor(-2, 'Unfavourable humidity'),
+    if (weather.precipitationProbability >= 70)
+      const _Factor(-7, 'High precipitation probability')
+    else if (weather.precipitationProbability <= 30)
+      const _Factor(2, 'Low precipitation probability'),
+    if (weather.cloudCover >= 40 && weather.cloudCover <= 85)
+      const _Factor(5, 'Useful cloud cover')
+    else if (weather.cloudCover < 15)
+      const _Factor(-2, 'Very bright, clear conditions'),
+  ];
+
+  List<_Factor> _waterFactors(
+    Station station,
+    List<WaterLevel> history,
+    DateTime now,
+  ) {
+    final factors = <_Factor>[
+      const _Factor(2, 'Verified water level available'),
+      switch (station.trend) {
+        WaterTrend.stable => const _Factor(7, 'Stable water trend'),
+        WaterTrend.rising => const _Factor(1, 'Rising water trend'),
+        WaterTrend.falling => const _Factor(-5, 'Falling water trend'),
+      },
+    ];
+    final age = now.difference(station.lastUpdate.toLocal()).abs();
+    if (age > const Duration(hours: 24)) {
+      factors.add(const _Factor(-7, 'Water reading is outdated'));
+    } else if (age > const Duration(hours: 12)) {
+      factors.add(const _Factor(-3, 'Water reading may be delayed'));
+    } else {
+      factors.add(_Factor(3, 'Fresh ${station.waterLevelSource} water data'));
     }
-    if (value < 2 || value > 32) {
-      return const _Factor(-9, 'Extreme temperature');
+    if (history.length >= 2) {
+      factors.add(const _Factor(2, 'Water history supports the trend'));
     }
-    return const _Factor(1, 'Usable temperature');
+    return factors;
   }
-
-  _Factor _windFactor(double speed, String direction) {
-    if (speed >= 3 && speed <= 18) {
-      return _Factor(7, 'Moderate $direction wind');
-    }
-    if (speed > 30) {
-      return _Factor(-12, 'Strong $direction wind');
-    }
-    if (speed > 22) {
-      return _Factor(-6, 'Difficult $direction wind');
-    }
-    return _Factor(1, 'Light $direction wind');
-  }
-
-  _Factor _conditionFactor(String condition) {
-    final value = condition.toLowerCase();
-    if (value.contains('thunder') || value.contains('storm')) {
-      return const _Factor(-18, 'Thunderstorm conditions');
-    }
-    if (value.contains('cloud') || value.contains('overcast')) {
-      return const _Factor(6, 'Cloud cover');
-    }
-    if (value.contains('rain') || value.contains('snow')) {
-      return const _Factor(-5, 'Precipitation');
-    }
-    return _Factor(1, condition);
-  }
-
-  _Factor _pressureFactor(double pressure) {
-    if (pressure >= 1010 && pressure <= 1024) {
-      return const _Factor(4, 'Moderate air pressure');
-    }
-    if (pressure < 990 || pressure > 1040) {
-      return const _Factor(-5, 'Extreme air pressure');
-    }
-    return const _Factor(0, 'Air pressure available');
-  }
-
-  _Factor _solunarFactor(FishingActivity activity) => switch (activity) {
-    FishingActivity.excellent => const _Factor(
-      10,
-      'Excellent solunar activity',
-    ),
-    FishingActivity.good => const _Factor(6, 'Good solunar activity'),
-    FishingActivity.fair => const _Factor(1, 'Fair solunar activity'),
-    FishingActivity.poor => const _Factor(-5, 'Poor solunar activity'),
-  };
-
-  _Factor _waterTrendFactor(WaterTrend trend) => switch (trend) {
-    WaterTrend.stable => const _Factor(7, 'Stable water trend'),
-    WaterTrend.rising => const _Factor(1, 'Rising water trend'),
-    WaterTrend.falling => const _Factor(-5, 'Falling water trend'),
-  };
-
-  _Factor _waterLevelFactor(double level) => level > 0
-      ? const _Factor(1, 'Official water level available')
-      : const _Factor(-2, 'Water level is very low');
 
   List<_Factor> _communityFactors(List<CommunityPost> posts, DateTime now) {
-    final recent = posts.where(
-      (post) =>
-          now.difference(post.createdAt).abs() <= const Duration(hours: 24),
+    final reports = posts
+        .where((post) => post.isActiveReport)
+        .where((post) => now.difference(post.createdAt).abs().inHours <= 24)
+        .toList();
+    if (reports.isEmpty) return const [];
+    final confirmations = reports.fold<int>(
+      0,
+      (sum, post) => sum + post.stillValidCount,
     );
-    final catches = recent
-        .where((post) => post.type == CommunityPostType.catchPost)
-        .length;
-    final reports = recent.where((post) => post.isActiveReport).toList();
-    final factors = <_Factor>[];
-    if (catches > 0) {
-      factors.add(
-        _Factor(
-          (catches * 2).clamp(2, 8).toDouble(),
-          '$catches recent catches',
-        ),
-      );
-    }
-    final good = reports
+    final inaccurate = reports.fold<int>(
+      0,
+      (sum, post) => sum + post.noLongerValidCount,
+    );
+    final positive = reports
         .where(
           (post) =>
               post.reportCategory == ReportCategory.goodFishing ||
               post.reportCategory == ReportCategory.fishActivity,
         )
         .length;
-    final poor = reports
+    final caution = reports
         .where(
           (post) =>
               post.reportCategory == ReportCategory.poorFishing ||
@@ -256,61 +312,65 @@ class FishingScoreService implements FishingDecisionProvider {
               post.reportCategory == ReportCategory.accessBlocked,
         )
         .length;
-    if (good > 0) {
-      factors.add(
-        _Factor(
-          (good * 2).clamp(2, 6).toDouble(),
-          '$good positive community reports',
-        ),
-      );
-    }
-    if (poor > 0) {
-      factors.add(
-        _Factor(-(poor * 3).clamp(3, 9).toDouble(), '$poor caution reports'),
-      );
-    }
-    return factors;
+    return [
+      _Factor(
+        (positive * 2).clamp(0, 6).toDouble(),
+        '$positive positive reports',
+      ),
+      _Factor(
+        -(caution * 3).clamp(0, 9).toDouble(),
+        '$caution caution reports',
+      ),
+      if (confirmations > inaccurate)
+        const _Factor(3, 'Community reports are mostly confirmed')
+      else if (inaccurate > confirmations)
+        const _Factor(-4, 'Community reports have accuracy concerns'),
+    ];
   }
 
-  _Factor _timeFactor(int hour) =>
-      (hour >= 5 && hour <= 9) || (hour >= 17 && hour <= 21)
-      ? const _Factor(7, 'Dawn or dusk feeding window')
-      : const _Factor(0, 'Current time of day');
-
-  _Factor _seasonFactor(int month) => switch (month) {
-    >= 3 && <= 5 => const _Factor(4, 'Spring season'),
-    >= 9 && <= 11 => const _Factor(4, 'Autumn season'),
-    >= 6 && <= 8 => const _Factor(1, 'Summer season'),
-    _ => const _Factor(-3, 'Winter season'),
-  };
-
-  int _confidence({
-    required WeatherData weather,
-    required Station? station,
-    required bool communityAvailable,
-    required DateTime localTime,
-  }) {
-    var value = 55;
-    if (weather.pressure != null) value += 5;
-    if (station != null && station.lastUpdate.millisecondsSinceEpoch > 0) {
-      value += 20;
-    }
-    if (communityAvailable) {
-      value += 10;
-    }
-    value += 10; // Time, season and solunar data are available locally.
-    final weatherAge = localTime.difference(weather.observedAt.toLocal()).abs();
-    if (weatherAge > const Duration(hours: 3)) value -= 15;
-    if (station != null &&
-        localTime.difference(station.lastUpdate.toLocal()).abs() >
-            const Duration(days: 1)) {
-      value -= 15;
-    }
-    return value.clamp(0, 100);
+  List<_Factor> _catchFactors(List<CommunityPost> posts, DateTime now) {
+    final catches = posts
+        .where((post) => post.type == CommunityPostType.catchPost)
+        .where((post) => now.difference(post.createdAt).abs().inHours <= 72)
+        .toList();
+    if (catches.isEmpty) return const [];
+    final species = catches.map((post) => post.title).toSet().length;
+    final weighed = catches.where((post) => post.weight != null).length;
+    return [
+      _Factor(
+        (catches.length * 2).clamp(2, 8).toDouble(),
+        '${catches.length} recent catches',
+      ),
+      _Factor(2, '$species recently reported species'),
+      if (weighed > 0) _Factor(1, '$weighed catches include weight data'),
+    ];
   }
+
+  String _bestTime(WeatherData? weather) {
+    final sunrise = weather?.sunrise;
+    final sunset = weather?.sunset;
+    if (sunrise == null || sunset == null) return 'No sunrise/sunset data';
+    final difficultWeather =
+        weather!.windGusts > 40 || weather.precipitationProbability >= 70;
+    final start = difficultWeather
+        ? sunrise.add(const Duration(minutes: 30))
+        : sunrise.subtract(const Duration(minutes: 30));
+    final end = difficultWeather
+        ? sunrise.add(const Duration(hours: 2))
+        : sunrise.add(const Duration(hours: 2, minutes: 30));
+    final eveningStart = sunset.subtract(const Duration(hours: 2));
+    return '${_clock(start)}–${_clock(end)} or '
+        '${_clock(eveningStart)}–${_clock(sunset)}';
+  }
+
+  static String _clock(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:'
+      '${value.minute.toString().padLeft(2, '0')}';
 
   String _explanation(List<_Factor> positive, List<_Factor> negative) {
-    if (positive.isEmpty && negative.isEmpty) return 'Not enough data yet';
+    if (positive.isEmpty && negative.isEmpty) {
+      return 'No strong factors detected.';
+    }
     final parts = <String>[];
     if (positive.isNotEmpty) {
       parts.add('Helps: ${positive.first.text.toLowerCase()}');
@@ -321,11 +381,14 @@ class FishingScoreService implements FishingDecisionProvider {
     return '${parts.join('. ')}.';
   }
 
-  String _bestTime(int month) => switch (month) {
-    >= 6 && <= 8 => '05:00 - 09:00',
-    == 12 || <= 2 => '08:00 - 11:00',
-    _ => '06:00 - 10:00',
-  };
+  static void _logMissing(String input, Object error, StackTrace stackTrace) {
+    developer.log(
+      'Missing fishing score input: $input',
+      name: 'AIFishMap.FishingScore',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
 }
 
 class _Factor {

@@ -123,6 +123,10 @@ class WaterRepository implements OfficialWaterDataSource {
       );
     } on Exception catch (error, stackTrace) {
       _logFailure('AFDJ levels', error, stackTrace);
+      final reason = _providerFailureReason(error);
+      for (final row in stationRows) {
+        _logAfdjNotSelected(row['name']?.toString() ?? 'Unknown', reason);
+      }
     }
     Map<String, List<WaterLevel>> danubeHisLevels = const {};
     try {
@@ -214,6 +218,7 @@ class WaterRepository implements OfficialWaterDataSource {
         afdjReadings = result[normalized] ?? const [];
       } on Exception catch (error, stackTrace) {
         _logFailure('AFDJ history', error, stackTrace);
+        _logAfdjNotSelected(stationName, _providerFailureReason(error));
       }
       try {
         final result = await danubeHisProvider.getLevels([
@@ -294,10 +299,12 @@ class WaterRepository implements OfficialWaterDataSource {
       ];
     }
     if (danubeHis.isNotEmpty) {
+      _logAfdjNotSelected(stationName, 'no valid AFDJ reading matched');
       _logProviderUsed(stationName, danubeHis.first, 'AFDJ unavailable');
       return danubeHis.take(14).toList(growable: false);
     }
     if (danubeFis.isNotEmpty) {
+      _logAfdjNotSelected(stationName, 'no valid AFDJ reading matched');
       _logProviderUsed(
         stationName,
         danubeFis.first,
@@ -310,6 +317,16 @@ class WaterRepository implements OfficialWaterDataSource {
       name: 'AIFishMap.Water',
     );
     return const [];
+  }
+
+  static String _providerFailureReason(Object error) =>
+      error is AfdjProviderException ? error.message : error.toString();
+
+  static void _logAfdjNotSelected(String stationName, String reason) {
+    developer.log(
+      'AFDJ not selected: $stationName; reason: $reason',
+      name: 'AIFishMap.Water',
+    );
   }
 
   static void _logProviderUsed(

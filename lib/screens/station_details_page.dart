@@ -168,13 +168,10 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                     FutureBuilder<List<WaterLevel>>(
                       future: _history,
                       builder: (context, snapshot) {
-                        final hasHistory =
-                            snapshot.hasData && snapshot.data!.isNotEmpty;
-                        if (!station.hasWaterLevel ||
-                            !hasHistory ||
-                            !station.hasKnownTrend) {
+                        final readings = snapshot.data ?? const [];
+                        if (!station.hasWaterLevel || readings.length < 2) {
                           return const Text(
-                            'Unknown',
+                            'Not enough history for trend',
                             style: TextStyle(color: Colors.grey),
                           );
                         }
@@ -199,10 +196,22 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                     const SizedBox(height: 12),
 
                     Text(
-                      '${_updatedLabel(station.lastUpdate)} • '
-                      '${_relativeUpdate(station.lastUpdate)}',
+                      _updatedLabel(station.lastUpdate),
                       style: const TextStyle(color: Colors.grey),
                     ),
+                    Text(
+                      _relativeUpdate(station.lastUpdate),
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    if (_freshnessWarning(station.lastUpdate)
+                        case final warning?)
+                      Text(
+                        warning,
+                        style: const TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -244,7 +253,9 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                       ? 'Loading water history...'
                       : readings.isEmpty
                       ? 'Water history will appear here'
-                      : readings.take(4).map(_historyLabel).join(' • ');
+                      : readings.length < 2
+                      ? 'Not enough history for trend'
+                      : _deltaLabel(readings[0], readings[1]);
                   return Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -264,7 +275,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                                 ConnectionState.waiting) ...[
                           const SizedBox(height: 12),
                           Container(
-                            height: 120,
+                            height: 150,
                             width: double.infinity,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
@@ -288,7 +299,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                         ] else if (readings.isNotEmpty) ...[
                           const SizedBox(height: 12),
                           SizedBox(
-                            height: 120,
+                            height: 150,
                             width: double.infinity,
                             child: CustomPaint(
                               painter: _WaterHistoryPainter(
@@ -296,6 +307,30 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                               ),
                             ),
                           ),
+                          const SizedBox(height: 12),
+                          ...readings
+                              .take(14)
+                              .map(
+                                (reading) => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(_historyDateLabel(reading)),
+                                      Text(
+                                        '${reading.value.toStringAsFixed(0)} '
+                                        '${reading.unit}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                         ],
                       ],
                     ),
@@ -375,23 +410,37 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   }
 
   static String _relativeUpdate(DateTime timestamp) {
-    if (timestamp.millisecondsSinceEpoch == 0) return 'age unknown';
+    if (timestamp.millisecondsSinceEpoch == 0) return 'Update age unknown';
     final difference = DateTime.now().difference(timestamp.toLocal());
     if (difference.isNegative || difference.inMinutes < 60) {
-      return 'updated less than 1 hour ago';
+      return 'Updated less than 1 hour ago';
     }
     if (difference.inHours < 24) {
-      return 'updated ${difference.inHours} hours ago';
+      return 'Updated ${difference.inHours} hours ago';
     }
-    return 'updated ${difference.inDays} days ago';
+    return 'Updated ${difference.inDays} days ago';
   }
 
-  static String _historyLabel(WaterLevel reading) {
+  static String? _freshnessWarning(DateTime timestamp) {
+    if (timestamp.millisecondsSinceEpoch == 0) return null;
+    final age = DateTime.now().difference(timestamp.toLocal());
+    if (age.inHours > 24) return 'Data is outdated';
+    if (age.inHours > 12) return 'Data may be delayed';
+    return null;
+  }
+
+  static String _historyDateLabel(WaterLevel reading) {
     final local = reading.timestamp.toLocal();
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
-    return '${local.day}.${local.month} $hour:$minute: '
-        '${reading.value.toStringAsFixed(0)} ${reading.unit}';
+    return '${local.day}.${local.month}.${local.year}  $hour:$minute';
+  }
+
+  static String _deltaLabel(WaterLevel latest, WaterLevel previous) {
+    final delta = latest.value - previous.value;
+    final sign = delta > 0 ? '+' : '';
+    return '$sign${delta.toStringAsFixed(0)} ${latest.unit} '
+        'since previous reading';
   }
 
   static String _waterInsight(Station station) {
@@ -399,16 +448,15 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
       return 'Not enough verified water data for an insight.';
     }
     if (!station.hasKnownTrend) {
-      return 'A current level is available, but more history is needed '
-          'to confirm the trend.';
+      return 'Not enough history for a water insight.';
     }
     return switch (station.trend) {
       WaterTrend.rising =>
-        'The level is rising. Recheck bank access and current strength.',
+        'The level is rising. Expect stronger current near banks.',
       WaterTrend.falling =>
-        'The level is falling. Shallower margins may affect fish position.',
+        'The level is falling. Fish may move to deeper or slower water.',
       WaterTrend.stable =>
-        'The level is stable, supporting more predictable water conditions.',
+        'The level is stable, with more predictable water conditions.',
     };
   }
 }
@@ -425,13 +473,16 @@ class _WaterHistoryPainter extends CustomPainter {
     final minimum = values.reduce((a, b) => a < b ? a : b);
     final maximum = values.reduce((a, b) => a > b ? a : b);
     final range = maximum - minimum;
+    final chartHeight = size.height - 28;
     final path = Path();
+    final points = <Offset>[];
     for (var index = 0; index < readings.length; index++) {
       final x = size.width * index / (readings.length - 1);
       final normalized = range == 0
           ? .5
           : (readings[index].value - minimum) / range;
-      final y = size.height - (normalized * size.height);
+      final y = 14 + chartHeight - (normalized * chartHeight);
+      points.add(Offset(x, y));
       if (index == 0) {
         path.moveTo(x, y);
       } else {
@@ -446,6 +497,35 @@ class _WaterHistoryPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round,
     );
+    final pointPaint = Paint()..color = Colors.blue;
+    for (final point in points) {
+      canvas.drawCircle(point, 3.5, pointPaint);
+    }
+
+    final minIndex = readings.indexWhere((reading) => reading.value == minimum);
+    final maxIndex = readings.indexWhere((reading) => reading.value == maximum);
+    final labelIndexes = <int>{minIndex, maxIndex, readings.length - 1};
+    for (final index in labelIndexes) {
+      final reading = readings[index];
+      final label = TextPainter(
+        text: TextSpan(
+          text: '${reading.value.toStringAsFixed(0)} ${reading.unit}',
+          style: const TextStyle(
+            color: Colors.blue,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final point = points[index];
+      final x = (point.dx - label.width / 2).clamp(
+        0.0,
+        size.width - label.width,
+      );
+      final y = point.dy < 24 ? point.dy + 6 : point.dy - label.height - 6;
+      label.paint(canvas, Offset(x, y));
+    }
   }
 
   @override

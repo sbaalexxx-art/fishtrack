@@ -91,6 +91,23 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
                   color: Colors.orange,
                   factors: result.negativeFactors,
                 ),
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.schedule, color: Colors.blue),
+                    title: const Text('Best time window'),
+                    subtitle: Text(result.bestTime),
+                  ),
+                ),
+                if (result.missingFactors.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _FactorCard(
+                    title: 'Missing data',
+                    icon: Icons.info_outline,
+                    color: Colors.grey,
+                    factors: result.missingFactors,
+                  ),
+                ],
               ],
             ),
           );

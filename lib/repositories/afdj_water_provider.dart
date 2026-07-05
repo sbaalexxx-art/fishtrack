@@ -15,10 +15,15 @@ class AfdjWaterProvider {
   Future<Map<String, List<WaterLevel>>> getLevels(
     Iterable<String> stationNames,
   ) async {
-    final requested = stationNames
+    final stations = stationNames.toList(growable: false);
+    final requested = stations
         .map(DanubeHisWaterProvider.normalizedName)
         .where((name) => name.isNotEmpty)
         .toSet();
+    developer.log(
+      'AFDJ request URL: $endpoint; requested stations: ${stations.join(', ')}',
+      name: 'AIFishMap.Water',
+    );
     try {
       final response = await http
           .get(
@@ -26,43 +31,86 @@ class AfdjWaterProvider {
             headers: const {'User-Agent': 'Mozilla/5.0 AIFishMap/1.0'},
           )
           .timeout(const Duration(seconds: 15));
-      if (response.statusCode != 200 ||
-          response.body.contains('Attention Required!') ||
-          response.body.contains('/cdn-cgi/')) {
-        throw Exception('AFDJ request unavailable (${response.statusCode})');
+      final contentType = response.headers['content-type'] ?? 'not provided';
+      final body = response.body;
+      final bodyPreview = body
+          .substring(0, body.length < 300 ? body.length : 300)
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      final challengeDetected =
+          body.contains('Attention Required!') ||
+          body.contains('/cdn-cgi/') ||
+          body.toLowerCase().contains('cloudflare');
+      final responseKind =
+          contentType.toLowerCase().contains('pdf') || body.startsWith('%PDF')
+          ? 'PDF'
+          : contentType.toLowerCase().contains('html') ||
+                body.toLowerCase().contains('<html')
+          ? 'HTML'
+          : 'unknown';
+      developer.log(
+        'AFDJ response: status=${response.statusCode}; '
+        'content-type=$contentType; kind=$responseKind; '
+        'challengeDetected=$challengeDetected; body[0..300]=$bodyPreview',
+        name: 'AIFishMap.Water',
+      );
+      if (response.statusCode != 200 || challengeDetected) {
+        developer.log(
+          'AFDJ parse summary: station rows parsed=0; matched stations=none; '
+          'reason=${challengeDetected ? 'challenge page detected' : 'HTTP status ${response.statusCode}'}',
+          name: 'AIFishMap.Water',
+        );
+        throw AfdjProviderException(
+          challengeDetected
+              ? 'AFDJ endpoint returned a Cloudflare challenge'
+              : 'AFDJ endpoint returned HTTP ${response.statusCode}',
+        );
       }
 
-      final text = _plainText(response.body);
+      final text = _plainText(body);
       final levels = <String, List<WaterLevel>>{};
-      for (final stationName in stationNames) {
+      var stationRowsParsed = 0;
+      final matchedStationNames = <String>[];
+      final failureReasons = <String>[];
+      for (final stationName in stations) {
         final normalized = DanubeHisWaterProvider.normalizedName(stationName);
         if (!requested.contains(normalized)) continue;
         final escapedName = RegExp.escape(stationName);
         final match = RegExp(
           '$escapedName\\s+Km\\s+[0-9.]+\\s+Cota\\s+'
-          r'(-?[0-9.]+)s+cms+Variatias+(-?[0-9.,]+).*?'
-          r'Data actualizariis+[^,]+,s*(d{2}/d{2}/d{4})'
-          r's*-s*(d{2}:d{2})',
+          r'(-?[0-9.]+)\s+cm\s+Variatia\s+(-?[0-9.,]+).*?'
+          r'Data actualizarii\s+[^,]+,\s*(\d{2}/\d{2}/\d{4})'
+          r'\s*-\s*(\d{2}:\d{2})',
           caseSensitive: false,
           dotAll: true,
         ).firstMatch(text);
         if (match == null) {
+          failureReasons.add('$stationName: station row pattern not found');
           developer.log(
-            'AFDJ unmatched station: $stationName',
+            'AFDJ no valid reading: $stationName; '
+            'reason=station row pattern not found',
             name: 'AIFishMap.Water',
           );
           continue;
         }
+        stationRowsParsed++;
         final level = _romanianNumber(match.group(1));
         final variation = _romanianNumber(match.group(2));
         final timestamp = _dateTime(match.group(3), match.group(4));
         if (level == null || variation == null || timestamp == null) {
+          failureReasons.add(
+            '$stationName: invalid level, variation, or timestamp',
+          );
           developer.log(
-            'AFDJ parse failure: $stationName',
+            'AFDJ no valid reading: $stationName; '
+            'reason=invalid level, variation, or timestamp; '
+            'level=${match.group(1)}; variation=${match.group(2)}; '
+            'date=${match.group(3)}; time=${match.group(4)}',
             name: 'AIFishMap.Water',
           );
           continue;
         }
+        matchedStationNames.add(stationName);
         levels[normalized] = [
           WaterLevel(
             stationId: normalized,
@@ -80,8 +128,18 @@ class AfdjWaterProvider {
           ),
         ];
       }
+      developer.log(
+        'AFDJ parse summary: station rows parsed=$stationRowsParsed; '
+        'valid readings=${levels.length}; matched stations='
+        '${matchedStationNames.isEmpty ? 'none' : matchedStationNames.join(', ')}; '
+        'failures=${failureReasons.isEmpty ? 'none' : failureReasons.join(' | ')}',
+        name: 'AIFishMap.Water',
+      );
       if (levels.isEmpty && requested.isNotEmpty) {
-        throw const FormatException('No requested AFDJ stations parsed');
+        throw AfdjProviderException(
+          'AFDJ response contained no valid requested station readings: '
+          '${failureReasons.isEmpty ? 'no parseable station rows' : failureReasons.join(' | ')}',
+        );
       }
       return levels;
     } on Exception catch (error, stackTrace) {
@@ -134,4 +192,13 @@ class AfdjWaterProvider {
     }
     return DateTime(year, month, day, hour, minute);
   }
+}
+
+class AfdjProviderException implements Exception {
+  const AfdjProviderException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }
