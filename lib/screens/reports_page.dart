@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/community_service.dart';
 import 'community_details_page.dart';
@@ -170,6 +173,31 @@ class _CommunityPostCard extends StatelessWidget {
                       onPressed: () => _open(context),
                       icon: const Icon(Icons.chat_bubble_outline_rounded),
                     ),
+                  ] else ...[
+                    IconButton(
+                      tooltip: 'Still valid',
+                      onPressed: () async {
+                        await const CommunityService().verifyReport(
+                          post.id,
+                          ReportVerification.stillValid,
+                        );
+                        onChanged();
+                      },
+                      icon: const Icon(Icons.thumb_up_alt_outlined),
+                    ),
+                    Text('${post.stillValidCount}'),
+                    IconButton(
+                      tooltip: 'No longer valid',
+                      onPressed: () async {
+                        await const CommunityService().verifyReport(
+                          post.id,
+                          ReportVerification.noLongerValid,
+                        );
+                        onChanged();
+                      },
+                      icon: const Icon(Icons.thumb_down_alt_outlined),
+                    ),
+                    Text('${post.noLongerValidCount}'),
                   ],
                   const Spacer(),
                   if (isCatch && post.weight != null)
@@ -204,7 +232,9 @@ class _CreateReportDialog extends StatefulWidget {
 
 class _CreateReportDialogState extends State<_CreateReportDialog> {
   final _descriptionController = TextEditingController();
-  String _type = 'Fishing information';
+  ReportCategory _category = ReportCategory.fishActivity;
+  File? _cameraPhoto;
+  bool _useExactLocation = true;
   bool _saving = false;
   String? _error;
 
@@ -215,24 +245,33 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
   }
 
   Future<void> _save() async {
-    if (_descriptionController.text.trim().isEmpty) {
-      setState(() => _error = 'Description is required.');
-      return;
-    }
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
       await widget.service.createReport(
-        type: _type,
-        description: _descriptionController.text,
+        category: _category,
+        text: _descriptionController.text,
+        cameraPhoto: _cameraPhoto,
+        useExactLocation: _useExactLocation,
       );
       if (mounted) Navigator.of(context).pop(true);
     } on CommunityException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _takePhoto() async {
+    final photo = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      imageQuality: 82,
+      maxWidth: 1600,
+    );
+    if (photo != null && mounted) {
+      setState(() => _cameraPhoto = File(photo.path));
     }
   }
 
@@ -244,24 +283,20 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: _type,
-              decoration: const InputDecoration(labelText: 'Report type'),
-              items:
-                  const [
-                        'Fishing information',
-                        'Hazard',
-                        'Obstacle',
-                        'Navigation issue',
-                      ]
-                      .map(
-                        (type) =>
-                            DropdownMenuItem(value: type, child: Text(type)),
-                      )
-                      .toList(),
+            DropdownButtonFormField<ReportCategory>(
+              initialValue: _category,
+              decoration: const InputDecoration(labelText: 'Report category'),
+              items: ReportCategory.values
+                  .map(
+                    (category) => DropdownMenuItem(
+                      value: category,
+                      child: Text(category.label),
+                    ),
+                  )
+                  .toList(),
               onChanged: _saving
                   ? null
-                  : (value) => setState(() => _type = value!),
+                  : (value) => setState(() => _category = value!),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -269,7 +304,26 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
               enabled: !_saving,
               minLines: 3,
               maxLines: 6,
-              decoration: const InputDecoration(labelText: 'Description'),
+              decoration: const InputDecoration(
+                labelText: 'Description (optional)',
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _saving ? null : _takePhoto,
+              icon: const Icon(Icons.camera_alt_outlined),
+              label: Text(
+                _cameraPhoto == null ? 'Take live photo' : 'Retake live photo',
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Use exact location'),
+              subtitle: const Text('Disable to share an approximate location'),
+              value: _useExactLocation,
+              onChanged: _saving
+                  ? null
+                  : (value) => setState(() => _useExactLocation = value),
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),

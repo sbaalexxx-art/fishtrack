@@ -12,27 +12,23 @@ class CommunityCardPremium extends StatefulWidget {
 }
 
 class _CommunityCardPremiumState extends State<CommunityCardPremium> {
-  late final Future<List<CommunityPost>> _feed;
+  late final Stream<List<CommunityPost>> _reports;
 
   @override
   void initState() {
     super.initState();
-    _feed = const CommunityService().getFeed();
+    _reports = const CommunityService().watchReports();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<CommunityPost>>(
-      future: _feed,
+    return StreamBuilder<List<CommunityPost>>(
+      stream: _reports,
       builder: (context, snapshot) {
         final posts = snapshot.data ?? const <CommunityPost>[];
-        final activeAnglers = posts
-            .map((post) => post.userId)
-            .where((id) => id.isNotEmpty)
-            .toSet()
-            .length;
         final now = DateTime.now();
-        final liveReports = posts.where((post) {
+        final activeReports = posts.where((post) => post.isActiveReport).length;
+        final reportsToday = posts.where((post) {
           final date = post.createdAt;
           return post.type == CommunityPostType.report &&
               date.year == now.year &&
@@ -55,7 +51,7 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                 ? 'Loading community...'
                 : snapshot.hasError
                 ? 'Community unavailable'
-                : '$activeAnglers active anglers';
+                : '$activeReports active reports';
 
             return Container(
               padding: EdgeInsets.all(
@@ -122,7 +118,7 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '$liveReports new reports today',
+                    '$reportsToday reports today',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.caption.copyWith(

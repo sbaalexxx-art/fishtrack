@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../models/station.dart';
+import '../../services/community_service.dart';
 
 class HomeMap extends StatelessWidget {
-  final List<Station> stations;
-  final ValueChanged<Station>? onStationTap;
+  final List<CommunityPost> reports;
+  final ValueChanged<CommunityPost>? onReportTap;
   final MapController? mapController;
   final LatLng? currentLocation;
   final VoidCallback? onMapReady;
 
   const HomeMap({
     super.key,
-    required this.stations,
-    this.onStationTap,
+    required this.reports,
+    this.onReportTap,
     this.mapController,
     this.currentLocation,
     this.onMapReady,
@@ -41,35 +41,42 @@ class HomeMap extends StatelessWidget {
           ),
           MarkerLayer(
             markers: [
-              ...stations.map((station) {
-                return Marker(
-                  point: LatLng(station.latitude, station.longitude),
-                  width: 46,
-                  height: 46,
-                  child: GestureDetector(
-                    onTap: () => onStationTap?.call(station),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade700,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 8,
-                            offset: Offset(0, 3),
+              ...reports
+                  .where(
+                    (report) =>
+                        report.isActiveReport &&
+                        report.latitude != null &&
+                        report.longitude != null,
+                  )
+                  .map((report) {
+                    return Marker(
+                      point: LatLng(report.latitude!, report.longitude!),
+                      width: 46,
+                      height: 46,
+                      child: GestureDetector(
+                        onTap: () => onReportTap?.call(report),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE65100),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 8,
+                                offset: Offset(0, 3),
+                              ),
+                            ],
                           ),
-                        ],
+                          child: const Icon(
+                            Icons.campaign_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.phishing,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                );
-              }),
+                    );
+                  }),
               if (currentLocation case final location?)
                 Marker(
                   point: location,

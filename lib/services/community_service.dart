@@ -3,7 +3,45 @@ import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'location_service.dart';
+
 enum CommunityPostType { catchPost, report }
+
+enum ReportCategory {
+  fishActivity('Fish activity'),
+  waterClarity('Water clarity'),
+  floatingGrass('Floating grass'),
+  highWater('High water'),
+  lowWater('Low water'),
+  strongCurrent('Strong current'),
+  noCurrent('No current'),
+  boats('Boats'),
+  poaching('Poaching'),
+  theftWarning('Theft warning'),
+  accessBlocked('Access blocked'),
+  parkingAvailable('Parking available'),
+  goodFishing('Good fishing'),
+  poorFishing('Poor fishing'),
+  other('Other');
+
+  const ReportCategory(this.label);
+  final String label;
+
+  static ReportCategory parse(Object? value) => values.firstWhere(
+    (category) => category.name == value || category.label == value,
+    orElse: () => other,
+  );
+}
+
+enum ReportVerification { stillValid, noLongerValid }
+
+enum CommunityReportEventType { created, verified }
+
+class CommunityReportEvent {
+  const CommunityReportEvent(this.type, this.reportId);
+  final CommunityReportEventType type;
+  final String reportId;
+}
 
 class CommunityPost {
   const CommunityPost({
@@ -20,6 +58,12 @@ class CommunityPost {
     this.length,
     this.likeCount = 0,
     this.isLiked = false,
+    this.reportCategory,
+    this.latitude,
+    this.longitude,
+    this.expiresAt,
+    this.stillValidCount = 0,
+    this.noLongerValidCount = 0,
   });
 
   final String id;
@@ -35,6 +79,17 @@ class CommunityPost {
   final double? length;
   final int likeCount;
   final bool isLiked;
+  final ReportCategory? reportCategory;
+  final double? latitude;
+  final double? longitude;
+  final DateTime? expiresAt;
+  final int stillValidCount;
+  final int noLongerValidCount;
+
+  bool get isActiveReport =>
+      type == CommunityPostType.report &&
+      expiresAt != null &&
+      expiresAt!.isAfter(DateTime.now());
 
   CommunityPost copyWith({int? likeCount, bool? isLiked}) => CommunityPost(
     id: id,
@@ -50,6 +105,12 @@ class CommunityPost {
     length: length,
     likeCount: likeCount ?? this.likeCount,
     isLiked: isLiked ?? this.isLiked,
+    reportCategory: reportCategory,
+    latitude: latitude,
+    longitude: longitude,
+    expiresAt: expiresAt,
+    stillValidCount: stillValidCount,
+    noLongerValidCount: noLongerValidCount,
   );
 }
 
@@ -100,6 +161,41 @@ class CommunityService {
 
   final SupabaseClient? _client;
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
+
+  static final StreamController<CommunityReportEvent> _reportEvents =
+      StreamController<CommunityReportEvent>.broadcast();
+
+  Stream<CommunityReportEvent> get reportEvents => _reportEvents.stream;
+
+  Stream<List<CommunityPost>> watchReports() => _supabase
+      .from('reports')
+      .stream(primaryKey: ['id'])
+      .order('created_at', ascending: false)
+      .map(
+        (rows) => rows
+            .map(
+              (row) => CommunityPost(
+                id: _text(row['id']) ?? '',
+                userId: _text(row['user_id']) ?? '',
+                type: CommunityPostType.report,
+                title: _text(row['type']) ?? 'Fishing report',
+                body: _text(row['description']) ?? '',
+                imageUrl: _text(row['image_url']),
+                createdAt: _date(row['created_at'] ?? row['timestamp']),
+                authorName: 'Angler',
+                reportCategory: ReportCategory.parse(
+                  row['category'] ?? row['type'],
+                ),
+                latitude: _number(row['latitude']),
+                longitude: _number(row['longitude']),
+                expiresAt: _nullableDate(row['expires_at']),
+                stillValidCount: _integer(row['still_valid_count']),
+                noLongerValidCount: _integer(row['no_longer_valid_count']),
+              ),
+            )
+            .where((report) => report.id.isNotEmpty)
+            .toList(growable: false),
+      );
 
   Future<List<CommunityPost>> getFeed() => _guard(() async {
     final responses = await Future.wait([
@@ -156,7 +252,16 @@ class CommunityService {
             type: CommunityPostType.report,
             title: _text(row['type']) ?? 'Fishing report',
             body: _text(row['description']) ?? '',
+            imageUrl: _text(row['image_url']),
             createdAt: _date(row['created_at'] ?? row['timestamp']),
+            reportCategory: ReportCategory.parse(
+              row['category'] ?? row['type'],
+            ),
+            latitude: _number(row['latitude']),
+            longitude: _number(row['longitude']),
+            expiresAt: _nullableDate(row['expires_at']),
+            stillValidCount: _integer(row['still_valid_count']),
+            noLongerValidCount: _integer(row['no_longer_valid_count']),
             authorName: _profileName(profiles, _text(row['user_id'])),
             authorAvatar: _profileAvatar(profiles, _text(row['user_id'])),
           ),
@@ -166,20 +271,79 @@ class CommunityService {
   });
 
   Future<void> createReport({
-    required String type,
-    required String description,
+    required ReportCategory category,
+    String? text,
+    File? cameraPhoto,
+    required bool useExactLocation,
   }) => _guard(() async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
       throw const CommunityException('Your session has expired.');
     }
-    await _supabase.from('reports').insert({
-      'user_id': user.id,
-      'type': type,
-      'description': description.trim(),
-      'created_at': DateTime.now().toUtc().toIso8601String(),
-    });
+    final position = await const LocationService().determinePosition();
+    final latitude = useExactLocation
+        ? position.latitude
+        : (position.latitude * 100).round() / 100;
+    final longitude = useExactLocation
+        ? position.longitude
+        : (position.longitude * 100).round() / 100;
+    final now = DateTime.now().toUtc();
+    String? imageUrl;
+    if (cameraPhoto != null) {
+      final path = '${user.id}/${now.microsecondsSinceEpoch}.jpg';
+      await _supabase.storage.from('report-photos').upload(path, cameraPhoto);
+      imageUrl = _supabase.storage.from('report-photos').getPublicUrl(path);
+    }
+    final inserted = Map<String, dynamic>.from(
+      await _supabase
+          .from('reports')
+          .insert({
+            'user_id': user.id,
+            'type': category.label,
+            'category': category.name,
+            'description': text?.trim(),
+            'image_url': imageUrl,
+            'latitude': latitude,
+            'longitude': longitude,
+            'created_at': now.toIso8601String(),
+            'expires_at': now.add(const Duration(hours: 12)).toIso8601String(),
+          })
+          .select('id')
+          .single(),
+    );
+    final id = _text(inserted['id']);
+    if (id != null) {
+      _reportEvents.add(
+        CommunityReportEvent(CommunityReportEventType.created, id),
+      );
+    }
   });
+
+  Future<List<CommunityPost>> getActiveReports() async => (await getFeed())
+      .where(
+        (post) =>
+            post.isActiveReport &&
+            post.latitude != null &&
+            post.longitude != null,
+      )
+      .toList(growable: false);
+
+  Future<void> verifyReport(String reportId, ReportVerification verification) =>
+      _guard(() async {
+        final user = _supabase.auth.currentUser;
+        if (user == null) {
+          throw const CommunityException('Your session has expired.');
+        }
+        await _supabase.from('report_verifications').upsert({
+          'report_id': reportId,
+          'user_id': user.id,
+          'is_valid': verification == ReportVerification.stillValid,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'report_id,user_id');
+        _reportEvents.add(
+          CommunityReportEvent(CommunityReportEventType.verified, reportId),
+        );
+      });
 
   Future<bool> toggleLike(CommunityPost post) => _guard(() async {
     final user = _supabase.auth.currentUser;
@@ -331,6 +495,8 @@ class CommunityService {
       value is num ? value.toInt() : int.tryParse(value?.toString() ?? '') ?? 0;
   static DateTime _date(Object? value) =>
       DateTime.tryParse(value?.toString() ?? '')?.toLocal() ?? DateTime.now();
+  static DateTime? _nullableDate(Object? value) =>
+      DateTime.tryParse(value?.toString() ?? '')?.toLocal();
 }
 
 class _Like {

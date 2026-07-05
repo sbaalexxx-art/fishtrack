@@ -5,10 +5,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../models/station.dart';
-import '../../screens/station_details_page.dart';
+import '../../services/community_service.dart';
 import '../../services/location_service.dart';
 import '../../services/station_filter_service.dart';
-import '../../services/water_service.dart';
 import '../home/home_map.dart';
 import '../home/map_preview.dart';
 
@@ -23,13 +22,12 @@ class HomePremiumMap extends StatefulWidget {
 }
 
 class _HomePremiumMapState extends State<HomePremiumMap> {
-  final WaterService _waterService = WaterService();
+  final CommunityService _communityService = const CommunityService();
   final LocationService _locationService = const LocationService();
   final MapController _mapController = MapController();
   final StationFilterService _filterService = StationFilterService.instance;
   final TextEditingController _searchController = TextEditingController();
-  late Future<List<Station>> _stationsFuture;
-  List<Station> _allStations = const [];
+  late Stream<List<CommunityPost>> _reportsStream;
   LatLng? _currentLocation;
   LocationFailureReason? _locationFailure;
   bool _isLocating = false;
@@ -39,7 +37,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   @override
   void initState() {
     super.initState();
-    _stationsFuture = _waterService.getStations();
+    _reportsStream = _communityService.watchReports();
     _filterService.filters.addListener(_onFiltersChanged);
     if (widget.child == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _locateUser());
@@ -60,28 +58,12 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
   void _retry() {
     setState(() {
-      _stationsFuture = _waterService.getStations(forceRefresh: true);
+      _reportsStream = _communityService.watchReports();
     });
-  }
-
-  void _openStation(Station station) {
-    _waterService.selectStation(station);
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => StationDetailsPage(station: station),
-      ),
-    );
   }
 
   void _submitSearch(String query) {
     _filterService.updateQuery(query);
-    final normalizedQuery = query.trim().toLowerCase();
-    if (normalizedQuery.isEmpty) return;
-
-    final matches = _filterService.apply(_allStations);
-    if (matches.isNotEmpty) {
-      _openStation(matches.first);
-    }
   }
 
   Future<void> _locateUser({bool recenter = false}) async {
@@ -181,15 +163,14 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
       return customChild;
     }
 
-    return FutureBuilder<List<Station>>(
-      future: _stationsFuture,
+    return StreamBuilder<List<CommunityPost>>(
+      stream: _reportsStream,
       builder: (context, snapshot) {
         if (snapshot.hasData) {
-          _allStations = snapshot.data!;
           return HomeMap(
-            // Hydrometric stations belong to Water Level, not the fishing map.
-            stations: const [],
-            onStationTap: _openStation,
+            reports: snapshot.data!
+                .where((report) => report.isActiveReport)
+                .toList(growable: false),
             mapController: _mapController,
             currentLocation: _currentLocation,
             onMapReady: _onMapReady,
@@ -201,7 +182,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
             color: const Color(0xFF16212B),
             child: Center(
               child: IconButton(
-                tooltip: 'Retry loading stations',
+                tooltip: 'Retry loading reports',
                 onPressed: _retry,
                 icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
               ),
@@ -233,9 +214,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     );
     var filterLevel =
         draft.minimumWaterLevel != null || draft.maximumWaterLevel != null;
-    final species =
-        _allStations.expand((station) => station.species).toSet().toList()
-          ..sort();
+    final species = <String>[];
 
     await showModalBottomSheet<void>(
       context: context,
