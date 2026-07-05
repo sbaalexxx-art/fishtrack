@@ -215,11 +215,47 @@ class _ReportTile extends StatelessWidget {
   const _ReportTile({required this.report});
   final CommunityPost report;
 
+  Future<void> _reportAbuse(BuildContext context) async {
+    final reason = await showDialog<ReportAbuseReason>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Report Abuse'),
+        children: [
+          for (final reason in ReportAbuseReason.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, reason),
+              child: Text(reason.label),
+            ),
+        ],
+      ),
+    );
+    if (reason == null || !context.mounted) return;
+    try {
+      await const CommunityService().reportAbuse(report.id, reason);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Report submitted for review.')),
+        );
+      }
+    } on CommunityException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Card(
     child: ListTile(
       leading: const Icon(Icons.report_outlined),
       title: Text(report.reportCategory?.label ?? report.title),
+      trailing: IconButton(
+        tooltip: 'Report Abuse',
+        onPressed: () => _reportAbuse(context),
+        icon: const Icon(Icons.flag_outlined),
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

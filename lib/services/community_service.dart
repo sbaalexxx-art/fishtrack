@@ -37,22 +37,20 @@ enum ReportCategory {
 enum ReportVerification { stillValid, noLongerValid }
 
 enum ReportAbuseReason {
-  falseInformation('False information'),
-  wrongLocation('Wrong location'),
   spam('Spam'),
+  fakeInformation('Fake information'),
   offensiveContent('Offensive content'),
-  duplicate('Duplicate'),
+  dangerousIllegalActivity('Dangerous/illegal activity'),
   other('Other');
 
   const ReportAbuseReason(this.label);
   final String label;
 
   String get databaseValue => switch (this) {
-    falseInformation => 'false_information',
-    wrongLocation => 'wrong_location',
     spam => 'spam',
+    fakeInformation => 'fake_information',
     offensiveContent => 'offensive_content',
-    duplicate => 'duplicate',
+    dangerousIllegalActivity => 'dangerous_illegal_activity',
     other => 'other',
   };
 }
@@ -440,12 +438,23 @@ class CommunityService {
         if (user == null) {
           throw const CommunityException('Your session has expired.');
         }
-        await _supabase.from('report_abuse').upsert({
+        final existing = await _supabase
+            .from('report_abuse')
+            .select('id')
+            .eq('report_id', reportId)
+            .eq('user_id', user.id)
+            .maybeSingle();
+        if (existing != null) {
+          throw const CommunityException(
+            'You have already reported this report.',
+          );
+        }
+        await _supabase.from('report_abuse').insert({
           'report_id': reportId,
           'user_id': user.id,
           'reason': reason.databaseValue,
           'created_at': DateTime.now().toUtc().toIso8601String(),
-        }, onConflict: 'report_id,user_id');
+        });
         developer.log(
           'Report abuse: $reportId (${reason.databaseValue})',
           name: 'AIFishMap.Community',
