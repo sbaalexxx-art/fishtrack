@@ -113,27 +113,29 @@ class _AuthPageState extends State<AuthPage> {
     final isRegister = _mode == _AuthMode.register;
     final isForgot = _mode == _AuthMode.forgotPassword;
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Theme(
       data: theme.copyWith(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF12D8D6),
-          brightness: Brightness.dark,
+          brightness: theme.brightness,
         ),
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        scaffoldBackgroundColor: theme.scaffoldBackgroundColor,
         textTheme: theme.textTheme.apply(
-          bodyColor: Colors.white,
-          displayColor: Colors.white,
+          bodyColor: scheme.onSurface,
+          displayColor: scheme.onSurface,
         ),
-        inputDecorationTheme: const InputDecorationTheme(
+        inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: Color(0xFF1C1C1E),
-          labelStyle: TextStyle(color: Colors.white70),
-          hintStyle: TextStyle(color: Colors.white60),
-          prefixIconColor: Colors.white70,
-          suffixIconColor: Colors.white70,
+          fillColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+          labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+          hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+          prefixIconColor: scheme.onSurfaceVariant,
+          suffixIconColor: scheme.onSurfaceVariant,
           enabledBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: Colors.white38),
+            borderSide: BorderSide(color: scheme.outline),
           ),
           focusedBorder: OutlineInputBorder(
             borderSide: BorderSide(color: Color(0xFF12D8D6), width: 2),
@@ -162,7 +164,7 @@ class _AuthPageState extends State<AuthPage> {
                             : 'Welcome back',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineMedium?.copyWith(
-                          color: Colors.white,
+                          color: scheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 8),

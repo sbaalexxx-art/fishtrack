@@ -27,6 +27,8 @@ class AIFishMapApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'AIFishMap',
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
       home: const _AuthGate(),
     );
   }

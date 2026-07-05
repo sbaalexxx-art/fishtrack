@@ -29,7 +29,7 @@ class _WeatherPageState extends State<WeatherPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F6F9),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('Weather')),
       body: SafeArea(
         child: FutureBuilder<WeatherData>(
@@ -103,7 +103,7 @@ class _WeatherContent extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Card(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surface,
             child: Column(
               children: [
                 _metric(
@@ -140,7 +140,7 @@ class _WeatherContent extends StatelessWidget {
           Text(
             '3-day forecast',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: const Color(0xFF17293A),
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -149,7 +149,7 @@ class _WeatherContent extends StatelessWidget {
               .take(3)
               .map(
                 (day) => Card(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.surface,
                   child: ListTile(
                     leading: const Icon(
                       Icons.calendar_today_rounded,
@@ -159,8 +159,8 @@ class _WeatherContent extends StatelessWidget {
                     subtitle: Text(day.condition),
                     trailing: Text(
                       '${day.minimumTemperature.round()}° / ${day.maximumTemperature.round()}°',
-                      style: const TextStyle(
-                        color: Color(0xFF17293A),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -169,7 +169,7 @@ class _WeatherContent extends StatelessWidget {
               ),
           const SizedBox(height: 12),
           Card(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surface,
             child: Column(
               children: [
                 _metric(
@@ -223,13 +223,10 @@ class _WeatherContent extends StatelessWidget {
   static ListTile _metric(IconData icon, String label, String value) =>
       ListTile(
         leading: Icon(icon, color: const Color(0xFF1565C0)),
-        title: Text(label, style: const TextStyle(color: Color(0xFF17293A))),
+        title: Text(label),
         trailing: Text(
           value,
-          style: const TextStyle(
-            color: Color(0xFF17293A),
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w600),
         ),
       );
 
@@ -252,16 +249,9 @@ class _WeatherMessage extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(
-          Icons.cloud_off_outlined,
-          size: 48,
-          color: Color(0xFF455A64),
-        ),
+        const Icon(Icons.cloud_off_outlined, size: 48),
         const SizedBox(height: 12),
-        const Text(
-          'Weather is currently unavailable.',
-          style: TextStyle(color: Color(0xFF263238)),
-        ),
+        const Text('Weather is currently unavailable.'),
         TextButton(onPressed: onRetry, child: const Text('Retry')),
       ],
     ),

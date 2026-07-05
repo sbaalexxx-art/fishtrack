@@ -166,29 +166,31 @@ class _AddCatchPageState extends State<AddCatchPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Theme(
       data: theme.copyWith(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF12D8D6),
-          brightness: Brightness.dark,
+          brightness: theme.brightness,
         ),
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF121212),
-          foregroundColor: Colors.white,
+        scaffoldBackgroundColor: theme.scaffoldBackgroundColor,
+        appBarTheme: AppBarTheme(
+          backgroundColor: theme.scaffoldBackgroundColor,
+          foregroundColor: scheme.onSurface,
         ),
         textTheme: theme.textTheme.apply(
-          bodyColor: Colors.white,
-          displayColor: Colors.white,
+          bodyColor: scheme.onSurface,
+          displayColor: scheme.onSurface,
         ),
-        inputDecorationTheme: const InputDecorationTheme(
+        inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: Color(0xFF1C1C1E),
-          labelStyle: TextStyle(color: Colors.white70),
-          prefixIconColor: Colors.white70,
+          fillColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+          labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+          prefixIconColor: scheme.onSurfaceVariant,
           enabledBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: Colors.white38),
+            borderSide: BorderSide(color: scheme.outline),
           ),
           focusedBorder: OutlineInputBorder(
             borderSide: BorderSide(color: Color(0xFF12D8D6), width: 2),
