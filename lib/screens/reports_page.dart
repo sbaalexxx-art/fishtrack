@@ -24,17 +24,16 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Future<void> _refresh() async {
-    final feed = _service.getFeed();
-    setState(() => _feed = feed);
-    await feed;
+    final posts = await _service.getFeed();
+    if (mounted) setState(() => _feed = Future.value(posts));
   }
 
   Future<void> _openCreateReportDialog() async {
-    final created = await showDialog<bool>(
+    final insertedReportId = await showDialog<String>(
       context: context,
       builder: (_) => _CreateReportDialog(service: _service),
     );
-    if (created == true) await _refresh();
+    if (insertedReportId != null) await _refresh();
   }
 
   @override
@@ -297,13 +296,13 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
       _error = null;
     });
     try {
-      await widget.service.createReport(
+      final insertedReportId = await widget.service.createReport(
         category: _category,
         text: _descriptionController.text,
         cameraPhoto: _cameraPhoto,
         useExactLocation: _useExactLocation,
       );
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) Navigator.of(context).pop(insertedReportId);
     } on CommunityException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } finally {
@@ -415,7 +414,7 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
         FilledButton(

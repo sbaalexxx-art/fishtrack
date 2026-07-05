@@ -234,6 +234,10 @@ class CommunityService {
     ]);
     final catches = _maps(responses[0]);
     final reports = _maps(responses[1]);
+    developer.log(
+      'Fetched report count: ${reports.length}',
+      name: 'AIFishMap.Community',
+    );
     final userIds = <String>{
       ...catches.map((row) => _text(row['user_id'])).whereType<String>(),
       ...reports.map((row) => _text(row['user_id'])).whereType<String>(),
@@ -292,7 +296,7 @@ class CommunityService {
     return posts;
   });
 
-  Future<void> createReport({
+  Future<String> createReport({
     required ReportCategory category,
     String? text,
     File? cameraPhoto,
@@ -334,11 +338,20 @@ class CommunityService {
           .single(),
     );
     final id = _text(inserted['id']);
-    if (id != null) {
-      _reportEvents.add(
-        CommunityReportEvent(CommunityReportEventType.created, id),
+    if (id == null) {
+      throw const CommunityException(
+        'The report was saved without a valid identifier.',
       );
     }
+    developer.log(
+      'Community report insert success',
+      name: 'AIFishMap.Community',
+    );
+    developer.log('Inserted report id: $id', name: 'AIFishMap.Community');
+    _reportEvents.add(
+      CommunityReportEvent(CommunityReportEventType.created, id),
+    );
+    return id;
   }, debugLabel: 'publish community report');
 
   Future<List<CommunityPost>> getActiveReports() async => (await getFeed())
