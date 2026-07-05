@@ -17,6 +17,7 @@ class Station {
   final List<String> species;
   final FishingDifficulty difficulty;
   final bool isFavorite;
+  final bool hasWaterLevel;
 
   const Station({
     required this.id,
@@ -31,6 +32,7 @@ class Station {
     this.species = const [],
     this.difficulty = FishingDifficulty.moderate,
     this.isFavorite = false,
+    this.hasWaterLevel = false,
   });
 
   static Station? tryFromJson(Map<String, dynamic> json) {
@@ -70,6 +72,7 @@ class Station {
       species: _species(json['species']),
       difficulty: _difficulty(json['difficulty']),
       isFavorite: _boolValue(json['is_favorite'] ?? json['favorite']),
+      hasWaterLevel: _boolValue(json['has_water_level']),
     );
   }
 

@@ -143,7 +143,9 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                     const SizedBox(height: 24),
 
                     Text(
-                      "${station.level.toStringAsFixed(0)} cm",
+                      station.hasWaterLevel
+                          ? "${station.level.toStringAsFixed(0)} cm"
+                          : 'No data',
                       style: const TextStyle(
                         fontSize: 46,
                         color: Colors.blue,
@@ -153,23 +155,24 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
 
                     const SizedBox(height: 12),
 
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(trendIcon, color: trendColor),
-
-                        const SizedBox(width: 8),
-
-                        Text(
-                          station.trendText,
-                          style: TextStyle(
-                            color: trendColor,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                    if (station.hasWaterLevel)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(trendIcon, color: trendColor),
+                          const SizedBox(width: 8),
+                          Text(
+                            station.trendText,
+                            style: TextStyle(
+                              color: trendColor,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      )
+                    else
+                      const Text('Trend unavailable'),
 
                     const SizedBox(height: 12),
 

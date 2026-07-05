@@ -53,19 +53,23 @@ class StationCard extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
 
-        subtitle: Row(
-          children: [
-            Icon(trendIcon, color: trendColor, size: 18),
-            const SizedBox(width: 6),
-            Text(station.trendText, style: TextStyle(color: trendColor)),
-          ],
-        ),
+        subtitle: station.hasWaterLevel
+            ? Row(
+                children: [
+                  Icon(trendIcon, color: trendColor, size: 18),
+                  const SizedBox(width: 6),
+                  Text(station.trendText, style: TextStyle(color: trendColor)),
+                ],
+              )
+            : const Text('No data'),
 
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              "${station.level.toStringAsFixed(0)} cm",
+              station.hasWaterLevel
+                  ? "${station.level.toStringAsFixed(0)} cm"
+                  : 'No data',
               style: const TextStyle(
                 color: Colors.blue,
                 fontWeight: FontWeight.bold,

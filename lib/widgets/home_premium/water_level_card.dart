@@ -66,11 +66,15 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                 : isLoading
                 ? 'Loading...'
                 : 'No station available');
-        final waterLevel = station == null
+        final waterLevel = station == null || !station.hasWaterLevel
             ? '--'
             : '${station.level.toStringAsFixed(0)} cm';
         final trend = station?.trend ?? WaterTrend.stable;
-        final status = station == null ? '--' : _statusFor(trend);
+        final status = station == null
+            ? '--'
+            : station.hasWaterLevel
+            ? _statusFor(trend)
+            : 'No data';
         final lastUpdate = station == null
             ? (snapshot.hasError ? 'Update failed' : 'Waiting for data')
             : _relativeUpdate(station.lastUpdate);
@@ -79,7 +83,9 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
           builder: (context, constraints) {
             final layout = HomePremiumLayout.of(context);
             final compact = constraints.maxWidth < 180;
-            final trendColor = _colorFor(trend);
+            final trendColor = station?.hasWaterLevel == true
+                ? _colorFor(trend)
+                : Colors.white54;
 
             return Container(
               padding: EdgeInsets.all(

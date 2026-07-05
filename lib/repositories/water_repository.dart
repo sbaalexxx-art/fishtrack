@@ -12,6 +12,32 @@ abstract interface class OfficialWaterDataSource {
 class WaterRepository implements OfficialWaterDataSource {
   const WaterRepository();
 
+  static const officialAfdjStationOrder = <String>[
+    'Bazias',
+    'Moldova Veche',
+    'Drencova',
+    'Orsova',
+    'Drobeta Turnu Severin',
+    'Gruia',
+    'Cetate',
+    'Calafat',
+    'Rast',
+    'Bechet',
+    'Corabia',
+    'Turnu Magurele',
+    'Zimnicea',
+    'Giurgiu',
+    'Oltenita',
+    'Calarasi',
+    'Cernavoda',
+    'Harsova',
+    'Braila',
+    'Galati',
+    'Isaccea',
+    'Tulcea',
+    'Sulina',
+  ];
+
   @override
   WaterLevelSource get source => WaterLevelSource.supabase;
 
@@ -20,7 +46,6 @@ class WaterRepository implements OfficialWaterDataSource {
     final stationRows = await client
         .from('stations')
         .select()
-        .order('name')
         .timeout(const Duration(seconds: 12));
     List<Map<String, dynamic>> levelRows = const [];
     try {
@@ -41,7 +66,7 @@ class WaterRepository implements OfficialWaterDataSource {
       }
     }
 
-    return stationRows
+    final stationsByName = stationRows
         .map((row) {
           final data = Map<String, dynamic>.from(row);
           final latest = latestLevels[data['id']?.toString()];
@@ -49,9 +74,20 @@ class WaterRepository implements OfficialWaterDataSource {
             data['level'] = latest['value'];
             data['last_update'] = latest['timestamp'];
             data['trend'] = latest['trend'];
+            data['has_water_level'] = true;
+          } else {
+            data['has_water_level'] = false;
           }
           return Station.tryFromJson(data);
         })
+        .whereType<Station>()
+        .fold<Map<String, Station>>({}, (stations, station) {
+          stations[_normalizedName(station.name)] = station;
+          return stations;
+        });
+
+    return officialAfdjStationOrder
+        .map((name) => stationsByName[_normalizedName(name)])
         .whereType<Station>()
         .toList(growable: false);
   }
@@ -87,4 +123,12 @@ class WaterRepository implements OfficialWaterDataSource {
 
   static bool _isUnavailableTable(PostgrestException error) =>
       error.code == '42P01' || error.code == 'PGRST205';
+
+  static String _normalizedName(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp('[ăâáàä]'), 'a')
+      .replaceAll(RegExp('[îíìï]'), 'i')
+      .replaceAll(RegExp('[șş]'), 's')
+      .replaceAll(RegExp('[țţ]'), 't')
+      .replaceAll(RegExp('[^a-z0-9]'), '');
 }
