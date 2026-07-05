@@ -41,8 +41,11 @@ class CatchRepository {
         ? '.${fileName.split('.').last.toLowerCase()}'
         : '.jpg';
     final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw const CatchSubmissionException('Your session has expired.');
+    }
     final storagePath =
-        '${userId ?? 'anonymous'}/${DateTime.now().microsecondsSinceEpoch}$extension';
+        '$userId/${DateTime.now().microsecondsSinceEpoch}$extension';
 
     try {
       await _supabase.storage
@@ -57,6 +60,8 @@ class CatchRepository {
       throw const CatchSubmissionException(
         'The upload timed out. Check your connection and try again.',
       );
+    } on StorageException catch (error) {
+      throw CatchSubmissionException('Image upload failed: ${error.message}');
     } on Exception {
       throw const CatchSubmissionException(
         'The image could not be uploaded. Please try again.',
@@ -75,7 +80,7 @@ class CatchRepository {
         'image': _supabase.storage.from(_bucket).getPublicUrl(storagePath),
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       };
-      if (userId != null) data['user_id'] = userId;
+      data['user_id'] = userId;
       await _supabase
           .from('catches')
           .insert(data)
