@@ -4,6 +4,7 @@ import '../../screens/add_catch_page.dart';
 import '../../screens/developer_mode_page.dart';
 import '../../screens/fishing_insights_page.dart';
 import '../../screens/notifications_page.dart';
+import '../../screens/reports_archive_page.dart';
 import '../../screens/settings_page.dart';
 import '../../screens/water_level_page.dart';
 
@@ -72,6 +73,12 @@ class HomeSideMenu extends StatelessWidget {
               Icons.groups_rounded,
               'Community',
               () => _selectTab(context, 3),
+            ),
+            _item(
+              context,
+              Icons.history_rounded,
+              'Reports Archive',
+              () => _openPage(context, const ReportsArchivePage()),
             ),
             _item(
               context,
