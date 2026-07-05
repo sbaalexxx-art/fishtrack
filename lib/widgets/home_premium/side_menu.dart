@@ -7,6 +7,7 @@ import '../../screens/notifications_page.dart';
 import '../../screens/reports_archive_page.dart';
 import '../../screens/settings_page.dart';
 import '../../screens/water_level_page.dart';
+import '../../services/build_mode_service.dart';
 
 class HomeSideMenu extends StatelessWidget {
   const HomeSideMenu({super.key, required this.onNavigate});
@@ -190,19 +191,21 @@ class HomeSideMenu extends StatelessWidget {
               Icons.info_outline_rounded,
               'About AIFishMap',
             ),
-            const Divider(
-              color: Colors.white12,
-              height: 32,
-              indent: 16,
-              endIndent: 16,
-            ),
-            _section('Developer'),
-            _item(
-              context,
-              Icons.developer_mode_rounded,
-              'Developer Mode',
-              () => _openPage(context, const DeveloperModePage()),
-            ),
+            if (BuildModeService.isDeveloperVisible) ...[
+              const Divider(
+                color: Colors.white12,
+                height: 32,
+                indent: 16,
+                endIndent: 16,
+              ),
+              _section('Developer'),
+              _item(
+                context,
+                Icons.developer_mode_rounded,
+                'Developer Mode',
+                () => _openPage(context, const DeveloperModePage()),
+              ),
+            ],
           ],
         ),
       ),

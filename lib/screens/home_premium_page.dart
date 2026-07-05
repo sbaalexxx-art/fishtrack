@@ -5,6 +5,7 @@ import '../widgets/home_premium/home_header.dart';
 import '../widgets/home_premium/home_map.dart';
 import '../widgets/home_premium/home_premium_layout.dart';
 import '../widgets/home_premium/side_menu.dart';
+import '../services/build_mode_service.dart';
 import 'water_level_page.dart';
 import 'weather_page.dart';
 import 'developer_mode_page.dart';
@@ -55,8 +56,9 @@ class HomePremiumPage extends StatelessWidget {
                             scaffoldKey.currentState?.openDrawer(),
                         onNotificationPressed: () =>
                             openPage(const NotificationsPage()),
-                        onLogoLongPress: () =>
-                            openPage(const DeveloperModePage()),
+                        onLogoLongPress: BuildModeService.isDeveloperVisible
+                            ? () => openPage(const DeveloperModePage())
+                            : null,
                       ),
                       SizedBox(height: layout.sectionGap * .5),
                       SizedBox(
