@@ -7,6 +7,7 @@ import '../widgets/home_premium/home_premium_layout.dart';
 import 'water_level_page.dart';
 import 'weather_page.dart';
 import 'developer_mode_page.dart';
+import 'fishing_insights_page.dart';
 
 class HomePremiumPage extends StatelessWidget {
   const HomePremiumPage({super.key, required this.onNavigate});
@@ -95,7 +96,8 @@ class HomePremiumPage extends StatelessWidget {
                             openPage(const WaterLevelPage()),
                         onWeatherPressed: () => openPage(const WeatherPage()),
                         onCommunityPressed: () => onNavigate(3),
-                        onAiPressed: () => onNavigate(1),
+                        onAiPressed: () =>
+                            openPage(const FishingInsightsPage()),
                       ),
                       SizedBox(height: layout.bottomSafeClearance),
                     ],

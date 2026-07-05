@@ -55,7 +55,7 @@ class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
           score: result?.score,
           rating: rating,
           recommendation: snapshot.hasError
-              ? 'Conditions unavailable'
+              ? 'Not enough data yet'
               : result?.recommendation ?? 'Calculating...',
           bestTime: result?.bestTime ?? '--:--',
           confidence: result?.confidence,
@@ -141,9 +141,7 @@ class _AIConditionsCardView extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          score == null
-                              ? '--/10'
-                              : '${score!.toStringAsFixed(1)}/10',
+                          score == null ? '--/100' : '${score!.round()}/100',
                           maxLines: 1,
                           style: TextStyle(
                             fontSize:
@@ -178,7 +176,7 @@ class _AIConditionsCardView extends StatelessWidget {
                           child: CircularProgressIndicator(
                             value: score == null
                                 ? null
-                                : (score! / 10).clamp(0, 1),
+                                : (score! / 100).clamp(0, 1),
                             strokeWidth: compact ? 5 : 6,
                             backgroundColor: Colors.white10,
                             color: _color,
