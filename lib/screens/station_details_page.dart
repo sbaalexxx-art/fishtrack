@@ -46,7 +46,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   }
 
   Future<List<WaterLevel>> _loadHistory() =>
-      WaterService().getHistory(station.id);
+      WaterService().getHistory(station.id, stationName: station.name);
 
   Future<void> _toggleFavorite() async {
     setState(() => _favoriteLoading = true);
@@ -142,16 +142,19 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
 
                     const SizedBox(height: 4),
 
-                    const Text(
-                      'Official source pending',
-                      style: TextStyle(color: Colors.grey),
+                    Text(
+                      station.hasWaterLevel
+                          ? 'Source: ${station.waterLevelSource}'
+                          : 'Source: No data',
+                      style: const TextStyle(color: Colors.grey),
                     ),
 
                     const SizedBox(height: 24),
 
                     Text(
                       station.hasWaterLevel
-                          ? "${station.level.toStringAsFixed(0)} cm"
+                          ? '${station.level.toStringAsFixed(0)} '
+                                '${station.waterLevelUnit}'
                           : 'No data',
                       style: const TextStyle(
                         fontSize: 46,
@@ -167,7 +170,9 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                       builder: (context, snapshot) {
                         final hasHistory =
                             snapshot.hasData && snapshot.data!.isNotEmpty;
-                        if (!station.hasWaterLevel || !hasHistory) {
+                        if (!station.hasWaterLevel ||
+                            !hasHistory ||
+                            !station.hasKnownTrend) {
                           return const Text(
                             'Unknown',
                             style: TextStyle(color: Colors.grey),
@@ -194,7 +199,8 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                     const SizedBox(height: 12),
 
                     Text(
-                      _updatedLabel(station.lastUpdate),
+                      '${_updatedLabel(station.lastUpdate)} • '
+                      '${_relativeUpdate(station.lastUpdate)}',
                       style: const TextStyle(color: Colors.grey),
                     ),
                   ],
@@ -238,13 +244,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                       ? 'Loading water history...'
                       : readings.isEmpty
                       ? 'Water history will appear here'
-                      : readings
-                            .take(4)
-                            .map(
-                              (reading) =>
-                                  '${reading.value.toStringAsFixed(0)} cm',
-                            )
-                            .join(' • ');
+                      : readings.take(4).map(_historyLabel).join(' • ');
                   return Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -310,6 +310,19 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
+              child: ListTile(
+                leading: const Icon(Icons.auto_awesome, color: Colors.teal),
+                title: const Text('AI water insight'),
+                subtitle: Text(_waterInsight(station)),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
               child: FutureBuilder<WeatherData>(
                 future: _weather,
                 builder: (context, snapshot) {
@@ -359,6 +372,44 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
     return 'Updated: ${local.day}.${local.month}.${local.year} $hour:$minute';
+  }
+
+  static String _relativeUpdate(DateTime timestamp) {
+    if (timestamp.millisecondsSinceEpoch == 0) return 'age unknown';
+    final difference = DateTime.now().difference(timestamp.toLocal());
+    if (difference.isNegative || difference.inMinutes < 60) {
+      return 'updated less than 1 hour ago';
+    }
+    if (difference.inHours < 24) {
+      return 'updated ${difference.inHours} hours ago';
+    }
+    return 'updated ${difference.inDays} days ago';
+  }
+
+  static String _historyLabel(WaterLevel reading) {
+    final local = reading.timestamp.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${local.day}.${local.month} $hour:$minute: '
+        '${reading.value.toStringAsFixed(0)} ${reading.unit}';
+  }
+
+  static String _waterInsight(Station station) {
+    if (!station.hasWaterLevel) {
+      return 'Not enough verified water data for an insight.';
+    }
+    if (!station.hasKnownTrend) {
+      return 'A current level is available, but more history is needed '
+          'to confirm the trend.';
+    }
+    return switch (station.trend) {
+      WaterTrend.rising =>
+        'The level is rising. Recheck bank access and current strength.',
+      WaterTrend.falling =>
+        'The level is falling. Shallower margins may affect fish position.',
+      WaterTrend.stable =>
+        'The level is stable, supporting more predictable water conditions.',
+    };
   }
 }
 

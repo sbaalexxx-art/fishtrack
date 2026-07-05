@@ -18,6 +18,9 @@ class Station {
   final FishingDifficulty difficulty;
   final bool isFavorite;
   final bool hasWaterLevel;
+  final String waterLevelUnit;
+  final String waterLevelSource;
+  final bool hasKnownTrend;
 
   const Station({
     required this.id,
@@ -33,6 +36,9 @@ class Station {
     this.difficulty = FishingDifficulty.moderate,
     this.isFavorite = false,
     this.hasWaterLevel = false,
+    this.waterLevelUnit = 'cm',
+    this.waterLevelSource = 'Supabase water_levels',
+    this.hasKnownTrend = false,
   });
 
   static Station? tryFromJson(Map<String, dynamic> json) {
@@ -56,6 +62,7 @@ class Station {
     final trend = switch (_stringValue(json['trend'])?.toLowerCase()) {
       'rising' => WaterTrend.rising,
       'falling' => WaterTrend.falling,
+      'stable' => WaterTrend.stable,
       _ => WaterTrend.stable,
     };
 
@@ -73,6 +80,10 @@ class Station {
       difficulty: _difficulty(json['difficulty']),
       isFavorite: _boolValue(json['is_favorite'] ?? json['favorite']),
       hasWaterLevel: _boolValue(json['has_water_level']),
+      hasKnownTrend: _boolValue(json['has_known_trend']),
+      waterLevelUnit: _stringValue(json['water_level_unit']) ?? 'cm',
+      waterLevelSource:
+          _stringValue(json['water_level_source']) ?? 'Supabase water_levels',
     );
   }
 
@@ -82,8 +93,10 @@ class Station {
   }
 
   static double? _doubleValue(Object? value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '');
+    final number = value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '');
+    return number?.isFinite == true ? number : null;
   }
 
   static DateTime _dateValue(Object? value) {
@@ -118,9 +131,12 @@ class Station {
   static bool _boolValue(Object? value) =>
       value == true || value?.toString().toLowerCase() == 'true';
 
-  String get trendText => switch (trend) {
-    WaterTrend.rising => 'În creștere',
-    WaterTrend.falling => 'În scădere',
-    WaterTrend.stable => 'Stabil',
-  };
+  String get trendText {
+    if (!hasKnownTrend) return 'Unknown';
+    return switch (trend) {
+      WaterTrend.rising => 'În creștere',
+      WaterTrend.falling => 'În scădere',
+      WaterTrend.stable => 'Stabil',
+    };
+  }
 }

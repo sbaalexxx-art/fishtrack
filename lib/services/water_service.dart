@@ -47,8 +47,12 @@ class WaterService {
     _stationSelectionController.add(station);
   }
 
-  Future<List<WaterLevel>> getHistory(String stationId, {int limit = 30}) =>
-      _repository.getHistory(stationId, limit: limit);
+  Future<List<WaterLevel>> getHistory(
+    String stationId, {
+    String? stationName,
+    int limit = 14,
+  }) =>
+      _repository.getHistory(stationId, stationName: stationName, limit: limit);
 
   Future<List<Station>> getStations({bool forceRefresh = false}) async {
     final cachedStations = _cachedStations;

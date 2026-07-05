@@ -28,6 +28,9 @@ class WaterLevel {
     required this.timestamp,
     required this.trend,
     this.source = WaterLevelSource.manualFallback,
+    this.unit = 'cm',
+    this.sourceName = 'Supabase water_levels',
+    this.hasKnownTrend = false,
   });
 
   final String stationId;
@@ -35,6 +38,9 @@ class WaterLevel {
   final DateTime timestamp;
   final WaterTrend trend;
   final WaterLevelSource source;
+  final String unit;
+  final String sourceName;
+  final bool hasKnownTrend;
 
   static WaterLevel? tryFromJson(
     Map<String, dynamic> json, {
@@ -46,17 +52,30 @@ class WaterLevel {
         ? (json['value'] as num).toDouble()
         : double.tryParse(json['value']?.toString() ?? '');
     final timestamp = DateTime.tryParse(json['timestamp']?.toString() ?? '');
-    if (stationId == null || value == null || timestamp == null) return null;
+    if (stationId == null ||
+        stationId.trim().isEmpty ||
+        value == null ||
+        !value.isFinite ||
+        timestamp == null) {
+      return null;
+    }
+
+    final parsedTrend = switch (json['trend']
+        ?.toString()
+        .trim()
+        .toLowerCase()) {
+      'rising' || 'creste' => WaterTrend.rising,
+      'falling' || 'scade' => WaterTrend.falling,
+      'stable' || 'stabil' => WaterTrend.stable,
+      _ => null,
+    };
 
     return WaterLevel(
       stationId: stationId,
       value: value,
       timestamp: timestamp,
-      trend: switch (json['trend']?.toString().trim().toLowerCase()) {
-        'rising' || 'creste' => WaterTrend.rising,
-        'falling' || 'scade' => WaterTrend.falling,
-        _ => WaterTrend.stable,
-      },
+      trend: parsedTrend ?? WaterTrend.stable,
+      hasKnownTrend: parsedTrend != null,
       source: source,
     );
   }

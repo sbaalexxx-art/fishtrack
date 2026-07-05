@@ -69,23 +69,27 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         final waterLevel = station == null
             ? '--'
             : station.hasWaterLevel
-            ? '${station.level.toStringAsFixed(0)} cm'
+            ? '${station.level.toStringAsFixed(0)} ${station.waterLevelUnit}'
             : 'No data';
         final trend = station?.trend ?? WaterTrend.stable;
         final status = station == null
             ? '--'
             : station.hasWaterLevel
-            ? _statusFor(trend)
+            ? (station.hasKnownTrend ? _statusFor(trend) : 'Unknown')
             : 'No data';
         final lastUpdate = station == null
             ? (snapshot.hasError ? 'Update failed' : 'Waiting for data')
             : _relativeUpdate(station.lastUpdate);
+        final sourceLabel = station?.hasWaterLevel == true
+            ? station!.waterLevelSource
+            : 'No source';
 
         return LayoutBuilder(
           builder: (context, constraints) {
             final layout = HomePremiumLayout.of(context);
             final compact = constraints.maxWidth < 180;
-            final trendColor = station?.hasWaterLevel == true
+            final trendColor =
+                station?.hasWaterLevel == true && station?.hasKnownTrend == true
                 ? _colorFor(trend)
                 : Colors.white54;
 
@@ -176,8 +180,10 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                         height: 38,
                         child: Center(
                           child: Text(
-                            'History\nunavailable',
+                            sourceLabel,
                             textAlign: TextAlign.center,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
                             style: AppTextStyles.caption.copyWith(
                               fontSize: compact ? 8 : 9,
                             ),
