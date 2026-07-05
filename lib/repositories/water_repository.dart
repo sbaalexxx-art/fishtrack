@@ -38,8 +38,54 @@ class WaterRepository implements OfficialWaterDataSource {
     'Sulina',
   ];
 
+  // Metadata-only fallbacks for official AFDJ stations missing from the
+  // current Supabase seed. Coordinates are published by AFDJ; levels remain
+  // unavailable until a real reading exists.
+  static final _missingSeedStations = <String, Station>{
+    _normalizedName('Drencova'): Station(
+      id: 'afdj-drencova',
+      name: 'Drencova',
+      river: 'Dunărea',
+      level: 0,
+      trend: WaterTrend.stable,
+      latitude: 44.6377707,
+      longitude: 21.9723364,
+      lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    ),
+    _normalizedName('Gruia'): Station(
+      id: 'afdj-gruia',
+      name: 'Gruia',
+      river: 'Dunărea',
+      level: 0,
+      trend: WaterTrend.stable,
+      latitude: 44.2665732,
+      longitude: 22.7046852,
+      lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    ),
+    _normalizedName('Cetate'): Station(
+      id: 'afdj-cetate',
+      name: 'Cetate',
+      river: 'Dunărea',
+      level: 0,
+      trend: WaterTrend.stable,
+      latitude: 44.1114259,
+      longitude: 23.0475514,
+      lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    ),
+    _normalizedName('Rast'): Station(
+      id: 'afdj-rast',
+      name: 'Rast',
+      river: 'Dunărea',
+      level: 0,
+      trend: WaterTrend.stable,
+      latitude: 43.8851672,
+      longitude: 23.2813472,
+      lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    ),
+  };
+
   @override
-  WaterLevelSource get source => WaterLevelSource.supabase;
+  WaterLevelSource get source => WaterLevelSource.manualFallback;
 
   Future<List<Station>> getStations() async {
     final client = Supabase.instance.client;
@@ -87,7 +133,10 @@ class WaterRepository implements OfficialWaterDataSource {
         });
 
     return officialAfdjStationOrder
-        .map((name) => stationsByName[_normalizedName(name)])
+        .map((name) {
+          final key = _normalizedName(name);
+          return stationsByName[key] ?? _missingSeedStations[key];
+        })
         .whereType<Station>()
         .toList(growable: false);
   }
@@ -110,7 +159,7 @@ class WaterRepository implements OfficialWaterDataSource {
             (row) => WaterLevel.tryFromJson(
               row,
               fallbackStationId: stationId,
-              source: WaterLevelSource.supabase,
+              source: source,
             ),
           )
           .whereType<WaterLevel>()

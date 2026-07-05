@@ -90,6 +90,11 @@ class AuthService {
     } on AuthApiException catch (error) {
       throw AuthException(error.message);
     } on StorageException catch (error) {
+      if (error.message.toLowerCase().contains('bucket not found')) {
+        throw const AuthException(
+          'Profile photo storage is not configured yet.',
+        );
+      }
       throw AuthException(error.message);
     } on AuthException {
       rethrow;

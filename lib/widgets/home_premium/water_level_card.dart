@@ -66,9 +66,11 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                 : isLoading
                 ? 'Loading...'
                 : 'No station available');
-        final waterLevel = station == null || !station.hasWaterLevel
+        final waterLevel = station == null
             ? '--'
-            : '${station.level.toStringAsFixed(0)} cm';
+            : station.hasWaterLevel
+            ? '${station.level.toStringAsFixed(0)} cm'
+            : 'No data';
         final trend = station?.trend ?? WaterTrend.stable;
         final status = station == null
             ? '--'

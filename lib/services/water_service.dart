@@ -23,6 +23,16 @@ class WaterService {
   final WaterRepository _repository;
   final LocationService _locationService;
 
+  static const supportedSources = <WaterLevelSource>{
+    WaterLevelSource.afdj,
+    WaterLevelSource.danubeHis,
+    WaterLevelSource.danubeFis,
+    WaterLevelSource.inhga,
+    WaterLevelSource.manualFallback,
+  };
+
+  WaterLevelSource get activeSource => _repository.source;
+
   static void clearCache() {
     _cachedStations = null;
     _cachedAt = null;
