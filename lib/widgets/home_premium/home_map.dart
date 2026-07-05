@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../models/station.dart';
 import '../../services/community_service.dart';
 import '../../services/location_service.dart';
+import '../../services/map_search_service.dart';
 import '../../services/station_filter_service.dart';
 import '../home/home_map.dart';
 import '../home/map_preview.dart';
@@ -24,6 +25,7 @@ class HomePremiumMap extends StatefulWidget {
 class _HomePremiumMapState extends State<HomePremiumMap> {
   final CommunityService _communityService = const CommunityService();
   final LocationService _locationService = const LocationService();
+  final MapSearchService _searchService = const MapSearchService();
   final MapController _mapController = MapController();
   final StationFilterService _filterService = StationFilterService.instance;
   final TextEditingController _searchController = TextEditingController();
@@ -33,6 +35,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   bool _isLocating = false;
   bool _isMapReady = false;
   bool _pendingRecenter = false;
+  bool _isSearching = false;
+  MapBaseLayer _baseLayer = MapBaseLayer.standard;
+  Set<MapOverlay> _overlays = const {MapOverlay.community};
 
   @override
   void initState() {
@@ -62,8 +67,133 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     });
   }
 
-  void _submitSearch(String query) {
-    _filterService.updateQuery(query);
+  Future<void> _submitSearch(String query) async {
+    if (_isSearching || query.trim().length < 2) return;
+    setState(() => _isSearching = true);
+    try {
+      final results = await _searchService.search(query);
+      if (!mounted) return;
+      if (results.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No matching place found.')),
+        );
+        return;
+      }
+      final selected = results.length == 1
+          ? results.first
+          : await showModalBottomSheet<MapSearchResult>(
+              context: context,
+              builder: (context) => SafeArea(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final result in results)
+                      ListTile(
+                        leading: const Icon(Icons.place_outlined),
+                        title: Text(result.name),
+                        subtitle: result.description == null
+                            ? null
+                            : Text(result.description!),
+                        onTap: () => Navigator.pop(context, result),
+                      ),
+                  ],
+                ),
+              ),
+            );
+      if (selected != null && _isMapReady) {
+        _mapController.move(LatLng(selected.latitude, selected.longitude), 13);
+      }
+    } on Exception {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Place search is unavailable.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSearching = false);
+    }
+  }
+
+  Future<void> _openMapOptions() async {
+    var layer = _baseLayer;
+    var overlays = {..._overlays};
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Map layers',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                RadioGroup<MapBaseLayer>(
+                  groupValue: layer,
+                  onChanged: (value) {
+                    if (value != null) setSheetState(() => layer = value);
+                  },
+                  child: Column(
+                    children: [
+                      RadioListTile(
+                        value: MapBaseLayer.standard,
+                        title: const Text('Standard'),
+                      ),
+                      const RadioListTile(
+                        value: MapBaseLayer.satellite,
+                        enabled: false,
+                        title: Text('Satellite'),
+                        subtitle: Text('Coming soon'),
+                      ),
+                      const RadioListTile(
+                        value: MapBaseLayer.fishingMode,
+                        enabled: false,
+                        title: Text('Fishing Mode'),
+                        subtitle: Text('Coming soon'),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(),
+                for (final overlay in MapOverlay.values)
+                  CheckboxListTile(
+                    value: overlays.contains(overlay),
+                    enabled: overlay == MapOverlay.community,
+                    title: Text(switch (overlay) {
+                      MapOverlay.community => 'Community',
+                      MapOverlay.catches => 'Catches (coming soon)',
+                      MapOverlay.favorites => 'Favorites (coming soon)',
+                    }),
+                    onChanged: (value) => setSheetState(() {
+                      if (value == true) {
+                        overlays.add(overlay);
+                      } else {
+                        overlays.remove(overlay);
+                      }
+                    }),
+                  ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        _baseLayer = layer;
+                        _overlays = Set.unmodifiable(overlays);
+                      });
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Apply'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _locateUser({bool recenter = false}) async {
@@ -174,6 +304,8 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
             mapController: _mapController,
             currentLocation: _currentLocation,
             onMapReady: _onMapReady,
+            baseLayer: _baseLayer,
+            overlays: _overlays,
           );
         }
 
@@ -193,12 +325,22 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
         return const ColoredBox(
           color: Color(0xFF16212B),
           child: Center(
-            child: SizedBox.square(
-              dimension: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: Color(0xFF67D04B),
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox.square(
+                  dimension: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Color(0xFF67D04B),
+                  ),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'Loading live fishing reports…',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ],
             ),
           ),
         );
@@ -206,6 +348,8 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     );
   }
 
+  // Kept temporarily for compatibility while fishing filters move to overlays.
+  // ignore: unused_element
   Future<void> _openFilters() async {
     var draft = _filterService.filters.value;
     var levelRange = RangeValues(
@@ -534,7 +678,6 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                             Expanded(
                               child: TextField(
                                 controller: _searchController,
-                                onChanged: _filterService.updateQuery,
                                 onSubmitted: _submitSearch,
                                 textInputAction: TextInputAction.search,
                                 maxLines: 1,
@@ -554,20 +697,23 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: _openFilters,
-                              child: Icon(
-                                Icons.tune_rounded,
-                                size: 18,
-                                color:
-                                    _filterService
-                                        .filters
-                                        .value
-                                        .hasAdvancedFilters
-                                    ? const Color(0xFF67D04B)
-                                    : Colors.white70,
+                            if (_isSearching)
+                              const SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFF67D04B),
+                                ),
+                              )
+                            else
+                              GestureDetector(
+                                onTap: _openMapOptions,
+                                child: const Icon(
+                                  Icons.tune_rounded,
+                                  size: 18,
+                                  color: Colors.white70,
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ),
@@ -587,11 +733,14 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                         isLoading: _isLocating,
                       ),
                       const SizedBox(height: 10),
-                      const _FloatingButton(Icons.layers_rounded),
+                      _FloatingButton(
+                        Icons.layers_rounded,
+                        onTap: _openMapOptions,
+                      ),
                       const SizedBox(height: 10),
                       _FloatingButton(
                         Icons.filter_alt_rounded,
-                        onTap: _openFilters,
+                        onTap: _openMapOptions,
                       ),
                     ],
                   ),
