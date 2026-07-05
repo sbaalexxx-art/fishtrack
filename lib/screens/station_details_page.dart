@@ -162,27 +162,34 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
 
                     const SizedBox(height: 12),
 
-                    if (station.hasWaterLevel)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(trendIcon, color: trendColor),
-                          const SizedBox(width: 8),
-                          Text(
-                            station.trendText,
-                            style: TextStyle(
-                              color: trendColor,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                    FutureBuilder<List<WaterLevel>>(
+                      future: _history,
+                      builder: (context, snapshot) {
+                        final hasHistory =
+                            snapshot.hasData && snapshot.data!.isNotEmpty;
+                        if (!station.hasWaterLevel || !hasHistory) {
+                          return const Text(
+                            'Unknown',
+                            style: TextStyle(color: Colors.grey),
+                          );
+                        }
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(trendIcon, color: trendColor),
+                            const SizedBox(width: 8),
+                            Text(
+                              station.trendText,
+                              style: TextStyle(
+                                color: trendColor,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
-                      )
-                    else
-                      const Text(
-                        'Unknown trend',
-                        style: TextStyle(color: Colors.grey),
-                      ),
+                          ],
+                        );
+                      },
+                    ),
 
                     const SizedBox(height: 12),
 
@@ -230,7 +237,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                       : snapshot.connectionState == ConnectionState.waiting
                       ? 'Loading water history...'
                       : readings.isEmpty
-                      ? 'No historical measurements'
+                      ? 'Water history will appear here'
                       : readings
                             .take(4)
                             .map(
@@ -272,7 +279,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                                 Icon(Icons.show_chart, color: Colors.grey),
                                 SizedBox(height: 6),
                                 Text(
-                                  'No chart data',
+                                  'Water history will appear here',
                                   style: TextStyle(color: Colors.grey),
                                 ),
                               ],
@@ -346,7 +353,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
 
   static String _updatedLabel(DateTime timestamp) {
     if (timestamp.millisecondsSinceEpoch == 0) {
-      return 'Update time unavailable';
+      return 'Not available';
     }
     final local = timestamp.toLocal();
     final hour = local.hour.toString().padLeft(2, '0');
