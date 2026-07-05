@@ -296,51 +296,53 @@ class CommunityService {
     return posts;
   });
 
-  Future<List<CommunityPost>> getReportsArchive(Duration period) => _guard(
-    () async {
-      final since = DateTime.now().toUtc().subtract(period);
-      final reports = _maps(
-        await _supabase
-            .from('reports')
-            .select()
-            .gte('created_at', since.toIso8601String())
-            .order('created_at', ascending: false),
-      );
-      final profiles = await _profiles(
-        reports.map((row) => _text(row['user_id'])).whereType<String>().toSet(),
-      );
-      final archive = <CommunityPost>[
-        for (final row in reports)
-          if (_text(row['id']) case final String id)
-            CommunityPost(
-              id: id,
-              userId: _text(row['user_id']) ?? '',
-              type: CommunityPostType.report,
-              title: _text(row['type']) ?? 'Fishing report',
-              body: _text(row['description']) ?? '',
-              imageUrl: _text(row['photo_url'] ?? row['image_url']),
-              createdAt: _date(row['created_at'] ?? row['timestamp']),
-              reportCategory: ReportCategory.parse(
-                row['category'] ?? row['type'],
-              ),
-              latitude: _number(row['latitude']),
-              longitude: _number(row['longitude']),
-              expiresAt: _nullableDate(row['expires_at']),
-              stillValidCount: _integer(row['still_valid_count']),
-              noLongerValidCount: _integer(row['no_longer_valid_count']),
-              authorName: _profileName(profiles, _text(row['user_id'])),
-              authorAvatar: _profileAvatar(profiles, _text(row['user_id'])),
+  Future<List<CommunityPost>> getReportsArchive(
+    Duration period, {
+    DateTime? end,
+  }) => _guard(() async {
+    final rangeEnd = (end ?? DateTime.now()).toUtc();
+    final since = rangeEnd.subtract(period);
+    final reports = _maps(
+      await _supabase
+          .from('reports')
+          .select()
+          .gte('created_at', since.toIso8601String())
+          .lt('created_at', rangeEnd.toIso8601String())
+          .order('created_at', ascending: false),
+    );
+    final profiles = await _profiles(
+      reports.map((row) => _text(row['user_id'])).whereType<String>().toSet(),
+    );
+    final archive = <CommunityPost>[
+      for (final row in reports)
+        if (_text(row['id']) case final String id)
+          CommunityPost(
+            id: id,
+            userId: _text(row['user_id']) ?? '',
+            type: CommunityPostType.report,
+            title: _text(row['type']) ?? 'Fishing report',
+            body: _text(row['description']) ?? '',
+            imageUrl: _text(row['photo_url'] ?? row['image_url']),
+            createdAt: _date(row['created_at'] ?? row['timestamp']),
+            reportCategory: ReportCategory.parse(
+              row['category'] ?? row['type'],
             ),
-      ];
-      developer.log(
-        'Fetched archive report count: ${archive.length}; '
-        'period: ${period.inHours}h',
-        name: 'AIFishMap.Community',
-      );
-      return archive;
-    },
-    debugLabel: 'fetch reports archive',
-  );
+            latitude: _number(row['latitude']),
+            longitude: _number(row['longitude']),
+            expiresAt: _nullableDate(row['expires_at']),
+            stillValidCount: _integer(row['still_valid_count']),
+            noLongerValidCount: _integer(row['no_longer_valid_count']),
+            authorName: _profileName(profiles, _text(row['user_id'])),
+            authorAvatar: _profileAvatar(profiles, _text(row['user_id'])),
+          ),
+    ];
+    developer.log(
+      'Fetched archive report count: ${archive.length}; '
+      'range: ${since.toIso8601String()}–${rangeEnd.toIso8601String()}',
+      name: 'AIFishMap.Community',
+    );
+    return archive;
+  }, debugLabel: 'fetch reports archive');
 
   Future<String> createReport({
     required ReportCategory category,
