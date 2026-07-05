@@ -46,7 +46,11 @@ class HomeMap extends StatelessWidget {
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.aifishmap.app',
-            panBuffer: 0,
+            tileProvider: NetworkTileProvider(),
+            panBuffer: 2,
+            errorTileCallback: (tile, error, stackTrace) {
+              debugPrint('OpenStreetMap tile error: $error');
+            },
           ),
           MarkerLayer(
             markers: [
@@ -134,17 +138,21 @@ class HomeMap extends StatelessWidget {
   static List<_ReportCluster> _clusters(List<CommunityPost> reports) {
     const cellSize = .06;
     final cells = <String, List<CommunityPost>>{};
+
     for (final report in reports) {
       if (!report.isActiveReport ||
           report.latitude == null ||
           report.longitude == null) {
         continue;
       }
+
       final key =
           '${(report.latitude! / cellSize).floor()}:'
           '${(report.longitude! / cellSize).floor()}';
+
       cells.putIfAbsent(key, () => []).add(report);
     }
+
     return cells.values
         .map((items) {
           final latitude =
@@ -153,6 +161,7 @@ class HomeMap extends StatelessWidget {
           final longitude =
               items.fold<double>(0, (sum, item) => sum + item.longitude!) /
               items.length;
+
           return _ReportCluster(LatLng(latitude, longitude), items);
         })
         .toList(growable: false);
@@ -161,6 +170,7 @@ class HomeMap extends StatelessWidget {
 
 class _ReportCluster {
   const _ReportCluster(this.center, this.reports);
+
   final LatLng center;
   final List<CommunityPost> reports;
 }

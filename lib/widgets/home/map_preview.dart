@@ -17,42 +17,47 @@ class MapPreview extends StatelessWidget {
         AppDimensions.sectionSpacing,
         10,
       ),
-      child: Material(
-        color: Colors.transparent,
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
-          child: SizedBox(
-            height: AppDimensions.mapHeight(context),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                DecoratedBox(
-                  decoration: const BoxDecoration(color: Color(0xFF1B1B1B)),
-                  child: child,
-                ),
+        child: SizedBox(
+          height: AppDimensions.mapHeight(context),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const DecoratedBox(
+                decoration: BoxDecoration(color: Color(0xFF1B1B1B)),
+              ),
 
-                IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: .08),
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: .18),
-                        ],
-                      ),
+              child,
+
+              IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: .08),
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: .18),
+                      ],
                     ),
                   ),
                 ),
+              ),
 
-                Positioned(
-                  top: 12,
-                  right: 12,
+              if (onTap != null)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: true,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+
+              Positioned(
+                top: 12,
+                right: 12,
+                child: IgnorePointer(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -79,8 +84,8 @@ class MapPreview extends StatelessWidget {
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
