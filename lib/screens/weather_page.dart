@@ -109,24 +109,47 @@ class _WeatherContent extends StatelessWidget {
                 _metric(
                   Icons.water_drop_outlined,
                   'Humidity',
-                  '${weather.humidity.round()}%',
+                  _value(weather.humidity, suffix: '%'),
                 ),
                 const Divider(height: 1),
                 _metric(
                   Icons.air_rounded,
-                  'Wind',
-                  '${weather.windSpeed.toStringAsFixed(1)} km/h '
-                      '${weather.windDirectionLabel} '
-                      '(${weather.windDirectionDegrees.round()}°)',
+                  'Wind speed',
+                  _value(weather.windSpeed, suffix: ' km/h', decimals: 1),
                 ),
-                if (weather.pressure != null) ...[
-                  const Divider(height: 1),
-                  _metric(
-                    Icons.speed_rounded,
-                    'Pressure',
-                    '${weather.pressure!.round()} hPa',
+                const Divider(height: 1),
+                _metric(
+                  Icons.explore_outlined,
+                  'Wind direction',
+                  _windDirection(
+                    weather.windDirectionDegrees,
+                    weather.windDirectionLabel,
                   ),
-                ],
+                ),
+                const Divider(height: 1),
+                _metric(
+                  Icons.air_rounded,
+                  'Wind gusts',
+                  _value(weather.windGusts, suffix: ' km/h', decimals: 1),
+                ),
+                const Divider(height: 1),
+                _metric(
+                  Icons.umbrella_outlined,
+                  'Precipitation probability',
+                  _value(weather.precipitationProbability, suffix: '%'),
+                ),
+                const Divider(height: 1),
+                _metric(
+                  Icons.cloud_outlined,
+                  'Cloud cover',
+                  _value(weather.cloudCover, suffix: '%'),
+                ),
+                const Divider(height: 1),
+                _metric(
+                  Icons.speed_rounded,
+                  'Pressure',
+                  _value(weather.pressure, suffix: ' hPa'),
+                ),
                 const Divider(height: 1),
                 _metric(
                   Icons.schedule_rounded,
@@ -136,6 +159,71 @@ class _WeatherContent extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          Text(
+            'Next 24 hours',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (weather.hourlyForecast.isEmpty)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No data'),
+              ),
+            )
+          else
+            SizedBox(
+              height: 174,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: weather.hourlyForecast.take(24).length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final hour = weather.hourlyForecast[index];
+                  return SizedBox(
+                    width: 166,
+                    child: Card(
+                      color: Theme.of(context).colorScheme.surface,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _time(context, hour.time),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Temperature: '
+                              '${_value(hour.temperature, suffix: '°C')}',
+                            ),
+                            Text(
+                              'Wind: '
+                              '${_value(hour.windSpeed, suffix: ' km/h', decimals: 1)}',
+                            ),
+                            Text(
+                              'Direction: '
+                              '${_windDirection(hour.windDirectionDegrees, hour.windDirectionLabel)}',
+                            ),
+                            Text(
+                              'Precipitation: '
+                              '${_value(hour.precipitationProbability, suffix: '%')}',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           const SizedBox(height: 16),
           Text(
             '3-day forecast',
@@ -176,7 +264,7 @@ class _WeatherContent extends StatelessWidget {
                   Icons.wb_twilight_rounded,
                   'Sunrise',
                   weather.sunrise == null
-                      ? 'Unavailable'
+                      ? 'No data'
                       : _time(context, weather.sunrise!),
                 ),
                 const Divider(height: 1),
@@ -184,7 +272,7 @@ class _WeatherContent extends StatelessWidget {
                   Icons.nights_stay_rounded,
                   'Sunset',
                   weather.sunset == null
-                      ? 'Unavailable'
+                      ? 'No data'
                       : _time(context, weather.sunset!),
                 ),
               ],
@@ -232,6 +320,20 @@ class _WeatherContent extends StatelessWidget {
 
   static String _time(BuildContext context, DateTime dateTime) =>
       TimeOfDay.fromDateTime(dateTime.toLocal()).format(context);
+
+  static String _value(
+    double? value, {
+    required String suffix,
+    int decimals = 0,
+  }) {
+    if (value == null || !value.isFinite) return 'No data';
+    return '${value.toStringAsFixed(decimals)}$suffix';
+  }
+
+  static String _windDirection(double? degrees, String label) {
+    if (degrees == null || !degrees.isFinite || label.isEmpty) return 'No data';
+    return '$label (${degrees.round()}°)';
+  }
 
   static String _dayLabel(DateTime date) {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];

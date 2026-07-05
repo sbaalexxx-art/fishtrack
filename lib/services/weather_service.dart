@@ -14,6 +14,7 @@ class WeatherService {
        _waterService = waterService ?? WaterService();
 
   static const cacheDuration = Duration(minutes: 15);
+  static const _defaultRomaniaCoordinates = _Coordinates(43.90, 25.97);
   static final Map<String, _WeatherCacheEntry> _cache = {};
 
   final WeatherRepository _repository;
@@ -55,16 +56,19 @@ class WeatherService {
       return _Coordinates(position.latitude, position.longitude);
     } on LocationFailure {
       final station = fallbackStation ?? await _firstStation();
-      if (station == null) {
-        throw const WeatherServiceException('No weather location available');
-      }
-      return _Coordinates(station.latitude, station.longitude);
+      return station == null
+          ? _defaultRomaniaCoordinates
+          : _Coordinates(station.latitude, station.longitude);
     }
   }
 
   Future<Station?> _firstStation() async {
-    final stations = await _waterService.getStations();
-    return stations.isEmpty ? null : stations.first;
+    try {
+      final stations = await _waterService.getStations();
+      return stations.isEmpty ? null : stations.first;
+    } on Exception {
+      return null;
+    }
   }
 }
 

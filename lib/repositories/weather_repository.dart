@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import '../core/network/api_client.dart';
 import '../models/weather.dart';
 
@@ -19,8 +21,20 @@ class WeatherRepository {
         'relative_humidity_2m',
         'weather_code',
         'wind_speed_10m',
+        'wind_gusts_10m',
         'wind_direction_10m',
+        'cloud_cover',
         'pressure_msl',
+      ].join(','),
+      'hourly': [
+        'temperature_2m',
+        'apparent_temperature',
+        'relative_humidity_2m',
+        'precipitation_probability',
+        'cloud_cover',
+        'wind_speed_10m',
+        'wind_gusts_10m',
+        'wind_direction_10m',
       ].join(','),
       'daily': [
         'weather_code',
@@ -33,13 +47,13 @@ class WeatherRepository {
       'timezone': 'auto',
     });
 
-    final payload = await apiClient
-        .get(uri.toString())
-        .timeout(const Duration(seconds: 12));
+    final payload = await _fetch(uri);
 
     if (payload is! Map<String, dynamic> ||
         payload['current'] is! Map<String, dynamic> ||
+        payload['hourly'] is! Map<String, dynamic> ||
         payload['daily'] is! Map<String, dynamic>) {
+      _logApiError(const WeatherRepositoryException('Invalid response'));
       throw const WeatherRepositoryException('Invalid weather response');
     }
 
@@ -49,16 +63,26 @@ class WeatherRepository {
     final humidity = _number(current['relative_humidity_2m']);
     final weatherCode = _number(current['weather_code'])?.round();
     final windSpeed = _number(current['wind_speed_10m']);
+    final windGusts = _number(current['wind_gusts_10m']);
     final windDirection = _number(current['wind_direction_10m']);
+    final cloudCover = _number(current['cloud_cover']);
     final pressure = _number(current['pressure_msl']);
+    final observedAt =
+        DateTime.tryParse(current['time']?.toString() ?? '') ?? DateTime.now();
+    final hourly = _hourly(payload['hourly'] as Map<String, dynamic>);
+    final currentHour = _closestHour(hourly, observedAt);
     final forecast = _forecast(payload['daily'] as Map<String, dynamic>);
 
     if (temperature == null ||
         humidity == null ||
         weatherCode == null ||
         windSpeed == null ||
+        windGusts == null ||
         windDirection == null ||
+        cloudCover == null ||
+        currentHour == null ||
         forecast.length < 3) {
+      _logApiError(const WeatherRepositoryException('Incomplete response'));
       throw const WeatherRepositoryException('Incomplete weather response');
     }
 
@@ -68,16 +92,110 @@ class WeatherRepository {
       condition: _conditionForCode(weatherCode),
       humidity: humidity,
       windSpeed: windSpeed,
+      windGusts: windGusts,
       windDirectionDegrees: windDirection,
+      precipitationProbability: currentHour.precipitationProbability,
+      cloudCover: cloudCover,
       pressure: pressure,
-      observedAt:
-          DateTime.tryParse(current['time']?.toString() ?? '') ??
-          DateTime.now(),
+      observedAt: observedAt,
       forecast: forecast,
+      hourlyForecast: hourly
+          .where((hour) => !hour.time.isBefore(observedAt))
+          .take(24)
+          .toList(growable: false),
       sunrise: forecast.first.sunrise,
       sunset: forecast.first.sunset,
       moonPhase: _moonPhase(forecast.first.date),
       fishingActivity: _fishingActivity(forecast.first.date),
+    );
+  }
+
+  Future<Object?> _fetch(Uri uri) async {
+    try {
+      return await apiClient
+          .get(uri.toString())
+          .timeout(const Duration(seconds: 12));
+    } on Object catch (error, stackTrace) {
+      _logApiError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  static List<WeatherForecastHour> _hourly(Map<String, dynamic> hourly) {
+    final times = _list(hourly['time']);
+    final temperatures = _list(hourly['temperature_2m']);
+    final feelsLike = _list(hourly['apparent_temperature']);
+    final humidities = _list(hourly['relative_humidity_2m']);
+    final precipitation = _list(hourly['precipitation_probability']);
+    final cloudCover = _list(hourly['cloud_cover']);
+    final windSpeeds = _list(hourly['wind_speed_10m']);
+    final windGusts = _list(hourly['wind_gusts_10m']);
+    final windDirections = _list(hourly['wind_direction_10m']);
+    final length = [
+      times.length,
+      temperatures.length,
+      feelsLike.length,
+      humidities.length,
+      precipitation.length,
+      cloudCover.length,
+      windSpeeds.length,
+      windGusts.length,
+      windDirections.length,
+    ].reduce((a, b) => a < b ? a : b);
+
+    return List.generate(length, (index) {
+      final time = DateTime.tryParse(times[index].toString());
+      final temperature = _number(temperatures[index]);
+      final apparent = _number(feelsLike[index]);
+      final humidity = _number(humidities[index]);
+      final rainChance = _number(precipitation[index]);
+      final clouds = _number(cloudCover[index]);
+      final wind = _number(windSpeeds[index]);
+      final gusts = _number(windGusts[index]);
+      final direction = _number(windDirections[index]);
+      if (time == null ||
+          temperature == null ||
+          apparent == null ||
+          humidity == null ||
+          rainChance == null ||
+          clouds == null ||
+          wind == null ||
+          gusts == null ||
+          direction == null) {
+        return null;
+      }
+      return WeatherForecastHour(
+        time: time,
+        temperature: temperature,
+        feelsLike: apparent,
+        humidity: humidity,
+        precipitationProbability: rainChance,
+        cloudCover: clouds,
+        windSpeed: wind,
+        windGusts: gusts,
+        windDirectionDegrees: direction,
+      );
+    }).whereType<WeatherForecastHour>().toList(growable: false);
+  }
+
+  static WeatherForecastHour? _closestHour(
+    List<WeatherForecastHour> hours,
+    DateTime observedAt,
+  ) {
+    if (hours.isEmpty) return null;
+    return hours.reduce((closest, candidate) {
+      final closestDifference = closest.time.difference(observedAt).abs();
+      final candidateDifference = candidate.time.difference(observedAt).abs();
+      return candidateDifference < closestDifference ? candidate : closest;
+    });
+  }
+
+  static void _logApiError(Object error, [StackTrace? stackTrace]) {
+    developer.log(
+      'Open-Meteo request failed',
+      name: 'AIFishMap.Weather',
+      error: error,
+      stackTrace: stackTrace,
     );
   }
 
