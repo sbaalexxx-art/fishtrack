@@ -29,7 +29,7 @@ class _ReportsPageState extends State<ReportsPage> {
     await feed;
   }
 
-  Future<void> _createReport() async {
+  Future<void> _openCreateReportDialog() async {
     final created = await showDialog<bool>(
       context: context,
       builder: (_) => _CreateReportDialog(service: _service),
@@ -42,7 +42,7 @@ class _ReportsPageState extends State<ReportsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Community')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createReport,
+        onPressed: _openCreateReportDialog,
         icon: const Icon(Icons.campaign_outlined),
         label: const Text('Report'),
       ),
@@ -99,6 +99,37 @@ class _CommunityPostCard extends StatelessWidget {
       MaterialPageRoute<void>(builder: (_) => CatchDetailsPage(post: post)),
     );
     onChanged();
+  }
+
+  Future<void> _reportAbuse(BuildContext context) async {
+    final reason = await showDialog<ReportAbuseReason>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Report Abuse'),
+        children: [
+          for (final reason in ReportAbuseReason.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, reason),
+              child: Text(reason.label),
+            ),
+        ],
+      ),
+    );
+    if (reason == null || !context.mounted) return;
+    try {
+      await const CommunityService().reportAbuse(post.id, reason);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Report submitted for review.')),
+        );
+      }
+    } on CommunityException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
   }
 
   @override
@@ -173,37 +204,52 @@ class _CommunityPostCard extends StatelessWidget {
                       onPressed: () => _open(context),
                       icon: const Icon(Icons.chat_bubble_outline_rounded),
                     ),
-                  ] else ...[
-                    IconButton(
-                      tooltip: 'Still valid',
-                      onPressed: () async {
-                        await const CommunityService().verifyReport(
-                          post.id,
-                          ReportVerification.stillValid,
-                        );
-                        onChanged();
-                      },
-                      icon: const Icon(Icons.thumb_up_alt_outlined),
+                    const Spacer(),
+                    if (post.weight != null)
+                      Text('${post.weight!.toStringAsFixed(1)} kg'),
+                    if (post.length != null)
+                      Text(' • ${post.length!.toStringAsFixed(0)} cm'),
+                  ] else
+                    Expanded(
+                      child: Wrap(
+                        spacing: 4,
+                        alignment: WrapAlignment.end,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () async {
+                              await const CommunityService().verifyReport(
+                                post.id,
+                                ReportVerification.stillValid,
+                              );
+                              onChanged();
+                            },
+                            icon: const Icon(
+                              Icons.check_circle_outline_rounded,
+                            ),
+                            label: Text('Confirm ${post.stillValidCount}'),
+                          ),
+                          TextButton.icon(
+                            onPressed: () async {
+                              await const CommunityService().verifyReport(
+                                post.id,
+                                ReportVerification.noLongerValid,
+                              );
+                              onChanged();
+                            },
+                            icon: const Icon(Icons.warning_amber_rounded),
+                            label: Text(
+                              'Not accurate ${post.noLongerValidCount}',
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _reportAbuse(context),
+                            icon: const Icon(Icons.flag_outlined),
+                            label: const Text('Report Abuse'),
+                          ),
+                        ],
+                      ),
                     ),
-                    Text('${post.stillValidCount}'),
-                    IconButton(
-                      tooltip: 'No longer valid',
-                      onPressed: () async {
-                        await const CommunityService().verifyReport(
-                          post.id,
-                          ReportVerification.noLongerValid,
-                        );
-                        onChanged();
-                      },
-                      icon: const Icon(Icons.thumb_down_alt_outlined),
-                    ),
-                    Text('${post.noLongerValidCount}'),
-                  ],
-                  const Spacer(),
-                  if (isCatch && post.weight != null)
-                    Text('${post.weight!.toStringAsFixed(1)} kg'),
-                  if (isCatch && post.length != null)
-                    Text(' • ${post.length!.toStringAsFixed(0)} cm'),
                 ],
               ),
             ),
@@ -235,6 +281,7 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
   ReportCategory _category = ReportCategory.fishActivity;
   File? _cameraPhoto;
   bool _useExactLocation = true;
+  bool _trustConfirmed = false;
   bool _saving = false;
   String? _error;
 
@@ -325,6 +372,37 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
                   ? null
                   : (value) => setState(() => _useExactLocation = value),
             ),
+            const Divider(height: 24),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '🤝 Respectă pescarii. Respectă natura.',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Comunitatea AIFishMap se bazează pe încredere.\n'
+              'Publică doar informații reale și actuale pentru a-i ajuta pe '
+              'ceilalți pescari să ia cele mai bune decizii pe apă.',
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: _trustConfirmed,
+              title: const Text(
+                'Confirm că acest raport este real și reflectă condițiile '
+                'din acest moment.',
+              ),
+              onChanged: _saving
+                  ? null
+                  : (value) => setState(() => _trustConfirmed = value ?? false),
+            ),
+            const Text(
+              'False or misleading reports may be removed and can affect '
+              'your Community Reputation.',
+              style: TextStyle(fontSize: 12),
+            ),
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -341,7 +419,7 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _saving ? null : _save,
+          onPressed: _saving || !_trustConfirmed ? null : _save,
           child: Text(_saving ? 'Publishing…' : 'Publish'),
         ),
       ],

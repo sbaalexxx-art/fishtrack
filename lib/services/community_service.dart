@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -34,6 +35,27 @@ enum ReportCategory {
 }
 
 enum ReportVerification { stillValid, noLongerValid }
+
+enum ReportAbuseReason {
+  falseInformation('False information'),
+  wrongLocation('Wrong location'),
+  spam('Spam'),
+  offensiveContent('Offensive content'),
+  duplicate('Duplicate'),
+  other('Other');
+
+  const ReportAbuseReason(this.label);
+  final String label;
+
+  String get databaseValue => switch (this) {
+    falseInformation => 'false_information',
+    wrongLocation => 'wrong_location',
+    spam => 'spam',
+    offensiveContent => 'offensive_content',
+    duplicate => 'duplicate',
+    other => 'other',
+  };
+}
 
 enum CommunityReportEventType { created, verified }
 
@@ -180,7 +202,7 @@ class CommunityService {
                 type: CommunityPostType.report,
                 title: _text(row['type']) ?? 'Fishing report',
                 body: _text(row['description']) ?? '',
-                imageUrl: _text(row['image_url']),
+                imageUrl: _text(row['photo_url'] ?? row['image_url']),
                 createdAt: _date(row['created_at'] ?? row['timestamp']),
                 authorName: 'Angler',
                 reportCategory: ReportCategory.parse(
@@ -252,7 +274,7 @@ class CommunityService {
             type: CommunityPostType.report,
             title: _text(row['type']) ?? 'Fishing report',
             body: _text(row['description']) ?? '',
-            imageUrl: _text(row['image_url']),
+            imageUrl: _text(row['photo_url'] ?? row['image_url']),
             createdAt: _date(row['created_at'] ?? row['timestamp']),
             reportCategory: ReportCategory.parse(
               row['category'] ?? row['type'],
@@ -317,7 +339,7 @@ class CommunityService {
         CommunityReportEvent(CommunityReportEventType.created, id),
       );
     }
-  });
+  }, debugLabel: 'publish community report');
 
   Future<List<CommunityPost>> getActiveReports() async => (await getFeed())
       .where(
@@ -343,7 +365,31 @@ class CommunityService {
         _reportEvents.add(
           CommunityReportEvent(CommunityReportEventType.verified, reportId),
         );
-      });
+        developer.log(
+          verification == ReportVerification.stillValid
+              ? 'Confirm reaction: $reportId'
+              : 'Not accurate reaction: $reportId',
+          name: 'AIFishMap.Community',
+        );
+      }, debugLabel: 'react to community report');
+
+  Future<void> reportAbuse(String reportId, ReportAbuseReason reason) =>
+      _guard(() async {
+        final user = _supabase.auth.currentUser;
+        if (user == null) {
+          throw const CommunityException('Your session has expired.');
+        }
+        await _supabase.from('report_abuse').upsert({
+          'report_id': reportId,
+          'user_id': user.id,
+          'reason': reason.databaseValue,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'report_id,user_id');
+        developer.log(
+          'Report abuse: $reportId (${reason.databaseValue})',
+          name: 'AIFishMap.Community',
+        );
+      }, debugLabel: 'report community abuse');
 
   Future<bool> toggleLike(CommunityPost post) => _guard(() async {
     final user = _supabase.auth.currentUser;
@@ -461,20 +507,45 @@ class CommunityService {
     return _text(profile?['avatar'] ?? profile?['avatar_url']);
   }
 
-  Future<T> _guard<T>(Future<T> Function() operation) async {
+  Future<T> _guard<T>(
+    Future<T> Function() operation, {
+    String? debugLabel,
+  }) async {
     try {
       return await operation().timeout(const Duration(seconds: 30));
-    } on CommunityException {
+    } on CommunityException catch (error, stackTrace) {
+      _logFailure(debugLabel, error, stackTrace);
       rethrow;
-    } on SocketException {
+    } on SocketException catch (error, stackTrace) {
+      _logFailure(debugLabel, error, stackTrace);
       throw const CommunityException('No internet connection.');
-    } on TimeoutException {
+    } on TimeoutException catch (error, stackTrace) {
+      _logFailure(debugLabel, error, stackTrace);
       throw const CommunityException('The request timed out. Please retry.');
-    } on PostgrestException catch (error) {
-      throw CommunityException(error.message);
-    } on Exception {
+    } on StorageException catch (error, stackTrace) {
+      _logFailure(debugLabel, error, stackTrace);
+      throw const CommunityException(
+        'The report photo could not be uploaded. Please try again.',
+      );
+    } on PostgrestException catch (error, stackTrace) {
+      _logFailure(debugLabel, error, stackTrace);
+      throw const CommunityException(
+        'The report could not be published. Please try again.',
+      );
+    } on Exception catch (error, stackTrace) {
+      _logFailure(debugLabel, error, stackTrace);
       throw const CommunityException('Community data is unavailable.');
     }
+  }
+
+  static void _logFailure(String? label, Object error, StackTrace stackTrace) {
+    if (label == null) return;
+    developer.log(
+      '$label failed',
+      name: 'AIFishMap.Community',
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   static List<Map<String, dynamic>> _maps(Object? value) => value is List

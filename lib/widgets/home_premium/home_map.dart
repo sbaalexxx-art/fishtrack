@@ -328,7 +328,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
       stream: _reportsStream,
       builder: (context, snapshot) {
         if (snapshot.hasData || widget.showWaterStations) {
-          return HomeMap(
+          final map = HomeMap(
             reports: (snapshot.data ?? const <CommunityPost>[])
                 .where((report) => report.isActiveReport)
                 .toList(growable: false),
@@ -339,6 +339,21 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
             onMapReady: _onMapReady,
             baseLayer: _baseLayer,
             overlays: _overlays,
+          );
+          if (!snapshot.hasError) return map;
+          return Stack(
+            children: [
+              Positioned.fill(child: map),
+              Positioned(
+                right: 12,
+                bottom: 12,
+                child: IconButton.filledTonal(
+                  tooltip: 'Retry loading reports',
+                  onPressed: _retry,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ),
+            ],
           );
         }
 

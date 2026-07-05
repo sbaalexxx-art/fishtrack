@@ -46,7 +46,7 @@ class HomePremiumLayout {
     final recentCatchesHeight = (dashboardContentHeight * .30)
         .clamp(112.0, double.infinity)
         .toDouble();
-    final bottomNavHeight = (usableHeight * .085).clamp(68.0, 76.0).toDouble();
+    final bottomNavHeight = (usableHeight * .072).clamp(58.0, 64.0).toDouble();
     late final double titleFontScale;
     late final double bodyFontScale;
     late final double iconScale;
@@ -87,7 +87,7 @@ class HomePremiumLayout {
       dashboardCardHeight: dashboardCardHeight,
       recentCatchesHeight: recentCatchesHeight,
       bottomNavHeight: bottomNavHeight,
-      bottomSafeClearance: bottomNavHeight + sectionGap + viewPadding.bottom,
+      bottomSafeClearance: sectionGap + viewPadding.bottom,
       titleFontScale: titleFontScale,
       bodyFontScale: bodyFontScale,
       iconScale: iconScale,
