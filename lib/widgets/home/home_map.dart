@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../models/station.dart';
 import '../../services/community_service.dart';
 
 enum MapBaseLayer { standard, satellite, fishingMode }
@@ -10,7 +11,9 @@ enum MapOverlay { community, catches, favorites }
 
 class HomeMap extends StatelessWidget {
   final List<CommunityPost> reports;
+  final List<Station> stations;
   final ValueChanged<CommunityPost>? onReportTap;
+  final ValueChanged<Station>? onStationTap;
   final MapController? mapController;
   final LatLng? currentLocation;
   final VoidCallback? onMapReady;
@@ -20,7 +23,9 @@ class HomeMap extends StatelessWidget {
   const HomeMap({
     super.key,
     required this.reports,
+    this.stations = const [],
     this.onReportTap,
+    this.onStationTap,
     this.mapController,
     this.currentLocation,
     this.onMapReady,
@@ -54,6 +59,38 @@ class HomeMap extends StatelessWidget {
           ),
           MarkerLayer(
             markers: [
+              ...stations.map(
+                (station) => Marker(
+                  point: LatLng(station.latitude, station.longitude),
+                  width: 28,
+                  height: 28,
+                  child: Tooltip(
+                    message: station.name,
+                    child: GestureDetector(
+                      onTap: () => onStationTap?.call(station),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF087F8C),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.water_drop_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               if (overlays.contains(MapOverlay.community))
                 ..._clusters(reports).map((cluster) {
                   final report = cluster.reports.first;

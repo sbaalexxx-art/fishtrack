@@ -9,14 +9,22 @@ import '../../services/community_service.dart';
 import '../../services/location_service.dart';
 import '../../services/map_search_service.dart';
 import '../../services/station_filter_service.dart';
+import '../../services/water_service.dart';
+import '../../screens/station_details_page.dart';
 import '../home/home_map.dart';
 import '../home/map_preview.dart';
 
 class HomePremiumMap extends StatefulWidget {
-  const HomePremiumMap({super.key, this.onTap, this.child});
+  const HomePremiumMap({
+    super.key,
+    this.onTap,
+    this.child,
+    this.showWaterStations = false,
+  });
 
   final VoidCallback? onTap;
   final Widget? child;
+  final bool showWaterStations;
 
   @override
   State<HomePremiumMap> createState() => _HomePremiumMapState();
@@ -26,10 +34,12 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   final CommunityService _communityService = const CommunityService();
   final LocationService _locationService = const LocationService();
   final MapSearchService _searchService = const MapSearchService();
+  final WaterService _waterService = WaterService();
   final MapController _mapController = MapController();
   final StationFilterService _filterService = StationFilterService.instance;
   final TextEditingController _searchController = TextEditingController();
   late Stream<List<CommunityPost>> _reportsStream;
+  List<Station> _stations = const [];
   LatLng? _currentLocation;
   LocationFailureReason? _locationFailure;
   bool _isLocating = false;
@@ -46,6 +56,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     _filterService.filters.addListener(_onFiltersChanged);
     if (widget.child == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _locateUser());
+    }
+    if (widget.showWaterStations) {
+      _loadStations();
     }
   }
 
@@ -65,6 +78,24 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     setState(() {
       _reportsStream = _communityService.watchReports();
     });
+  }
+
+  Future<void> _loadStations() async {
+    try {
+      final stations = await _waterService.getStations();
+      if (mounted) setState(() => _stations = stations);
+    } on Exception {
+      // The base map remains usable when station data is unavailable.
+    }
+  }
+
+  Future<void> _openStation(Station station) async {
+    _waterService.selectStation(station);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => StationDetailsPage(station: station),
+      ),
+    );
   }
 
   Future<void> _submitSearch(String query) async {
@@ -296,11 +327,13 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     return StreamBuilder<List<CommunityPost>>(
       stream: _reportsStream,
       builder: (context, snapshot) {
-        if (snapshot.hasData) {
+        if (snapshot.hasData || widget.showWaterStations) {
           return HomeMap(
-            reports: snapshot.data!
+            reports: (snapshot.data ?? const <CommunityPost>[])
                 .where((report) => report.isActiveReport)
                 .toList(growable: false),
+            stations: _stations,
+            onStationTap: _openStation,
             mapController: _mapController,
             currentLocation: _currentLocation,
             onMapReady: _onMapReady,

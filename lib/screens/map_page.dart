@@ -12,7 +12,7 @@ class MapPage extends StatelessWidget {
       body: const SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(12, 8, 12, 100),
-          child: HomePremiumMap(),
+          child: HomePremiumMap(showWaterStations: true),
         ),
       ),
     );
