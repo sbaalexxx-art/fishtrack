@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -22,12 +23,15 @@ class CatchRepository {
   Future<void> createCatch({
     required String imagePath,
     required String species,
-    required double weight,
-    required double length,
+    required double? weightKg,
+    required double? lengthCm,
     required String notes,
-    required double latitude,
-    required double longitude,
-    required String stationId,
+    required double? latitude,
+    required double? longitude,
+    required String? placeName,
+    required String waterType,
+    required String locationPrivacy,
+    required String? stationId,
   }) async {
     final imageFile = File(imagePath);
     if (!await imageFile.exists()) {
@@ -52,17 +56,23 @@ class CatchRepository {
           .from(_bucket)
           .upload(storagePath, imageFile)
           .timeout(const Duration(seconds: 45));
-    } on SocketException {
+    } on SocketException catch (error, stackTrace) {
+      _logFailure('catch image upload', error, stackTrace);
       throw const CatchSubmissionException(
         'No internet connection. Your catch was not uploaded.',
       );
-    } on TimeoutException {
+    } on TimeoutException catch (error, stackTrace) {
+      _logFailure('catch image upload', error, stackTrace);
       throw const CatchSubmissionException(
         'The upload timed out. Check your connection and try again.',
       );
-    } on StorageException catch (error) {
-      throw CatchSubmissionException('Image upload failed: ${error.message}');
-    } on Exception {
+    } on StorageException catch (error, stackTrace) {
+      _logFailure('catch image upload', error, stackTrace);
+      throw const CatchSubmissionException(
+        'The image could not be uploaded. Please try again.',
+      );
+    } on Exception catch (error, stackTrace) {
+      _logFailure('catch image upload', error, stackTrace);
       throw const CatchSubmissionException(
         'The image could not be uploaded. Please try again.',
       );
@@ -72,11 +82,14 @@ class CatchRepository {
       final data = <String, Object?>{
         'station_id': stationId,
         'species': species.trim(),
-        'weight': weight,
-        'length': length,
+        'weight': weightKg,
+        'length': lengthCm,
         'notes': notes.trim(),
         'latitude': latitude,
         'longitude': longitude,
+        'place_name': placeName,
+        'water_type': waterType,
+        'location_privacy': locationPrivacy,
         'image': _supabase.storage.from(_bucket).getPublicUrl(storagePath),
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       };
@@ -85,17 +98,26 @@ class CatchRepository {
           .from('catches')
           .insert(data)
           .timeout(const Duration(seconds: 20));
-    } on SocketException {
+    } on SocketException catch (error, stackTrace) {
+      _logFailure('catch database insert', error, stackTrace);
       await _removeImage(storagePath);
       throw const CatchSubmissionException(
         'No internet connection. Your catch was not saved.',
       );
-    } on TimeoutException {
+    } on TimeoutException catch (error, stackTrace) {
+      _logFailure('catch database insert', error, stackTrace);
       await _removeImage(storagePath);
       throw const CatchSubmissionException(
         'Saving timed out. Check your connection and try again.',
       );
-    } on Exception {
+    } on PostgrestException catch (error, stackTrace) {
+      _logFailure('catch database insert', error, stackTrace);
+      await _removeImage(storagePath);
+      throw const CatchSubmissionException(
+        'The catch could not be saved. Please try again.',
+      );
+    } on Exception catch (error, stackTrace) {
+      _logFailure('catch database insert', error, stackTrace);
       await _removeImage(storagePath);
       throw const CatchSubmissionException(
         'The catch could not be saved. Please try again.',
@@ -131,8 +153,6 @@ class CatchRepository {
               id.isEmpty ||
               species == null ||
               species.isEmpty ||
-              weight == null ||
-              length == null ||
               date == null) {
             return null;
           }
@@ -152,4 +172,17 @@ class CatchRepository {
   static double? _number(Object? value) => value is num
       ? value.toDouble()
       : double.tryParse(value?.toString() ?? '');
+
+  static void _logFailure(
+    String operation,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    developer.log(
+      '$operation failed',
+      name: 'AIFishMap.Catches',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
 }

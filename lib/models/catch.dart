@@ -4,8 +4,8 @@ class Catch {
 
   final String species;
 
-  final double weight;
-  final double length;
+  final double? weight;
+  final double? length;
 
   final DateTime date;
 

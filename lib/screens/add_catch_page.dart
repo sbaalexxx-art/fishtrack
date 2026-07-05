@@ -9,6 +9,27 @@ import '../repositories/catch_repository.dart';
 import '../services/location_service.dart';
 import '../services/water_service.dart';
 
+enum _LocationPrivacy {
+  exact('Exact location'),
+  approximate('Approximate location'),
+  hidden('Hidden location');
+
+  const _LocationPrivacy(this.label);
+  final String label;
+}
+
+enum _WaterType {
+  river('River'),
+  lake('Lake'),
+  reservoir('Reservoir'),
+  canal('Canal'),
+  danube('Danube'),
+  other('Other');
+
+  const _WaterType(this.label);
+  final String label;
+}
+
 class AddCatchPage extends StatefulWidget {
   const AddCatchPage({super.key});
 
@@ -22,6 +43,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
   final _weightController = TextEditingController();
   final _lengthController = TextEditingController();
   final _notesController = TextEditingController();
+  final _placeNameController = TextEditingController();
   final _picker = ImagePicker();
   final _locationService = const LocationService();
   final _waterService = WaterService();
@@ -35,6 +57,8 @@ class _AddCatchPageState extends State<AddCatchPage> {
   String? _submissionError;
   bool _isLocating = true;
   bool _isSubmitting = false;
+  _LocationPrivacy _locationPrivacy = _LocationPrivacy.exact;
+  _WaterType _waterType = _WaterType.river;
 
   @override
   void initState() {
@@ -49,24 +73,11 @@ class _AddCatchPageState extends State<AddCatchPage> {
     _weightController.dispose();
     _lengthController.dispose();
     _notesController.dispose();
+    _placeNameController.dispose();
     super.dispose();
   }
 
-  Future<List<Station>> _loadStations() async {
-    final stations = await _waterService.getStations();
-    if (stations.isNotEmpty && mounted) {
-      final selected = _waterService.selectedStation;
-      setState(() {
-        _station = selected == null
-            ? stations.first
-            : stations.cast<Station?>().firstWhere(
-                (station) => station?.id == selected.id,
-                orElse: () => stations.first,
-              );
-      });
-    }
-    return stations;
-  }
+  Future<List<Station>> _loadStations() => _waterService.getStations();
 
   Future<void> _loadLocation() async {
     setState(() {
@@ -89,11 +100,11 @@ class _AddCatchPageState extends State<AddCatchPage> {
     LocationFailureReason.serviceDisabled =>
       'Turn on location services to attach GPS coordinates.',
     LocationFailureReason.permissionDenied =>
-      'Location permission is required to save a catch.',
+      'Allow location access or enter a place name manually.',
     LocationFailureReason.permissionDeniedForever =>
-      'Enable location permission in system settings, then retry.',
+      'Enable location in system settings or enter a place name manually.',
     LocationFailureReason.unavailable =>
-      'Your current location is unavailable. Please retry.',
+      'Current location unavailable. Retry or enter a place name.',
   };
 
   Future<void> _takePhoto() async {
@@ -119,14 +130,28 @@ class _AddCatchPageState extends State<AddCatchPage> {
       setState(() => _submissionError = 'Take a photo with the camera.');
       return;
     }
-    if (_station == null) {
-      setState(() => _submissionError = 'Select a fishing station.');
+    final placeName = _placeNameController.text.trim();
+    if (_position == null && placeName.isEmpty) {
+      setState(
+        () =>
+            _submissionError = 'Use GPS or enter a place name for this catch.',
+      );
       return;
     }
-    if (_position == null) {
-      setState(() => _submissionError = _locationError ?? 'GPS is not ready.');
-      return;
-    }
+
+    final position = _position;
+    final latitude = switch (_locationPrivacy) {
+      _LocationPrivacy.exact => position?.latitude,
+      _LocationPrivacy.approximate =>
+        position == null ? null : (position.latitude * 100).round() / 100,
+      _LocationPrivacy.hidden => null,
+    };
+    final longitude = switch (_locationPrivacy) {
+      _LocationPrivacy.exact => position?.longitude,
+      _LocationPrivacy.approximate =>
+        position == null ? null : (position.longitude * 100).round() / 100,
+      _LocationPrivacy.hidden => null,
+    };
 
     setState(() {
       _isSubmitting = true;
@@ -136,12 +161,15 @@ class _AddCatchPageState extends State<AddCatchPage> {
       await _catchRepository.createCatch(
         imagePath: _image!.path,
         species: _speciesController.text,
-        weight: double.parse(_weightController.text.replaceAll(',', '.')),
-        length: double.parse(_lengthController.text.replaceAll(',', '.')),
+        weightKg: _parseWeightKg(_weightController.text),
+        lengthCm: _optionalNumber(_lengthController.text),
         notes: _notesController.text,
-        latitude: _position!.latitude,
-        longitude: _position!.longitude,
-        stationId: _station!.id,
+        latitude: latitude,
+        longitude: longitude,
+        placeName: placeName.isEmpty ? null : placeName,
+        waterType: _waterType.name,
+        locationPrivacy: _locationPrivacy.name,
+        stationId: _station?.id,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -158,9 +186,33 @@ class _AddCatchPageState extends State<AddCatchPage> {
   String? _requiredText(String? value) =>
       value == null || value.trim().isEmpty ? 'Required' : null;
 
-  String? _positiveNumber(String? value) {
-    final number = double.tryParse((value ?? '').replaceAll(',', '.'));
+  String? _optionalPositiveNumber(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final number = double.tryParse(value.replaceAll(',', '.'));
     return number == null || number <= 0 ? 'Enter a value above 0' : null;
+  }
+
+  String? _weightValidator(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    return _parseWeightKg(value) == null
+        ? 'Use a weight such as 600 g, 0.6 kg, or 3 kg'
+        : null;
+  }
+
+  double? _parseWeightKg(String value) {
+    final match = RegExp(
+      r'^([0-9]+(?:[.,][0-9]+)?)\s*(g|kg)?$',
+      caseSensitive: false,
+    ).firstMatch(value.trim());
+    if (match == null) return null;
+    final amount = double.tryParse(match.group(1)!.replaceAll(',', '.'));
+    if (amount == null || amount <= 0) return null;
+    return match.group(2)?.toLowerCase() == 'g' ? amount / 1000 : amount;
+  }
+
+  double? _optionalNumber(String value) {
+    if (value.trim().isEmpty) return null;
+    return double.tryParse(value.replaceAll(',', '.'));
   }
 
   @override
@@ -227,13 +279,12 @@ class _AddCatchPageState extends State<AddCatchPage> {
                       child: TextFormField(
                         controller: _weightController,
                         enabled: !_isSubmitting,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
+                        keyboardType: TextInputType.text,
                         decoration: const InputDecoration(
-                          labelText: 'Weight (kg)',
+                          labelText: 'Weight (g or kg)',
+                          hintText: '600 g or 0.6 kg',
                         ),
-                        validator: _positiveNumber,
+                        validator: _weightValidator,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -247,7 +298,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                         decoration: const InputDecoration(
                           labelText: 'Length (cm)',
                         ),
-                        validator: _positiveNumber,
+                        validator: _optionalPositiveNumber,
                       ),
                     ),
                   ],
@@ -265,6 +316,54 @@ class _AddCatchPageState extends State<AddCatchPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                TextFormField(
+                  controller: _placeNameController,
+                  enabled: !_isSubmitting,
+                  decoration: const InputDecoration(
+                    labelText: 'Place name (optional with GPS)',
+                    hintText: 'Lake, river, reservoir, canal…',
+                    prefixIcon: Icon(Icons.place_outlined),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<_WaterType>(
+                  initialValue: _waterType,
+                  decoration: const InputDecoration(
+                    labelText: 'Water type',
+                    prefixIcon: Icon(Icons.water_outlined),
+                  ),
+                  items: _WaterType.values
+                      .map(
+                        (type) => DropdownMenuItem(
+                          value: type,
+                          child: Text(type.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _isSubmitting
+                      ? null
+                      : (value) => setState(() => _waterType = value!),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<_LocationPrivacy>(
+                  initialValue: _locationPrivacy,
+                  decoration: const InputDecoration(
+                    labelText: 'Location privacy',
+                    prefixIcon: Icon(Icons.shield_outlined),
+                  ),
+                  items: _LocationPrivacy.values
+                      .map(
+                        (privacy) => DropdownMenuItem(
+                          value: privacy,
+                          child: Text(privacy.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _isSubmitting
+                      ? null
+                      : (value) => setState(() => _locationPrivacy = value!),
+                ),
+                const SizedBox(height: 12),
                 FutureBuilder<List<Station>>(
                   future: _stationsFuture,
                   builder: (context, snapshot) {
@@ -273,16 +372,25 @@ class _AddCatchPageState extends State<AddCatchPage> {
                     }
                     if (snapshot.hasError || (snapshot.data?.isEmpty ?? true)) {
                       return const ListTile(
-                        leading: Icon(Icons.error_outline),
-                        title: Text('Fishing stations are unavailable.'),
+                        leading: Icon(Icons.info_outline),
+                        title: Text('Optional fishing stations unavailable.'),
                       );
                     }
                     return DropdownButtonFormField<Station>(
                       initialValue: _station,
                       isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Station',
-                        prefixIcon: Icon(Icons.location_on_outlined),
+                      decoration: InputDecoration(
+                        labelText: 'Station (optional)',
+                        prefixIcon: const Icon(Icons.location_on_outlined),
+                        suffixIcon: _station == null
+                            ? null
+                            : IconButton(
+                                tooltip: 'Clear station',
+                                onPressed: _isSubmitting
+                                    ? null
+                                    : () => setState(() => _station = null),
+                                icon: const Icon(Icons.clear_rounded),
+                              ),
                       ),
                       items: snapshot.data!
                           .map(

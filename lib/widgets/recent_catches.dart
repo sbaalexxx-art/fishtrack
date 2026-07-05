@@ -59,7 +59,12 @@ class RecentCatches extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  "${fish.weight.toStringAsFixed(1)} kg • ${fish.length.toStringAsFixed(0)} cm",
+                  [
+                    if (fish.weight != null)
+                      '${fish.weight!.toStringAsFixed(1)} kg',
+                    if (fish.length != null)
+                      '${fish.length!.toStringAsFixed(0)} cm',
+                  ].join(' • '),
                 ),
                 trailing: Text(
                   "${fish.date.day}.${fish.date.month}.${fish.date.year}",
