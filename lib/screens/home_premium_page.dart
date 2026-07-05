@@ -4,6 +4,7 @@ import '../widgets/home_premium/dashboard.dart';
 import '../widgets/home_premium/home_header.dart';
 import '../widgets/home_premium/home_map.dart';
 import '../widgets/home_premium/home_premium_layout.dart';
+import '../widgets/home_premium/side_menu.dart';
 import 'water_level_page.dart';
 import 'weather_page.dart';
 import 'developer_mode_page.dart';
@@ -27,39 +28,7 @@ class HomePremiumPage extends StatelessWidget {
     return Scaffold(
       key: scaffoldKey,
       backgroundColor: const Color(0xFF0F1115),
-      drawer: Drawer(
-        child: SafeArea(
-          child: ListView(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.map_rounded),
-                title: const Text('Map'),
-                onTap: () => onNavigate(1),
-              ),
-              ListTile(
-                leading: const Icon(Icons.wb_sunny_rounded),
-                title: const Text('Weather'),
-                onTap: () => onNavigate(2),
-              ),
-              ListTile(
-                leading: const Icon(Icons.groups_rounded),
-                title: const Text('Community'),
-                onTap: () => onNavigate(3),
-              ),
-              ListTile(
-                leading: const Icon(Icons.favorite_rounded),
-                title: const Text('Favorites'),
-                onTap: () => onNavigate(4),
-              ),
-              ListTile(
-                leading: const Icon(Icons.person_rounded),
-                title: const Text('Profile'),
-                onTap: () => onNavigate(5),
-              ),
-            ],
-          ),
-        ),
-      ),
+      drawer: HomeSideMenu(onNavigate: onNavigate),
       body: SafeArea(
         bottom: false,
         child: LayoutBuilder(
