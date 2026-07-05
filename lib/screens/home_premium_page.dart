@@ -6,6 +6,7 @@ import '../widgets/home_premium/home_map.dart';
 import '../widgets/home_premium/home_premium_layout.dart';
 import 'water_level_page.dart';
 import 'weather_page.dart';
+import 'developer_mode_page.dart';
 
 class HomePremiumPage extends StatelessWidget {
   const HomePremiumPage({super.key, required this.onNavigate});
@@ -18,9 +19,7 @@ class HomePremiumPage extends StatelessWidget {
     final scaffoldKey = GlobalKey<ScaffoldState>();
 
     void openPage(Widget page) {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => page),
-      );
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
     }
 
     return Scaffold(
@@ -82,6 +81,8 @@ class HomePremiumPage extends StatelessWidget {
                       HomePremiumHeader(
                         onMenuPressed: () =>
                             scaffoldKey.currentState?.openDrawer(),
+                        onLogoLongPress: () =>
+                            openPage(const DeveloperModePage()),
                       ),
                       SizedBox(height: layout.sectionGap * .5),
                       SizedBox(
@@ -92,8 +93,7 @@ class HomePremiumPage extends StatelessWidget {
                       PremiumDashboard(
                         onWaterLevelPressed: () =>
                             openPage(const WaterLevelPage()),
-                        onWeatherPressed: () =>
-                            openPage(const WeatherPage()),
+                        onWeatherPressed: () => openPage(const WeatherPage()),
                         onCommunityPressed: () => onNavigate(3),
                         onAiPressed: () => onNavigate(1),
                       ),

@@ -23,6 +23,12 @@ class WaterService {
   final WaterRepository _repository;
   final LocationService _locationService;
 
+  static void clearCache() {
+    _cachedStations = null;
+    _cachedAt = null;
+    _activeRequest = null;
+  }
+
   Stream<Station> get stationSelections => _stationSelectionController.stream;
   Station? get selectedStation => _selectedStation;
 

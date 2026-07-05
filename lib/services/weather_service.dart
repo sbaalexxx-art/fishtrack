@@ -20,6 +20,8 @@ class WeatherService {
   final LocationService _locationService;
   final WaterService _waterService;
 
+  static void clearCache() => _cache.clear();
+
   Future<WeatherData> getCurrentWeather({Station? fallbackStation}) async {
     final coordinates = await _resolveCoordinates(fallbackStation);
     final key =

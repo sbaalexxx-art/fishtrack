@@ -8,11 +8,13 @@ class HomePremiumHeader extends StatelessWidget {
     this.notificationCount = 3,
     this.onMenuPressed,
     this.onNotificationPressed,
+    this.onLogoLongPress,
   });
 
   final int notificationCount;
   final VoidCallback? onMenuPressed;
   final VoidCallback? onNotificationPressed;
+  final VoidCallback? onLogoLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -25,43 +27,47 @@ class HomePremiumHeader extends StatelessWidget {
           _HeaderButton(icon: Icons.menu_rounded, onTap: onMenuPressed),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text.rich(
-                  TextSpan(
-                    style: TextStyle(
-                      fontSize: 18 * layout.titleFontScale,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -.3,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onLongPress: onLogoLongPress,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      style: TextStyle(
+                        fontSize: 18 * layout.titleFontScale,
+                        height: 1,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -.3,
+                      ),
+                      children: const [
+                        TextSpan(
+                          text: 'AI ',
+                          style: TextStyle(color: Color(0xFF12D8D6)),
+                        ),
+                        TextSpan(
+                          text: 'FishMap',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ],
                     ),
-                    children: const [
-                      TextSpan(
-                        text: 'AI ',
-                        style: TextStyle(color: Color(0xFF12D8D6)),
-                      ),
-                      TextSpan(
-                        text: 'FishMap',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ],
                   ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  'Designed by anglers. Built for anglers.',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 8 * layout.bodyFontScale,
-                    height: 1,
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(height: 1),
+                  Text(
+                    'Designed by anglers. Built for anglers.',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 8 * layout.bodyFontScale,
+                      height: 1,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 6),
