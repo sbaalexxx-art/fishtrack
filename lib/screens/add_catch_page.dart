@@ -4,10 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../models/station.dart';
 import '../repositories/catch_repository.dart';
 import '../services/location_service.dart';
-import '../services/water_service.dart';
 
 enum _LocationPrivacy {
   exact('Exact location'),
@@ -30,6 +28,14 @@ enum _WaterType {
   final String label;
 }
 
+enum _WeightUnit {
+  grams('g'),
+  kilograms('kg');
+
+  const _WeightUnit(this.label);
+  final String label;
+}
+
 class AddCatchPage extends StatefulWidget {
   const AddCatchPage({super.key});
 
@@ -46,24 +52,19 @@ class _AddCatchPageState extends State<AddCatchPage> {
   final _placeNameController = TextEditingController();
   final _picker = ImagePicker();
   final _locationService = const LocationService();
-  final _waterService = WaterService();
   final _catchRepository = const CatchRepository();
 
-  late final Future<List<Station>> _stationsFuture;
   XFile? _image;
   Position? _position;
-  Station? _station;
-  String? _locationError;
   String? _submissionError;
-  bool _isLocating = true;
   bool _isSubmitting = false;
   _LocationPrivacy _locationPrivacy = _LocationPrivacy.exact;
   _WaterType _waterType = _WaterType.river;
+  _WeightUnit _weightUnit = _WeightUnit.kilograms;
 
   @override
   void initState() {
     super.initState();
-    _stationsFuture = _loadStations();
     _loadLocation();
   }
 
@@ -77,35 +78,15 @@ class _AddCatchPageState extends State<AddCatchPage> {
     super.dispose();
   }
 
-  Future<List<Station>> _loadStations() => _waterService.getStations();
-
   Future<void> _loadLocation() async {
-    setState(() {
-      _isLocating = true;
-      _locationError = null;
-    });
     try {
       final position = await _locationService.determinePosition();
       if (!mounted) return;
       setState(() => _position = position);
-    } on LocationFailure catch (failure) {
-      if (!mounted) return;
-      setState(() => _locationError = _locationMessage(failure.reason));
-    } finally {
-      if (mounted) setState(() => _isLocating = false);
+    } on LocationFailure {
+      // Manual place name remains available when GPS cannot be obtained.
     }
   }
-
-  String _locationMessage(LocationFailureReason reason) => switch (reason) {
-    LocationFailureReason.serviceDisabled =>
-      'Turn on location services to attach GPS coordinates.',
-    LocationFailureReason.permissionDenied =>
-      'Allow location access or enter a place name manually.',
-    LocationFailureReason.permissionDeniedForever =>
-      'Enable location in system settings or enter a place name manually.',
-    LocationFailureReason.unavailable =>
-      'Current location unavailable. Retry or enter a place name.',
-  };
 
   Future<void> _takePhoto() async {
     try {
@@ -161,7 +142,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
       await _catchRepository.createCatch(
         imagePath: _image!.path,
         species: _speciesController.text,
-        weightKg: _parseWeightKg(_weightController.text),
+        weightKg: _normalizedWeightKg(_weightController.text),
         lengthCm: _optionalNumber(_lengthController.text),
         notes: _notesController.text,
         latitude: latitude,
@@ -169,7 +150,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
         placeName: placeName.isEmpty ? null : placeName,
         waterType: _waterType.name,
         locationPrivacy: _locationPrivacy.name,
-        stationId: _station?.id,
+        stationId: null,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -192,22 +173,10 @@ class _AddCatchPageState extends State<AddCatchPage> {
     return number == null || number <= 0 ? 'Enter a value above 0' : null;
   }
 
-  String? _weightValidator(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    return _parseWeightKg(value) == null
-        ? 'Use a weight such as 600 g, 0.6 kg, or 3 kg'
-        : null;
-  }
-
-  double? _parseWeightKg(String value) {
-    final match = RegExp(
-      r'^([0-9]+(?:[.,][0-9]+)?)\s*(g|kg)?$',
-      caseSensitive: false,
-    ).firstMatch(value.trim());
-    if (match == null) return null;
-    final amount = double.tryParse(match.group(1)!.replaceAll(',', '.'));
-    if (amount == null || amount <= 0) return null;
-    return match.group(2)?.toLowerCase() == 'g' ? amount / 1000 : amount;
+  double? _normalizedWeightKg(String value) {
+    final amount = _optionalNumber(value);
+    if (amount == null) return null;
+    return _weightUnit == _WeightUnit.grams ? amount / 1000 : amount;
   }
 
   double? _optionalNumber(String value) {
@@ -273,35 +242,40 @@ class _AddCatchPageState extends State<AddCatchPage> {
                   validator: _requiredText,
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _weightController,
-                        enabled: !_isSubmitting,
-                        keyboardType: TextInputType.text,
-                        decoration: const InputDecoration(
-                          labelText: 'Weight (g or kg)',
-                          hintText: '600 g or 0.6 kg',
+                TextFormField(
+                  controller: _weightController,
+                  enabled: !_isSubmitting,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Weight'),
+                  validator: _optionalPositiveNumber,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<_WeightUnit>(
+                  initialValue: _weightUnit,
+                  decoration: const InputDecoration(labelText: 'Weight unit'),
+                  items: _WeightUnit.values
+                      .map(
+                        (unit) => DropdownMenuItem(
+                          value: unit,
+                          child: Text(unit.label),
                         ),
-                        validator: _weightValidator,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _lengthController,
-                        enabled: !_isSubmitting,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Length (cm)',
-                        ),
-                        validator: _optionalPositiveNumber,
-                      ),
-                    ),
-                  ],
+                      )
+                      .toList(),
+                  onChanged: _isSubmitting
+                      ? null
+                      : (value) => setState(() => _weightUnit = value!),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _lengthController,
+                  enabled: !_isSubmitting,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Length (cm)'),
+                  validator: _optionalPositiveNumber,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -362,80 +336,6 @@ class _AddCatchPageState extends State<AddCatchPage> {
                   onChanged: _isSubmitting
                       ? null
                       : (value) => setState(() => _locationPrivacy = value!),
-                ),
-                const SizedBox(height: 12),
-                FutureBuilder<List<Station>>(
-                  future: _stationsFuture,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const LinearProgressIndicator();
-                    }
-                    if (snapshot.hasError || (snapshot.data?.isEmpty ?? true)) {
-                      return const ListTile(
-                        leading: Icon(Icons.info_outline),
-                        title: Text('Optional fishing stations unavailable.'),
-                      );
-                    }
-                    return DropdownButtonFormField<Station>(
-                      initialValue: _station,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: 'Station (optional)',
-                        prefixIcon: const Icon(Icons.location_on_outlined),
-                        suffixIcon: _station == null
-                            ? null
-                            : IconButton(
-                                tooltip: 'Clear station',
-                                onPressed: _isSubmitting
-                                    ? null
-                                    : () => setState(() => _station = null),
-                                icon: const Icon(Icons.clear_rounded),
-                              ),
-                      ),
-                      items: snapshot.data!
-                          .map(
-                            (station) => DropdownMenuItem(
-                              value: station,
-                              child: Text(
-                                station.name,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _isSubmitting
-                          ? null
-                          : (station) => setState(() => _station = station),
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: _isLocating
-                      ? const SizedBox.square(
-                          dimension: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          _position == null
-                              ? Icons.gps_off_rounded
-                              : Icons.gps_fixed_rounded,
-                        ),
-                  title: Text(
-                    _isLocating
-                        ? 'Getting GPS coordinates…'
-                        : _position == null
-                        ? (_locationError ?? 'Location unavailable')
-                        : '${_position!.latitude.toStringAsFixed(5)}, '
-                              '${_position!.longitude.toStringAsFixed(5)}',
-                  ),
-                  trailing: !_isLocating && _position == null
-                      ? TextButton(
-                          onPressed: _loadLocation,
-                          child: const Text('Retry'),
-                        )
-                      : null,
                 ),
                 if (_submissionError != null) ...[
                   const SizedBox(height: 8),
