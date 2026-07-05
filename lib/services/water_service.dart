@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/station.dart';
+import '../models/water_level.dart';
 import '../repositories/water_repository.dart';
 import 'location_service.dart';
 
@@ -29,6 +30,9 @@ class WaterService {
     _selectedStation = station;
     _stationSelectionController.add(station);
   }
+
+  Future<List<WaterLevel>> getHistory(String stationId, {int limit = 30}) =>
+      _repository.getHistory(stationId, limit: limit);
 
   Future<List<Station>> getStations({bool forceRefresh = false}) async {
     final cachedStations = _cachedStations;

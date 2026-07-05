@@ -166,8 +166,14 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                       SizedBox(
                         width: compact ? 46 : 68,
                         height: 38,
-                        child: CustomPaint(
-                          painter: _MiniChartPainter(trendColor),
+                        child: Center(
+                          child: Text(
+                            'History\nunavailable',
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.caption.copyWith(
+                              fontSize: compact ? 8 : 9,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -237,32 +243,4 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
     }
     return 'Updated ${difference.inDays} d ago';
   }
-}
-
-class _MiniChartPainter extends CustomPainter {
-  const _MiniChartPainter(this.color);
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(0, size.height * .75)
-      ..lineTo(size.width * .18, size.height * .68)
-      ..lineTo(size.width * .35, size.height * .72)
-      ..lineTo(size.width * .55, size.height * .50)
-      ..lineTo(size.width * .75, size.height * .55)
-      ..lineTo(size.width, size.height * .20);
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(_MiniChartPainter oldDelegate) =>
-      oldDelegate.color != color;
 }

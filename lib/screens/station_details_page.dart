@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/station.dart';
+import '../models/water_level.dart';
 import '../models/weather.dart';
 import '../services/water_service.dart';
 import '../services/weather_service.dart';
-import '../widgets/recent_catches.dart';
-import 'add_catch_page.dart';
 import 'favorites_page.dart';
 
 class StationDetailsPage extends StatefulWidget {
@@ -22,7 +20,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   final _favoritesRepository = const FavoriteStationsRepository();
   bool _isFavorite = false;
   bool _favoriteLoading = true;
-  late final Future<List<WaterLevelReading>> _history;
+  late final Future<List<WaterLevel>> _history;
   late final Future<WeatherData> _weather;
 
   Station get station => widget.station;
@@ -47,19 +45,8 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     }
   }
 
-  Future<List<WaterLevelReading>> _loadHistory() async {
-    final response = await Supabase.instance.client
-        .from('water_levels')
-        .select('value, timestamp, trend')
-        .eq('station_id', station.id)
-        .order('timestamp', ascending: false)
-        .limit(30)
-        .timeout(const Duration(seconds: 12));
-    return response
-        .map(WaterLevelReading.tryFromJson)
-        .whereType<WaterLevelReading>()
-        .toList(growable: false);
-  }
+  Future<List<WaterLevel>> _loadHistory() =>
+      WaterService().getHistory(station.id);
 
   Future<void> _toggleFavorite() async {
     setState(() => _favoriteLoading = true);
@@ -80,13 +67,6 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _reportCatch() async {
-    WaterService().selectStation(station);
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute<bool>(builder: (_) => const AddCatchPage()));
   }
 
   Color get trendColor {
@@ -228,7 +208,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
-              child: FutureBuilder<List<WaterLevelReading>>(
+              child: FutureBuilder<List<WaterLevel>>(
                 future: _history,
                 builder: (context, snapshot) {
                   final readings = snapshot.data ?? const [];
@@ -245,10 +225,34 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                                   '${reading.value.toStringAsFixed(0)} cm',
                             )
                             .join(' • ');
-                  return ListTile(
-                    leading: const Icon(Icons.show_chart, color: Colors.blue),
-                    title: const Text('Water level history'),
-                    subtitle: Text(subtitle),
+                  return Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.show_chart, color: Colors.blue),
+                            SizedBox(width: 12),
+                            Text('Water level history'),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(subtitle),
+                        if (readings.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 120,
+                            width: double.infinity,
+                            child: CustomPaint(
+                              painter: _WaterHistoryPainter(
+                                readings.reversed.toList(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   );
                 },
               ),
@@ -281,17 +285,6 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
             ),
             const SizedBox(height: 24),
 
-            const Text(
-              "Capturi recente",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 16),
-
-            RecentCatches(stationId: station.id),
-
-            const SizedBox(height: 24),
-
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -302,17 +295,6 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                 label: Text(
                   _isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
                 ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _reportCatch,
-                icon: const Icon(Icons.campaign),
-                label: const Text('Report a Catch'),
               ),
             ),
 
@@ -334,18 +316,42 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   }
 }
 
-class WaterLevelReading {
-  const WaterLevelReading({required this.value, required this.timestamp});
+class _WaterHistoryPainter extends CustomPainter {
+  const _WaterHistoryPainter(this.readings);
 
-  final double value;
-  final DateTime timestamp;
+  final List<WaterLevel> readings;
 
-  static WaterLevelReading? tryFromJson(Map<String, dynamic> json) {
-    final value = json['value'] is num
-        ? (json['value'] as num).toDouble()
-        : double.tryParse(json['value']?.toString() ?? '');
-    final timestamp = DateTime.tryParse(json['timestamp']?.toString() ?? '');
-    if (value == null || timestamp == null) return null;
-    return WaterLevelReading(value: value, timestamp: timestamp.toLocal());
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (readings.length < 2) return;
+    final values = readings.map((reading) => reading.value);
+    final minimum = values.reduce((a, b) => a < b ? a : b);
+    final maximum = values.reduce((a, b) => a > b ? a : b);
+    final range = maximum - minimum;
+    final path = Path();
+    for (var index = 0; index < readings.length; index++) {
+      final x = size.width * index / (readings.length - 1);
+      final normalized = range == 0
+          ? .5
+          : (readings[index].value - minimum) / range;
+      final y = size.height - (normalized * size.height);
+      if (index == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.blue
+        ..strokeWidth = 3
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round,
+    );
   }
+
+  @override
+  bool shouldRepaint(_WaterHistoryPainter oldDelegate) =>
+      oldDelegate.readings != readings;
 }

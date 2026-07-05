@@ -187,7 +187,8 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
         if (snapshot.hasData) {
           _allStations = snapshot.data!;
           return HomeMap(
-            stations: _filterService.apply(snapshot.data!),
+            // Hydrometric stations belong to Water Level, not the fishing map.
+            stations: const [],
             onStationTap: _openStation,
             mapController: _mapController,
             currentLocation: _currentLocation,
