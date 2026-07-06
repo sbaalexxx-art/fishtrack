@@ -24,20 +24,36 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Future<void> _markRead(AppNotification notification) async {
     if (notification.isRead) return;
-    await _service.markAsRead(notification.id);
-    if (mounted) {
-      setState(
-        () => _notifications = Future.value(_service.cachedNotifications()),
-      );
+    try {
+      await _service.markAsRead(notification.id);
+      if (mounted) {
+        setState(
+          () => _notifications = Future.value(_service.cachedNotifications()),
+        );
+      }
+    } on NotificationException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
     }
   }
 
   Future<void> _clearRead() async {
-    await _service.clearRead();
-    if (mounted) {
-      setState(
-        () => _notifications = Future.value(_service.cachedNotifications()),
-      );
+    try {
+      await _service.clearRead();
+      if (mounted) {
+        setState(
+          () => _notifications = Future.value(_service.cachedNotifications()),
+        );
+      }
+    } on NotificationException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
     }
   }
 

@@ -18,6 +18,7 @@ class _ProfilePageState extends State<ProfilePage> {
   late final TextEditingController _nameController;
   bool _saving = false;
   String? _avatarUrl;
+  bool _avatarLoadFailed = false;
   String? _error;
   late final Future<ReputationMetrics> _reputation;
 
@@ -51,7 +52,12 @@ class _ProfilePageState extends State<ProfilePage> {
     });
     try {
       final url = await _authService.uploadAvatar(image.path);
-      if (mounted) setState(() => _avatarUrl = url);
+      if (mounted) {
+        setState(() {
+          _avatarUrl = url;
+          _avatarLoadFailed = false;
+        });
+      }
     } on AuthException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } finally {
@@ -101,7 +107,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final user = _authService.currentUser;
-    final hasAvatar = _avatarUrl?.isNotEmpty ?? false;
+    final hasAvatar = (_avatarUrl?.isNotEmpty ?? false) && !_avatarLoadFailed;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
@@ -117,6 +123,13 @@ class _ProfilePageState extends State<ProfilePage> {
                     radius: 54,
                     backgroundImage: hasAvatar
                         ? NetworkImage(_avatarUrl!)
+                        : null,
+                    onBackgroundImageError: hasAvatar
+                        ? (_, _) {
+                            if (mounted && !_avatarLoadFailed) {
+                              setState(() => _avatarLoadFailed = true);
+                            }
+                          }
                         : null,
                     child: hasAvatar
                         ? null

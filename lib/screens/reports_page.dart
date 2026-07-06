@@ -133,6 +133,22 @@ class _CommunityPostCard extends StatelessWidget {
     }
   }
 
+  Future<void> _verify(
+    BuildContext context,
+    ReportVerification verification,
+  ) async {
+    try {
+      await const CommunityService().verifyReport(post.id, verification);
+      onChanged();
+    } on CommunityException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isCatch = post.type == CommunityPostType.catchPost;
@@ -236,26 +252,18 @@ class _CommunityPostCard extends StatelessWidget {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           TextButton.icon(
-                            onPressed: () async {
-                              await const CommunityService().verifyReport(
-                                post.id,
-                                ReportVerification.stillValid,
-                              );
-                              onChanged();
-                            },
+                            onPressed: () =>
+                                _verify(context, ReportVerification.stillValid),
                             icon: const Icon(
                               Icons.check_circle_outline_rounded,
                             ),
                             label: Text('Confirm ${post.stillValidCount}'),
                           ),
                           TextButton.icon(
-                            onPressed: () async {
-                              await const CommunityService().verifyReport(
-                                post.id,
-                                ReportVerification.noLongerValid,
-                              );
-                              onChanged();
-                            },
+                            onPressed: () => _verify(
+                              context,
+                              ReportVerification.noLongerValid,
+                            ),
                             icon: const Icon(Icons.warning_amber_rounded),
                             label: Text(
                               'Not accurate ${post.noLongerValidCount}',
