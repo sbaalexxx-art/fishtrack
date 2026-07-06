@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../l10n/l10n.dart';
 import '../services/community_service.dart';
 import '../widgets/loading_list_skeleton.dart';
 import '../widgets/trust_badge.dart';
@@ -41,11 +42,11 @@ class _ReportsPageState extends State<ReportsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Community')),
+      appBar: AppBar(title: Text(context.l10n.community)),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreateReportDialog,
         icon: const Icon(Icons.campaign_outlined),
-        label: const Text('Report'),
+        label: Text(context.l10n.report),
       ),
       body: SafeArea(
         child: FutureBuilder<List<CommunityPost>>(
@@ -59,7 +60,7 @@ class _ReportsPageState extends State<ReportsPage> {
                 icon: Icons.cloud_off_outlined,
                 message: snapshot.error is CommunityException
                     ? (snapshot.error! as CommunityException).message
-                    : 'Community feed is unavailable.',
+                    : context.l10n.communityUnavailable,
                 action: _refresh,
               );
             }
@@ -67,7 +68,7 @@ class _ReportsPageState extends State<ReportsPage> {
             if (posts.isEmpty) {
               return _FeedMessage(
                 icon: Icons.groups_outlined,
-                message: 'No community activity yet.',
+                message: context.l10n.noCommunityActivity,
                 action: _refresh,
               );
             }
@@ -106,7 +107,7 @@ class _CommunityPostCard extends StatelessWidget {
     final reason = await showDialog<ReportAbuseReason>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Report Abuse'),
+        title: Text(context.l10n.reportAbuse),
         children: [
           for (final reason in ReportAbuseReason.values)
             SimpleDialogOption(
@@ -121,7 +122,7 @@ class _CommunityPostCard extends StatelessWidget {
       await const CommunityService().reportAbuse(post.id, reason);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Report submitted for review.')),
+          SnackBar(content: Text(context.l10n.reportSubmitted)),
         );
       }
     } on CommunityException catch (error) {
@@ -272,7 +273,7 @@ class _CommunityPostCard extends StatelessWidget {
                           TextButton.icon(
                             onPressed: () => _reportAbuse(context),
                             icon: const Icon(Icons.flag_outlined),
-                            label: const Text('Report Abuse'),
+                            label: Text(context.l10n.reportAbuse),
                           ),
                         ],
                       ),
@@ -366,14 +367,14 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Create Report'),
+      title: Text(context.l10n.createReport),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<ReportCategory>(
               initialValue: _category,
-              decoration: const InputDecoration(labelText: 'Report category'),
+              decoration: InputDecoration(labelText: context.l10n.reportCategory),
               items: ReportCategory.values
                   .map(
                     (category) => DropdownMenuItem(
@@ -393,7 +394,7 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
               minLines: 3,
               maxLines: 6,
               decoration: const InputDecoration(
-                labelText: 'Description (optional)',
+                labelText: context.l10n.descriptionOptional,
               ),
             ),
             const SizedBox(height: 12),
@@ -406,8 +407,8 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Use exact location'),
-              subtitle: const Text('Disable to share an approximate location'),
+              title: Text(context.l10n.useExactLocation),
+              subtitle: Text(context.l10n.approximateLocationHint),
               value: _useExactLocation,
               onChanged: _saving
                   ? null
@@ -457,7 +458,7 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
       actions: [
         TextButton(
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           onPressed: _saving || !_trustConfirmed ? null : _save,
@@ -496,7 +497,7 @@ class _FeedMessage extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(message, textAlign: TextAlign.center),
                 const SizedBox(height: 12),
-                OutlinedButton(onPressed: action, child: const Text('Retry')),
+                OutlinedButton(onPressed: action, child: Text(context.l10n.retry)),
               ],
             ),
           ),

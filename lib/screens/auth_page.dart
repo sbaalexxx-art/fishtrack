@@ -181,7 +181,7 @@ class _AuthPageState extends State<AuthPage> {
                           enabled: !_loading,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
-                            labelText: 'Name',
+                            labelText: context.l10n.name,
                             prefixIcon: Icon(Icons.person_outline),
                           ),
                           validator: _required,
@@ -196,7 +196,7 @@ class _AuthPageState extends State<AuthPage> {
                             ? TextInputAction.done
                             : TextInputAction.next,
                         decoration: const InputDecoration(
-                          labelText: 'Email',
+                          labelText: context.l10n.email,
                           prefixIcon: Icon(Icons.email_outlined),
                         ),
                         validator: _emailValidator,
@@ -211,7 +211,7 @@ class _AuthPageState extends State<AuthPage> {
                               ? TextInputAction.next
                               : TextInputAction.done,
                           decoration: InputDecoration(
-                            labelText: 'Password',
+                            labelText: context.l10n.password,
                             prefixIcon: const Icon(Icons.lock_outline),
                             suffixIcon: IconButton(
                               onPressed: () => setState(
@@ -237,7 +237,7 @@ class _AuthPageState extends State<AuthPage> {
                           enabled: !_loading,
                           obscureText: true,
                           decoration: const InputDecoration(
-                            labelText: 'Confirm password',
+                            labelText: context.l10n.confirmPassword,
                             prefixIcon: Icon(Icons.lock_outline),
                           ),
                           validator: (value) =>
@@ -282,20 +282,20 @@ class _AuthPageState extends State<AuthPage> {
                           onPressed: _loading
                               ? null
                               : () => _setMode(_AuthMode.forgotPassword),
-                          child: const Text('Forgot password?'),
+                          child: Text(context.l10n.forgotPassword),
                         ),
                         TextButton(
                           onPressed: _loading
                               ? null
                               : () => _setMode(_AuthMode.register),
-                          child: const Text('Create an account'),
+                          child: Text(context.l10n.createAccount),
                         ),
                       ] else
                         TextButton(
                           onPressed: _loading
                               ? null
                               : () => _setMode(_AuthMode.login),
-                          child: const Text('Back to login'),
+                          child: Text(context.l10n.backToLogin),
                         ),
                     ],
                   ),
@@ -348,7 +348,7 @@ class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Set new password')),
+      appBar: AppBar(title: Text(context.l10n.setNewPassword)),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -365,7 +365,7 @@ class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
                       obscureText: true,
                       enabled: !_loading,
                       decoration: const InputDecoration(
-                        labelText: 'New password',
+                        labelText: context.l10n.newPassword,
                         prefixIcon: Icon(Icons.lock_outline),
                       ),
                       validator: (value) => (value ?? '').length < 8
@@ -384,7 +384,9 @@ class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: _loading ? null : _save,
-                      child: Text(_loading ? 'Updating…' : 'Update password'),
+                      child: Text(
+                        _loading ? context.l10n.updating : context.l10n.updatePassword,
+                      ),
                     ),
                   ],
                 ),
@@ -396,3 +398,4 @@ class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
     );
   }
 }
+import '../l10n/l10n.dart';

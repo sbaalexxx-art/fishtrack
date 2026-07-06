@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../widgets/home_premium/home_premium_layout.dart';
 import 'add_catch_page.dart';
 import 'favorites_page.dart';
@@ -100,11 +101,11 @@ class _MainNavigationState extends State<MainNavigation> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: _item(Icons.home_rounded, 'Home', 0, layout),
+                          child: _item(Icons.home_rounded, context.l10n.home, 0, layout),
                         ),
 
                         Expanded(
-                          child: _item(Icons.map_rounded, 'Map', 1, layout),
+                          child: _item(Icons.map_rounded, context.l10n.map, 1, layout),
                         ),
 
                         Expanded(
@@ -142,7 +143,7 @@ class _MainNavigationState extends State<MainNavigation> {
                         Expanded(
                           child: _item(
                             Icons.bar_chart_rounded,
-                            'Reports',
+                            context.l10n.reports,
                             3,
                             layout,
                           ),
@@ -151,7 +152,7 @@ class _MainNavigationState extends State<MainNavigation> {
                         Expanded(
                           child: _item(
                             Icons.person_rounded,
-                            'Profile',
+                            context.l10n.profile,
                             5,
                             layout,
                           ),

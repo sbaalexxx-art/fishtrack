@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../models/station.dart';
 
 class StationCard extends StatelessWidget {
@@ -61,7 +63,7 @@ class StationCard extends StatelessWidget {
                   Text(station.trendText, style: TextStyle(color: trendColor)),
                 ],
               )
-            : const Text('No data'),
+            : Text(context.l10n.noData),
 
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,

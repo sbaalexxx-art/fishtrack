@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../models/station.dart';
 import '../services/water_service.dart';
 import '../widgets/loading_list_skeleton.dart';
@@ -38,7 +40,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Water Levels'), centerTitle: true),
+      appBar: AppBar(title: Text(context.l10n.waterLevels), centerTitle: true),
       body: SafeArea(
         child: FutureBuilder<List<Station>>(
           future: _stations,
@@ -49,7 +51,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
             if (snapshot.hasError) {
               return _WaterMessage(
                 icon: Icons.cloud_off_outlined,
-                message: 'Water provider is currently unavailable.',
+                message: context.l10n.waterProviderUnavailable,
                 onRefresh: _refresh,
               );
             }
@@ -57,7 +59,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
             if (stations.isEmpty) {
               return _WaterMessage(
                 icon: Icons.water_drop_outlined,
-                message: 'No water data is currently available.',
+                message: context.l10n.noWaterData,
                 onRefresh: _refresh,
               );
             }
@@ -97,7 +99,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Text('${stations.length} monitored stations'),
+                          Text(context.l10n.monitoredStations(stations.length)),
                           const SizedBox(height: 12),
                           Text(
                             latestUpdate == null
@@ -180,7 +182,7 @@ class _WaterMessage extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onRefresh,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Retry'),
+                label: Text(context.l10n.retry),
               ),
             ],
           ),

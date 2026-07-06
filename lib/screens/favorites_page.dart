@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../models/station.dart';
 import '../services/favorite_stations_service.dart';
 import '../services/water_service.dart';
@@ -59,7 +61,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Favourite Stations')),
+      appBar: AppBar(title: Text(context.l10n.favouriteStations)),
       body: SafeArea(
         child: FutureBuilder<List<Station>>(
           future: _favorites,
@@ -78,7 +80,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
             final stations = snapshot.data ?? const [];
             if (stations.isEmpty) {
               return _FavoriteMessage(
-                message: 'No favourite stations yet.',
+                message: context.l10n.noFavouriteStations,
                 onRetry: _refresh,
               );
             }
@@ -150,7 +152,7 @@ class _FavoriteMessage extends StatelessWidget {
                 child: Text(message, textAlign: TextAlign.center),
               ),
               const SizedBox(height: 8),
-              TextButton(onPressed: onRetry, child: const Text('Refresh')),
+              TextButton(onPressed: onRetry, child: Text(context.l10n.refresh)),
             ],
           ),
         ),

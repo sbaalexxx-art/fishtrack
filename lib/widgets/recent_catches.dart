@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../models/catch.dart';
 import '../repositories/catch_repository.dart';
 
@@ -26,7 +28,7 @@ class RecentCatches extends StatelessWidget {
           return const Card(
             child: Padding(
               padding: EdgeInsets.all(16),
-              child: Text("Nu s-au putut încărca capturile."),
+              child: Text(context.l10n.recentCatchesLoadError),
             ),
           );
         }
@@ -37,7 +39,7 @@ class RecentCatches extends StatelessWidget {
           return const Card(
             child: Padding(
               padding: EdgeInsets.all(16),
-              child: Text("Nu există capturi pentru această stație."),
+              child: Text(context.l10n.noRecentCatches),
             ),
           );
         }

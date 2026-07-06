@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../services/notification_service.dart';
 import '../widgets/loading_list_skeleton.dart';
 import 'notification_preferences_page.dart';
@@ -72,7 +73,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Notifications'),
+                Text(context.l10n.notifications),
                 if (unread > 0) ...[
                   const SizedBox(width: 8),
                   Badge(label: Text('$unread')),
@@ -83,7 +84,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Notification preferences',
+            tooltip: context.l10n.notificationPreferencesTooltip,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => const NotificationPreferencesPage(),
@@ -92,7 +93,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             icon: const Icon(Icons.tune_rounded),
           ),
           IconButton(
-            tooltip: 'Clear read notifications',
+            tooltip: context.l10n.clearReadNotifications,
             onPressed: _clearRead,
             icon: const Icon(Icons.delete_sweep_outlined),
           ),
@@ -108,13 +109,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
             if (snapshot.hasError) {
               final message = snapshot.error is NotificationException
                   ? (snapshot.error! as NotificationException).message
-                  : 'Notifications are unavailable.';
+                  : context.l10n.notificationsUnavailable;
               return _NotificationMessage(message: message, onRetry: _refresh);
             }
             final notifications = snapshot.data ?? const [];
             if (notifications.isEmpty) {
               return _NotificationMessage(
-                message: 'No notifications yet.',
+                message: context.l10n.noNotifications,
                 onRetry: _refresh,
               );
             }
@@ -222,7 +223,7 @@ class _NotificationMessage extends StatelessWidget {
                 const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: onRetry,
-                  child: const Text('Refresh'),
+                  child: Text(context.l10n.refresh),
                 ),
               ],
             ),

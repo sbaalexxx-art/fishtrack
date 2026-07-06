@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../l10n/l10n.dart';
 import '../services/notification_preferences_service.dart';
 
 class NotificationPreferencesPage extends StatefulWidget {
@@ -54,18 +55,18 @@ class _NotificationPreferencesPageState
   Widget build(BuildContext context) {
     if (_userId == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Notification Preferences')),
-        body: const Center(
-          child: Text('Please sign in to manage notification preferences.'),
+        appBar: AppBar(title: Text(context.l10n.notificationPreferences)),
+        body: Center(
+          child: Text(context.l10n.signInForNotificationPreferences),
         ),
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Notification Preferences')),
+      appBar: AppBar(title: Text(context.l10n.notificationPreferences)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
         children: [
-          Text('Categories', style: Theme.of(context).textTheme.titleLarge),
+          Text(context.l10n.categories, style: Theme.of(context).textTheme.titleLarge),
           for (final category in NotificationCategory.values)
             SwitchListTile(
               value: _preferences.isCategoryEnabled(category),
@@ -79,7 +80,7 @@ class _NotificationPreferencesPageState
               },
             ),
           const Divider(),
-          Text('Priority', style: Theme.of(context).textTheme.titleLarge),
+          Text(context.l10n.priority, style: Theme.of(context).textTheme.titleLarge),
           const ListTile(
             leading: Icon(Icons.notifications_off_outlined),
             title: Text('Silent'),
@@ -98,13 +99,13 @@ class _NotificationPreferencesPageState
           const Divider(),
           SwitchListTile(
             value: _preferences.quietHoursEnabled,
-            title: const Text('Quiet hours'),
+            title: Text(context.l10n.quietHours),
             onChanged: (value) =>
                 _save(_preferences.copyWith(quietHoursEnabled: value)),
           ),
           ListTile(
             enabled: _preferences.quietHoursEnabled,
-            title: const Text('Start time'),
+            title: Text(context.l10n.startTime),
             trailing: Text(_time(_preferences.quietStartMinutes)),
             onTap: _preferences.quietHoursEnabled
                 ? () => _pickTime(start: true)
@@ -112,7 +113,7 @@ class _NotificationPreferencesPageState
           ),
           ListTile(
             enabled: _preferences.quietHoursEnabled,
-            title: const Text('End time'),
+            title: Text(context.l10n.endTime),
             trailing: Text(_time(_preferences.quietEndMinutes)),
             onTap: _preferences.quietHoursEnabled
                 ? () => _pickTime(start: false)
@@ -121,7 +122,7 @@ class _NotificationPreferencesPageState
           const Divider(),
           SwitchListTile(
             value: _preferences.groupingEnabled,
-            title: const Text('Group similar notifications'),
+            title: Text(context.l10n.groupSimilarNotifications),
             subtitle: const Text(
               'Groups station and event type within 30 minutes.',
             ),
@@ -129,7 +130,7 @@ class _NotificationPreferencesPageState
                 _save(_preferences.copyWith(groupingEnabled: value)),
           ),
           ListTile(
-            title: const Text('Duplicate cooldown'),
+            title: Text(context.l10n.duplicateCooldown),
             trailing: DropdownButton<int>(
               value: _preferences.cooldown.inMinutes,
               items: const [15, 30, 60, 120]

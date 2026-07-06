@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../services/community_service.dart';
 import '../widgets/trust_badge.dart';
 
@@ -86,7 +87,7 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Catch Details')),
+      appBar: AppBar(title: Text(context.l10n.catchDetails)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -150,11 +151,11 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
                       ? Icons.favorite_rounded
                       : Icons.favorite_border_rounded,
                 ),
-                label: Text('${_post.likeCount} likes'),
+                label: Text(context.l10n.likes(_post.likeCount)),
               ),
             ),
             const Divider(height: 28),
-            Text('Comments', style: Theme.of(context).textTheme.titleLarge),
+            Text(context.l10n.comments, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -166,7 +167,7 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
                     minLines: 1,
                     maxLines: 4,
                     decoration: const InputDecoration(
-                      hintText: 'Add a comment',
+                      hintText: context.l10n.addComment,
                     ),
                   ),
                 ),
@@ -196,11 +197,11 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return const Text('Comments are currently unavailable.');
+                  return Text(context.l10n.commentsUnavailable);
                 }
                 final comments = snapshot.data ?? const [];
                 if (comments.isEmpty) {
-                  return const Text('No comments yet.');
+                  return Text(context.l10n.noComments);
                 }
                 return Column(
                   children: [
@@ -231,7 +232,7 @@ class CommunityProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Angler Profile')),
+      appBar: AppBar(title: Text(context.l10n.anglerProfile)),
       body: SafeArea(
         child: FutureBuilder<CommunityProfile>(
           future: const CommunityService().getProfile(userId),
@@ -240,7 +241,7 @@ class CommunityProfilePage extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError || snapshot.data == null) {
-              return const Center(child: Text('Profile is unavailable.'));
+              return Center(child: Text(context.l10n.profileUnavailable));
             }
             final profile = snapshot.data!;
             return ListView(

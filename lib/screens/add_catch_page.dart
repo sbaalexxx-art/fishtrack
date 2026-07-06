@@ -219,7 +219,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
         ),
       ),
       child: Scaffold(
-        appBar: AppBar(title: const Text('Add Catch')),
+        appBar: AppBar(title: Text(context.l10n.addCatch)),
         body: SafeArea(
           child: Form(
             key: _formKey,
@@ -236,7 +236,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                   controller: _speciesController,
                   enabled: !_isSubmitting,
                   decoration: const InputDecoration(
-                    labelText: 'Species',
+                    labelText: context.l10n.species,
                     prefixIcon: Icon(Icons.set_meal_outlined),
                   ),
                   validator: _requiredText,
@@ -248,13 +248,13 @@ class _AddCatchPageState extends State<AddCatchPage> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(labelText: 'Weight'),
+                  decoration: InputDecoration(labelText: context.l10n.weight),
                   validator: _optionalPositiveNumber,
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<_WeightUnit>(
                   initialValue: _weightUnit,
-                  decoration: const InputDecoration(labelText: 'Weight unit'),
+                  decoration: InputDecoration(labelText: context.l10n.weightUnit),
                   items: _WeightUnit.values
                       .map(
                         (unit) => DropdownMenuItem(
@@ -274,7 +274,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(labelText: 'Length (cm)'),
+                  decoration: InputDecoration(labelText: context.l10n.lengthCm),
                   validator: _optionalPositiveNumber,
                 ),
                 const SizedBox(height: 12),
@@ -284,7 +284,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                   minLines: 3,
                   maxLines: 5,
                   decoration: const InputDecoration(
-                    labelText: 'Notes',
+                    labelText: context.l10n.notes,
                     alignLabelWithHint: true,
                     prefixIcon: Icon(Icons.notes_rounded),
                   ),
@@ -294,8 +294,8 @@ class _AddCatchPageState extends State<AddCatchPage> {
                   controller: _placeNameController,
                   enabled: !_isSubmitting,
                   decoration: const InputDecoration(
-                    labelText: 'Place name (optional with GPS)',
-                    hintText: 'Lake, river, reservoir, canal…',
+                    labelText: context.l10n.placeNameOptional,
+                    hintText: context.l10n.placeHint,
                     prefixIcon: Icon(Icons.place_outlined),
                   ),
                 ),
@@ -303,7 +303,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                 DropdownButtonFormField<_WaterType>(
                   initialValue: _waterType,
                   decoration: const InputDecoration(
-                    labelText: 'Water type',
+                    labelText: context.l10n.waterType,
                     prefixIcon: Icon(Icons.water_outlined),
                   ),
                   items: _WaterType.values
@@ -322,7 +322,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                 DropdownButtonFormField<_LocationPrivacy>(
                   initialValue: _locationPrivacy,
                   decoration: const InputDecoration(
-                    labelText: 'Location privacy',
+                    labelText: context.l10n.locationPrivacy,
                     prefixIcon: Icon(Icons.shield_outlined),
                   ),
                   items: _LocationPrivacy.values
@@ -404,10 +404,11 @@ class _PhotoPicker extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: enabled ? onCamera : null,
             icon: const Icon(Icons.camera_alt_outlined),
-            label: const Text('Camera'),
+            label: Text(context.l10n.camera),
           ),
         ),
       ],
     );
   }
 }
+import '../l10n/l10n.dart';

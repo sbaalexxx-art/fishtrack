@@ -110,7 +110,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final hasAvatar = (_avatarUrl?.isNotEmpty ?? false) && !_avatarLoadFailed;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(title: Text(context.l10n.profile)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
@@ -140,7 +140,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     bottom: -4,
                     child: IconButton.filled(
                       onPressed: _saving ? null : _changeAvatar,
-                      tooltip: 'Change avatar',
+                      tooltip: context.l10n.changeAvatar,
                       icon: const Icon(Icons.photo_camera_outlined),
                     ),
                   ),
@@ -152,7 +152,7 @@ class _ProfilePageState extends State<ProfilePage> {
               controller: _nameController,
               enabled: !_saving,
               decoration: const InputDecoration(
-                labelText: 'Name',
+                labelText: context.l10n.name,
                 prefixIcon: Icon(Icons.person_outline),
               ),
             ),
@@ -161,7 +161,7 @@ class _ProfilePageState extends State<ProfilePage> {
               initialValue: user?.email ?? '',
               readOnly: true,
               decoration: const InputDecoration(
-                labelText: 'Email',
+                labelText: context.l10n.email,
                 prefixIcon: Icon(Icons.email_outlined),
               ),
             ),
@@ -201,7 +201,7 @@ class _ProfilePageState extends State<ProfilePage> {
             OutlinedButton.icon(
               onPressed: _saving ? null : _logout,
               icon: const Icon(Icons.logout_rounded),
-              label: const Text('Logout'),
+              label: Text(context.l10n.logout),
             ),
           ],
         ),
@@ -209,3 +209,4 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
+import '../l10n/l10n.dart';

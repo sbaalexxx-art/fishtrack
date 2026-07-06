@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../services/community_service.dart';
 import '../widgets/loading_list_skeleton.dart';
 import '../widgets/trust_badge.dart';
@@ -51,7 +53,7 @@ class _ReportsArchivePageState extends State<ReportsArchivePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Reports Archive')),
+      appBar: AppBar(title: Text(context.l10n.reportsArchive)),
       body: SafeArea(
         child: Column(
           children: [
@@ -92,7 +94,7 @@ class _ReportsArchivePageState extends State<ReportsArchivePage> {
                             OutlinedButton.icon(
                               onPressed: _retry,
                               icon: const Icon(Icons.refresh),
-                              label: const Text('Retry'),
+                              label: Text(context.l10n.retry),
                             ),
                           ],
                         ),
@@ -211,7 +213,7 @@ class _CategoryCountsCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             if (counts.isEmpty)
-              const Text('No category data for this period.')
+              Text(context.l10n.noCategoryData)
             else
               for (final entry in counts)
                 Padding(
@@ -236,7 +238,7 @@ class _ReportTile extends StatelessWidget {
     final reason = await showDialog<ReportAbuseReason>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Report Abuse'),
+        title: Text(context.l10n.reportAbuse),
         children: [
           for (final reason in ReportAbuseReason.values)
             SimpleDialogOption(
@@ -251,7 +253,7 @@ class _ReportTile extends StatelessWidget {
       await const CommunityService().reportAbuse(report.id, reason);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Report submitted for review.')),
+          SnackBar(content: Text(context.l10n.reportSubmitted)),
         );
       }
     } on CommunityException catch (error) {
@@ -269,7 +271,7 @@ class _ReportTile extends StatelessWidget {
       leading: const Icon(Icons.report_outlined),
       title: Text(report.reportCategory?.label ?? report.title),
       trailing: IconButton(
-        tooltip: 'Report Abuse',
+        tooltip: context.l10n.reportAbuse,
         onPressed: () => _reportAbuse(context),
         icon: const Icon(Icons.flag_outlined),
       ),

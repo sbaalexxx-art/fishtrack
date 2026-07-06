@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../models/weather.dart';
 import '../services/astronomy_service.dart';
 import '../services/weather_service.dart';
@@ -42,7 +44,7 @@ class _WeatherPageState extends State<WeatherPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(title: const Text('Weather')),
+      appBar: AppBar(title: Text(context.l10n.weather)),
       body: SafeArea(
         child: FutureBuilder<_WeatherViewData>(
           future: _weather,
@@ -320,7 +322,7 @@ class _WeatherContent extends StatelessWidget {
             color: Theme.of(context).colorScheme.surface,
             child: ListTile(
               leading: const Icon(Icons.wb_twilight_rounded),
-              title: const Text('Golden hour'),
+              title: Text(context.l10n.goldenHour),
               subtitle: Text(_goldenHourLabel(astronomy)),
             ),
           ),
@@ -397,8 +399,8 @@ class _WeatherMessage extends StatelessWidget {
       children: [
         const Icon(Icons.cloud_off_outlined, size: 48),
         const SizedBox(height: 12),
-        const Text('Weather is currently unavailable.'),
-        TextButton(onPressed: onRetry, child: const Text('Retry')),
+        Text(context.l10n.weatherUnavailable),
+        TextButton(onPressed: onRetry, child: Text(context.l10n.retry)),
       ],
     ),
   );

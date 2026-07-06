@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../services/fishing_score_service.dart';
 
 class FishingInsightsPage extends StatefulWidget {
@@ -24,7 +25,7 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Fishing Insights')),
+      appBar: AppBar(title: Text(context.l10n.fishingInsights)),
       body: FutureBuilder<FishingScoreResult>(
         future: _decision,
         builder: (context, snapshot) {
@@ -72,21 +73,21 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
                         const SizedBox(height: 8),
                         Text(result.explanation, textAlign: TextAlign.center),
                         const SizedBox(height: 12),
-                        Text('Confidence: ${result.confidence}%'),
+                        Text(context.l10n.confidence(result.confidence)),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 _FactorCard(
-                  title: 'Positive factors',
+                  title: context.l10n.positiveFactors,
                   icon: Icons.add_circle_outline,
                   color: Colors.green,
                   factors: result.positiveFactors,
                 ),
                 const SizedBox(height: 12),
                 _FactorCard(
-                  title: 'Negative factors',
+                  title: context.l10n.negativeFactors,
                   icon: Icons.warning_amber_rounded,
                   color: Colors.orange,
                   factors: result.negativeFactors,
@@ -95,7 +96,7 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.schedule, color: Colors.blue),
-                    title: const Text('Best time window'),
+                    title: Text(context.l10n.bestTimeWindow),
                     subtitle: Text(result.bestTime),
                   ),
                 ),
@@ -107,13 +108,13 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
                       color: Colors.indigo,
                     ),
                     title: Text(result.moonPhase),
-                    subtitle: Text('Golden hour: ${result.goldenHour}'),
+                    subtitle: Text(context.l10n.goldenHourValue(result.goldenHour)),
                   ),
                 ),
                 if (result.missingFactors.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   _FactorCard(
-                    title: 'Missing data',
+                    title: context.l10n.missingData,
                     icon: Icons.info_outline,
                     color: Colors.grey,
                     factors: result.missingFactors,
@@ -165,7 +166,7 @@ class _FactorCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             if (factors.isEmpty)
-              const Text('No significant factors available.')
+              Text(context.l10n.noSignificantFactors)
             else
               for (final factor in factors)
                 ListTile(
@@ -194,12 +195,12 @@ class _NotEnoughData extends StatelessWidget {
         children: [
           const Icon(Icons.insights_outlined, size: 52),
           const SizedBox(height: 12),
-          const Text(
-            'Not enough data yet',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          Text(
+            context.l10n.notEnoughData,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
-          OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
+          OutlinedButton(onPressed: onRetry, child: Text(context.l10n.retry)),
         ],
       ),
     ),

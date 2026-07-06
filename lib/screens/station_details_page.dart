@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 import '../models/station.dart';
 import '../models/water_level.dart';
 import '../models/weather.dart';
@@ -232,7 +234,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
               ),
               child: ListTile(
                 leading: const Icon(Icons.location_on, color: Colors.red),
-                title: const Text("Coordonate"),
+                title: Text(context.l10n.coordinates),
                 subtitle: Text("${station.latitude}, ${station.longitude}"),
               ),
             ),
@@ -265,7 +267,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                           children: [
                             Icon(Icons.show_chart, color: Colors.blue),
                             SizedBox(width: 12),
-                            Text('Water level history'),
+                            Text(context.l10n.waterLevelHistory),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -347,7 +349,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
               ),
               child: ListTile(
                 leading: const Icon(Icons.auto_awesome, color: Colors.teal),
-                title: const Text('AI water insight'),
+                title: Text(context.l10n.aiWaterInsight),
                 subtitle: Text(_waterInsight(station)),
               ),
             ),
@@ -371,7 +373,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                             '${weather.windSpeed.toStringAsFixed(1)} km/h wind';
                   return ListTile(
                     leading: const Icon(Icons.cloud, color: Colors.orange),
-                    title: const Text('Weather'),
+                    title: Text(context.l10n.weather),
                     subtitle: Text(subtitle),
                   );
                 },
