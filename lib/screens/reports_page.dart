@@ -121,9 +121,9 @@ class _CommunityPostCard extends StatelessWidget {
     try {
       await const CommunityService().reportAbuse(post.id, reason);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.reportSubmitted)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(context.l10n.reportSubmitted)));
       }
     } on CommunityException catch (error) {
       if (context.mounted) {
@@ -374,7 +374,9 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
           children: [
             DropdownButtonFormField<ReportCategory>(
               initialValue: _category,
-              decoration: InputDecoration(labelText: context.l10n.reportCategory),
+              decoration: InputDecoration(
+                labelText: context.l10n.reportCategory,
+              ),
               items: ReportCategory.values
                   .map(
                     (category) => DropdownMenuItem(
@@ -393,7 +395,7 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
               enabled: !_saving,
               minLines: 3,
               maxLines: 6,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: context.l10n.descriptionOptional,
               ),
             ),
@@ -497,7 +499,10 @@ class _FeedMessage extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(message, textAlign: TextAlign.center),
                 const SizedBox(height: 12),
-                OutlinedButton(onPressed: action, child: Text(context.l10n.retry)),
+                OutlinedButton(
+                  onPressed: action,
+                  child: Text(context.l10n.retry),
+                ),
               ],
             ),
           ),

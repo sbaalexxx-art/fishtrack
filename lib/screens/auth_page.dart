@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../services/auth_service.dart';
 
 enum _AuthMode { login, register, forgotPassword }
@@ -180,7 +181,7 @@ class _AuthPageState extends State<AuthPage> {
                           controller: _nameController,
                           enabled: !_loading,
                           textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: context.l10n.name,
                             prefixIcon: Icon(Icons.person_outline),
                           ),
@@ -195,7 +196,7 @@ class _AuthPageState extends State<AuthPage> {
                         textInputAction: isForgot
                             ? TextInputAction.done
                             : TextInputAction.next,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: context.l10n.email,
                           prefixIcon: Icon(Icons.email_outlined),
                         ),
@@ -236,7 +237,7 @@ class _AuthPageState extends State<AuthPage> {
                           controller: _confirmPasswordController,
                           enabled: !_loading,
                           obscureText: true,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: context.l10n.confirmPassword,
                             prefixIcon: Icon(Icons.lock_outline),
                           ),
@@ -364,7 +365,7 @@ class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
                       controller: _passwordController,
                       obscureText: true,
                       enabled: !_loading,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: context.l10n.newPassword,
                         prefixIcon: Icon(Icons.lock_outline),
                       ),
@@ -385,7 +386,9 @@ class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
                     FilledButton(
                       onPressed: _loading ? null : _save,
                       child: Text(
-                        _loading ? context.l10n.updating : context.l10n.updatePassword,
+                        _loading
+                            ? context.l10n.updating
+                            : context.l10n.updatePassword,
                       ),
                     ),
                   ],
@@ -398,4 +401,3 @@ class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
     );
   }
 }
-import '../l10n/l10n.dart';

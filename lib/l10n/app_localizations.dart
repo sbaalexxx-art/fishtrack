@@ -416,6 +416,12 @@ abstract class AppLocalizations {
   /// **'Nu există factori semnificativi.'**
   String get noSignificantFactors;
 
+  /// No description provided for @notEnoughData.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu există încă suficiente date'**
+  String get notEnoughData;
+
   /// No description provided for @confidence.
   ///
   /// In ro, this message translates to:
@@ -686,11 +692,53 @@ abstract class AppLocalizations {
   /// **'Preferințe notificări'**
   String get notificationPreferencesTooltip;
 
+  /// No description provided for @signInForNotificationPreferences.
+  ///
+  /// In ro, this message translates to:
+  /// **'Autentifică-te pentru a gestiona preferințele notificărilor.'**
+  String get signInForNotificationPreferences;
+
+  /// No description provided for @categories.
+  ///
+  /// In ro, this message translates to:
+  /// **'Categorii'**
+  String get categories;
+
+  /// No description provided for @priority.
+  ///
+  /// In ro, this message translates to:
+  /// **'Prioritate'**
+  String get priority;
+
   /// No description provided for @clearReadNotifications.
   ///
   /// In ro, this message translates to:
   /// **'Șterge notificările citite'**
   String get clearReadNotifications;
+
+  /// No description provided for @notificationsUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Notificările sunt indisponibile.'**
+  String get notificationsUnavailable;
+
+  /// No description provided for @noNotifications.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu există încă notificări.'**
+  String get noNotifications;
+
+  /// No description provided for @communityUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fluxul comunității este indisponibil.'**
+  String get communityUnavailable;
+
+  /// No description provided for @noCommunityActivity.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu există încă activitate în comunitate.'**
+  String get noCommunityActivity;
 
   /// No description provided for @standard.
   ///

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../l10n/l10n.dart';
 import '../services/auth_service.dart';
 import '../services/reputation_service.dart';
 import '../widgets/trust_badge.dart';
@@ -151,7 +152,7 @@ class _ProfilePageState extends State<ProfilePage> {
             TextFormField(
               controller: _nameController,
               enabled: !_saving,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: context.l10n.name,
                 prefixIcon: Icon(Icons.person_outline),
               ),
@@ -160,7 +161,7 @@ class _ProfilePageState extends State<ProfilePage> {
             TextFormField(
               initialValue: user?.email ?? '',
               readOnly: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: context.l10n.email,
                 prefixIcon: Icon(Icons.email_outlined),
               ),
@@ -209,4 +210,3 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
-import '../l10n/l10n.dart';

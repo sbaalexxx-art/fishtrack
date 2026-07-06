@@ -155,7 +155,10 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
               ),
             ),
             const Divider(height: 28),
-            Text(context.l10n.comments, style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              context.l10n.comments,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -166,7 +169,7 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
                     enabled: !_commenting,
                     minLines: 1,
                     maxLines: 4,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: context.l10n.addComment,
                     ),
                   ),

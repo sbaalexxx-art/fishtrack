@@ -172,6 +172,9 @@ class AppLocalizationsRo extends AppLocalizations {
   String get noSignificantFactors => 'Nu există factori semnificativi.';
 
   @override
+  String get notEnoughData => 'Nu există încă suficiente date';
+
+  @override
   String confidence(int value) {
     return 'Încredere: $value%';
   }
@@ -343,7 +346,29 @@ class AppLocalizationsRo extends AppLocalizations {
   String get notificationPreferencesTooltip => 'Preferințe notificări';
 
   @override
+  String get signInForNotificationPreferences =>
+      'Autentifică-te pentru a gestiona preferințele notificărilor.';
+
+  @override
+  String get categories => 'Categorii';
+
+  @override
+  String get priority => 'Prioritate';
+
+  @override
   String get clearReadNotifications => 'Șterge notificările citite';
+
+  @override
+  String get notificationsUnavailable => 'Notificările sunt indisponibile.';
+
+  @override
+  String get noNotifications => 'Nu există încă notificări.';
+
+  @override
+  String get communityUnavailable => 'Fluxul comunității este indisponibil.';
+
+  @override
+  String get noCommunityActivity => 'Nu există încă activitate în comunitate.';
 
   @override
   String get standard => 'Standard';

@@ -263,7 +263,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
                             Icon(Icons.show_chart, color: Colors.blue),
                             SizedBox(width: 12),

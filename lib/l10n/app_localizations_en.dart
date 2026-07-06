@@ -170,6 +170,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noSignificantFactors => 'No significant factors available.';
 
   @override
+  String get notEnoughData => 'Not enough data yet';
+
+  @override
   String confidence(int value) {
     return 'Confidence: $value%';
   }
@@ -341,7 +344,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notificationPreferencesTooltip => 'Notification preferences';
 
   @override
+  String get signInForNotificationPreferences =>
+      'Please sign in to manage notification preferences.';
+
+  @override
+  String get categories => 'Categories';
+
+  @override
+  String get priority => 'Priority';
+
+  @override
   String get clearReadNotifications => 'Clear read notifications';
+
+  @override
+  String get notificationsUnavailable => 'Notifications are unavailable.';
+
+  @override
+  String get noNotifications => 'No notifications yet.';
+
+  @override
+  String get communityUnavailable => 'Community feed is unavailable.';
+
+  @override
+  String get noCommunityActivity => 'No community activity yet.';
 
   @override
   String get standard => 'Standard';

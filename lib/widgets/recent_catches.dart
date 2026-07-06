@@ -25,9 +25,9 @@ class RecentCatches extends StatelessWidget {
         }
 
         if (snapshot.hasError) {
-          return const Card(
+          return Card(
             child: Padding(
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               child: Text(context.l10n.recentCatchesLoadError),
             ),
           );
@@ -36,9 +36,9 @@ class RecentCatches extends StatelessWidget {
         final catches = snapshot.data ?? [];
 
         if (catches.isEmpty) {
-          return const Card(
+          return Card(
             child: Padding(
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               child: Text(context.l10n.noRecentCatches),
             ),
           );

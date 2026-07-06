@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../l10n/l10n.dart';
 import '../repositories/catch_repository.dart';
 import '../services/location_service.dart';
 
@@ -235,7 +236,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                 TextFormField(
                   controller: _speciesController,
                   enabled: !_isSubmitting,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: context.l10n.species,
                     prefixIcon: Icon(Icons.set_meal_outlined),
                   ),
@@ -254,7 +255,9 @@ class _AddCatchPageState extends State<AddCatchPage> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<_WeightUnit>(
                   initialValue: _weightUnit,
-                  decoration: InputDecoration(labelText: context.l10n.weightUnit),
+                  decoration: InputDecoration(
+                    labelText: context.l10n.weightUnit,
+                  ),
                   items: _WeightUnit.values
                       .map(
                         (unit) => DropdownMenuItem(
@@ -283,7 +286,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                   enabled: !_isSubmitting,
                   minLines: 3,
                   maxLines: 5,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: context.l10n.notes,
                     alignLabelWithHint: true,
                     prefixIcon: Icon(Icons.notes_rounded),
@@ -293,7 +296,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                 TextFormField(
                   controller: _placeNameController,
                   enabled: !_isSubmitting,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: context.l10n.placeNameOptional,
                     hintText: context.l10n.placeHint,
                     prefixIcon: Icon(Icons.place_outlined),
@@ -302,7 +305,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<_WaterType>(
                   initialValue: _waterType,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: context.l10n.waterType,
                     prefixIcon: Icon(Icons.water_outlined),
                   ),
@@ -321,7 +324,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<_LocationPrivacy>(
                   initialValue: _locationPrivacy,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: context.l10n.locationPrivacy,
                     prefixIcon: Icon(Icons.shield_outlined),
                   ),
@@ -411,4 +414,3 @@ class _PhotoPicker extends StatelessWidget {
     );
   }
 }
-import '../l10n/l10n.dart';
