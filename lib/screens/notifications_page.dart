@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../services/favorite_stations_service.dart';
-import '../services/water_alert_service.dart';
+import '../services/notification_service.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -11,44 +10,84 @@ class NotificationsPage extends StatefulWidget {
 }
 
 class _NotificationsPageState extends State<NotificationsPage> {
-  final _service = WaterAlertService();
-  late Future<List<WaterAlert>> _alerts = _service.refresh();
+  final _service = NotificationService();
+  late Future<List<AppNotification>> _notifications = _service
+      .getNotifications();
 
   Future<void> _refresh() async {
-    final alerts = _service.refresh();
-    setState(() => _alerts = alerts);
-    await alerts;
+    final notifications = _service.getNotifications();
+    setState(() => _notifications = notifications);
+    await notifications;
   }
 
-  void _markRead(WaterAlert alert) {
-    if (alert.isRead) return;
-    _service.markRead(alert.id);
-    setState(() => _alerts = Future.value(_service.history.alerts));
+  Future<void> _markRead(AppNotification notification) async {
+    if (notification.isRead) return;
+    await _service.markAsRead(notification.id);
+    if (mounted) {
+      setState(
+        () => _notifications = Future.value(_service.cachedNotifications()),
+      );
+    }
+  }
+
+  Future<void> _clearRead() async {
+    await _service.clearRead();
+    if (mounted) {
+      setState(
+        () => _notifications = Future.value(_service.cachedNotifications()),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Water Alerts')),
+      appBar: AppBar(
+        title: FutureBuilder<List<AppNotification>>(
+          future: _notifications,
+          builder: (context, snapshot) {
+            final unread =
+                snapshot.data
+                    ?.where((notification) => !notification.isRead)
+                    .length ??
+                0;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Notifications'),
+                if (unread > 0) ...[
+                  const SizedBox(width: 8),
+                  Badge(label: Text('$unread')),
+                ],
+              ],
+            );
+          },
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Clear read notifications',
+            onPressed: _clearRead,
+            icon: const Icon(Icons.delete_sweep_outlined),
+          ),
+        ],
+      ),
       body: SafeArea(
-        child: FutureBuilder<List<WaterAlert>>(
-          future: _alerts,
+        child: FutureBuilder<List<AppNotification>>(
+          future: _notifications,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
-              final message = snapshot.error is FavoriteException
-                  ? (snapshot.error! as FavoriteException).message
-                  : 'Water alerts are unavailable.';
-              return _AlertMessage(message: message, onRetry: _refresh);
+              final message = snapshot.error is NotificationException
+                  ? (snapshot.error! as NotificationException).message
+                  : 'Notifications are unavailable.';
+              return _NotificationMessage(message: message, onRetry: _refresh);
             }
-            final alerts = snapshot.data ?? const [];
-            if (alerts.isEmpty) {
-              return _AlertMessage(
-                message: _service.isAuthenticated
-                    ? 'No water alerts yet.'
-                    : 'Please sign in to view alerts for favourite stations.',
+            final notifications = snapshot.data ?? const [];
+            if (notifications.isEmpty) {
+              return _NotificationMessage(
+                message: 'No notifications yet.',
                 onRetry: _refresh,
               );
             }
@@ -56,28 +95,36 @@ class _NotificationsPageState extends State<NotificationsPage> {
               onRefresh: _refresh,
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-                itemCount: alerts.length,
+                itemCount: notifications.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
-                  final alert = alerts[index];
+                  final notification = notifications[index];
                   return Card(
                     child: ListTile(
-                      onTap: () => _markRead(alert),
+                      onTap: () => _markRead(notification),
                       leading: Icon(
-                        _icon(alert.type),
-                        color: _color(alert.type),
+                        _icon(notification.type),
+                        color: _color(notification.priority),
                       ),
-                      title: Text(alert.stationName),
+                      title: Text(
+                        notification.title,
+                        style: TextStyle(
+                          fontWeight: notification.isRead
+                              ? FontWeight.normal
+                              : FontWeight.bold,
+                        ),
+                      ),
                       subtitle: Text(
-                        '${alert.type.label}\n${_timestamp(context, alert.timestamp)}',
+                        '${notification.message}\n'
+                        '${_relativeTime(notification.createdAt)}',
                       ),
                       isThreeLine: true,
                       trailing: Icon(
-                        alert.isRead
+                        notification.isRead
                             ? Icons.mark_email_read_outlined
                             : Icons.circle,
-                        size: alert.isRead ? 22 : 10,
-                        color: alert.isRead
+                        size: notification.isRead ? 22 : 10,
+                        color: notification.isRead
                             ? Theme.of(context).colorScheme.onSurfaceVariant
                             : Theme.of(context).colorScheme.primary,
                       ),
@@ -92,34 +139,36 @@ class _NotificationsPageState extends State<NotificationsPage> {
     );
   }
 
-  static IconData _icon(WaterAlertType type) => switch (type) {
-    WaterAlertType.waterLevelRising => Icons.trending_up_rounded,
-    WaterAlertType.waterLevelFalling => Icons.trending_down_rounded,
-    WaterAlertType.rapidChange => Icons.speed_rounded,
-    WaterAlertType.newCommunityReport => Icons.campaign_outlined,
-    WaterAlertType.dangerousReport => Icons.warning_amber_rounded,
+  static IconData _icon(AppNotificationType type) => switch (type) {
+    AppNotificationType.waterLevelChanged => Icons.water_rounded,
+    AppNotificationType.waterTrendChanged => Icons.trending_up_rounded,
+    AppNotificationType.newReportNearFavoriteStation => Icons.campaign_outlined,
+    AppNotificationType.dangerousReport => Icons.warning_amber_rounded,
+    AppNotificationType.reputationIncreased => Icons.add_chart_rounded,
+    AppNotificationType.trustBadgeUpgraded => Icons.verified_rounded,
+    AppNotificationType.favoriteStationUpdate => Icons.favorite_rounded,
   };
 
-  static Color _color(WaterAlertType type) => switch (type) {
-    WaterAlertType.waterLevelRising => Colors.blue,
-    WaterAlertType.waterLevelFalling => Colors.orange,
-    WaterAlertType.rapidChange => Colors.deepOrange,
-    WaterAlertType.newCommunityReport => Colors.teal,
-    WaterAlertType.dangerousReport => Colors.red,
+  static Color _color(NotificationPriority priority) => switch (priority) {
+    NotificationPriority.low => Colors.grey,
+    NotificationPriority.normal => Colors.blue,
+    NotificationPriority.high => Colors.orange,
+    NotificationPriority.critical => Colors.red,
   };
 
-  static String _timestamp(BuildContext context, DateTime value) {
-    final local = value.toLocal();
-    final date = MaterialLocalizations.of(context).formatMediumDate(local);
-    final time = MaterialLocalizations.of(
-      context,
-    ).formatTimeOfDay(TimeOfDay.fromDateTime(local));
-    return '$date • $time';
+  static String _relativeTime(DateTime value) {
+    final difference = DateTime.now().difference(value.toLocal());
+    if (difference.isNegative || difference.inMinutes < 1) return 'Just now';
+    if (difference.inHours < 1) return '${difference.inMinutes}m ago';
+    if (difference.inDays < 1) return '${difference.inHours}h ago';
+    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    return '${value.toLocal().day}.${value.toLocal().month}.'
+        '${value.toLocal().year}';
   }
 }
 
-class _AlertMessage extends StatelessWidget {
-  const _AlertMessage({required this.message, required this.onRetry});
+class _NotificationMessage extends StatelessWidget {
+  const _NotificationMessage({required this.message, required this.onRetry});
 
   final String message;
   final Future<void> Function() onRetry;
