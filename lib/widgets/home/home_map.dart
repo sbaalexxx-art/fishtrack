@@ -7,7 +7,12 @@ import '../../services/community_service.dart';
 
 enum MapBaseLayer { standard, satellite, fishingMode }
 
-enum MapOverlay { community, catches, favorites }
+enum MapOverlay {
+  waterStations,
+  communityReports,
+  recentCatches,
+  favoriteStations,
+}
 
 class HomeMap extends StatelessWidget {
   final List<CommunityPost> reports;
@@ -19,6 +24,8 @@ class HomeMap extends StatelessWidget {
   final VoidCallback? onMapReady;
   final MapBaseLayer baseLayer;
   final Set<MapOverlay> overlays;
+  final Set<String> favoriteStationIds;
+  final List<CommunityPost> recentCatches;
 
   const HomeMap({
     super.key,
@@ -30,7 +37,12 @@ class HomeMap extends StatelessWidget {
     this.currentLocation,
     this.onMapReady,
     this.baseLayer = MapBaseLayer.standard,
-    this.overlays = const {MapOverlay.community},
+    this.overlays = const {
+      MapOverlay.waterStations,
+      MapOverlay.communityReports,
+    },
+    this.favoriteStationIds = const {},
+    this.recentCatches = const [],
   });
 
   @override
@@ -59,39 +71,52 @@ class HomeMap extends StatelessWidget {
           ),
           MarkerLayer(
             markers: [
-              ...stations.map(
-                (station) => Marker(
-                  point: LatLng(station.latitude, station.longitude),
-                  width: 28,
-                  height: 28,
-                  child: Tooltip(
-                    message: station.name,
-                    child: GestureDetector(
-                      onTap: () => onStationTap?.call(station),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF087F8C),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
+              ...stations
+                  .where((station) {
+                    final showWater = overlays.contains(
+                      MapOverlay.waterStations,
+                    );
+                    final showFavorite =
+                        overlays.contains(MapOverlay.favoriteStations) &&
+                        favoriteStationIds.contains(station.id);
+                    return showWater || showFavorite;
+                  })
+                  .map(
+                    (station) => Marker(
+                      point: LatLng(station.latitude, station.longitude),
+                      width: 28,
+                      height: 28,
+                      child: Tooltip(
+                        message: station.name,
+                        child: GestureDetector(
+                          onTap: () => onStationTap?.call(station),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF087F8C),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 1.5,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.water_drop_rounded,
-                          color: Colors.white,
-                          size: 14,
+                            child: const Icon(
+                              Icons.water_drop_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-              if (overlays.contains(MapOverlay.community))
+              if (overlays.contains(MapOverlay.communityReports))
                 ..._clusters(reports).map((cluster) {
                   final report = cluster.reports.first;
                   return Marker(
@@ -135,6 +160,43 @@ class HomeMap extends StatelessWidget {
                     ),
                   );
                 }),
+              if (overlays.contains(MapOverlay.recentCatches))
+                ...recentCatches
+                    .where(
+                      (post) => post.latitude != null && post.longitude != null,
+                    )
+                    .map(
+                      (post) => Marker(
+                        point: LatLng(post.latitude!, post.longitude!),
+                        width: 30,
+                        height: 30,
+                        child: Tooltip(
+                          message: post.title,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2E7D32),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 1.5,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 5,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.set_meal_rounded,
+                              color: Colors.white,
+                              size: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
               if (currentLocation case final location?)
                 Marker(
                   point: location,

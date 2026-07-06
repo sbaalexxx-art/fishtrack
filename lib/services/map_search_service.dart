@@ -1,4 +1,5 @@
 import '../core/network/api_client.dart';
+import '../models/station.dart';
 
 class MapSearchResult {
   const MapSearchResult({
@@ -18,6 +19,37 @@ class MapSearchService {
   const MapSearchService({this.apiClient = const ApiClient()});
 
   final ApiClient apiClient;
+
+  List<MapSearchResult> searchStations(
+    String query,
+    Iterable<Station> stations,
+  ) {
+    final normalized = normalize(query);
+    if (normalized.isEmpty) return const [];
+    return stations
+        .where((station) => normalize(station.name).contains(normalized))
+        .map(
+          (station) => MapSearchResult(
+            name: station.name,
+            description: station.river.isEmpty ? null : station.river,
+            latitude: station.latitude,
+            longitude: station.longitude,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  static String normalize(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[ăâáàäãå]'), 'a')
+      .replaceAll(RegExp(r'[îíìï]'), 'i')
+      .replaceAll(RegExp(r'[șş]'), 's')
+      .replaceAll(RegExp(r'[țţ]'), 't')
+      .replaceAll(RegExp(r'[éèë]'), 'e')
+      .replaceAll(RegExp(r'[óòöõ]'), 'o')
+      .replaceAll(RegExp(r'[úùü]'), 'u')
+      .replaceAll(RegExp(r'\s+'), ' ');
 
   Future<List<MapSearchResult>> search(String query) async {
     final normalized = query.trim();

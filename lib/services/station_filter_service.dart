@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/station.dart';
+import 'map_search_service.dart';
 
 class StationFilters {
   const StationFilters({
@@ -72,14 +73,14 @@ class StationFilterService {
 
   List<Station> apply(List<Station> stations) {
     final value = filters.value;
-    final query = value.query.trim().toLowerCase();
+    final query = MapSearchService.normalize(value.query);
     return stations
         .where((station) {
           if (query.isNotEmpty &&
-              !station.name.toLowerCase().contains(query) &&
-              !station.river.toLowerCase().contains(query) &&
+              !MapSearchService.normalize(station.name).contains(query) &&
+              !MapSearchService.normalize(station.river).contains(query) &&
               !station.species.any(
-                (item) => item.toLowerCase().contains(query),
+                (item) => MapSearchService.normalize(item).contains(query),
               )) {
             return false;
           }

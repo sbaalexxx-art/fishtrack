@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../models/station.dart';
 import '../../services/community_service.dart';
+import '../../services/favorite_stations_service.dart';
 import '../../services/location_service.dart';
 import '../../services/map_search_service.dart';
 import '../../services/station_filter_service.dart';
@@ -35,11 +36,15 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   final LocationService _locationService = const LocationService();
   final MapSearchService _searchService = const MapSearchService();
   final WaterService _waterService = WaterService();
+  final FavoriteStationsService _favoriteStationsService =
+      const FavoriteStationsService();
   final MapController _mapController = MapController();
   final StationFilterService _filterService = StationFilterService.instance;
   final TextEditingController _searchController = TextEditingController();
   late Stream<List<CommunityPost>> _reportsStream;
   List<Station> _stations = const [];
+  List<CommunityPost> _recentCatches = const [];
+  Set<String> _favoriteStationIds = const {};
   LatLng? _currentLocation;
   LocationFailureReason? _locationFailure;
   bool _isLocating = false;
@@ -47,13 +52,17 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   bool _pendingRecenter = false;
   bool _isSearching = false;
   MapBaseLayer _baseLayer = MapBaseLayer.standard;
-  Set<MapOverlay> _overlays = const {MapOverlay.community};
+  Set<MapOverlay> _overlays = const {
+    MapOverlay.waterStations,
+    MapOverlay.communityReports,
+  };
 
   @override
   void initState() {
     super.initState();
     _reportsStream = _communityService.watchReports();
     _filterService.filters.addListener(_onFiltersChanged);
+    FavoriteStationsService.revision.addListener(_loadFavoriteIds);
     if (widget.child == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _locateUser());
     }
@@ -65,6 +74,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   @override
   void dispose() {
     _filterService.filters.removeListener(_onFiltersChanged);
+    FavoriteStationsService.revision.removeListener(_loadFavoriteIds);
     _searchController.dispose();
     _mapController.dispose();
     super.dispose();
@@ -87,6 +97,34 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     } on Exception {
       // The base map remains usable when station data is unavailable.
     }
+    await Future.wait([_loadFavoriteIds(), _loadRecentCatches()]);
+  }
+
+  Future<void> _loadFavoriteIds() async {
+    if (!_favoriteStationsService.isAuthenticated) {
+      if (mounted) setState(() => _favoriteStationIds = const {});
+      return;
+    }
+    try {
+      final ids = await _favoriteStationsService.getFavoriteIds();
+      if (mounted) setState(() => _favoriteStationIds = ids);
+    } on FavoriteException {
+      // Other map layers remain available if favourites cannot be loaded.
+    }
+  }
+
+  Future<void> _loadRecentCatches() async {
+    try {
+      final cutoff = DateTime.now().subtract(const Duration(hours: 72));
+      final posts = await _communityService.getFeed();
+      final catches = posts
+          .where((post) => post.type == CommunityPostType.catchPost)
+          .where((post) => post.createdAt.isAfter(cutoff))
+          .toList(growable: false);
+      if (mounted) setState(() => _recentCatches = catches);
+    } on CommunityException {
+      // Reports and station markers remain usable without recent catches.
+    }
   }
 
   Future<void> _openStation(Station station) async {
@@ -96,18 +134,19 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
         builder: (context) => StationDetailsPage(station: station),
       ),
     );
+    await _loadFavoriteIds();
   }
 
   Future<void> _submitSearch(String query) async {
-    if (_isSearching || query.trim().length < 2) return;
+    if (_isSearching || query.trim().isEmpty) return;
     setState(() => _isSearching = true);
     try {
-      final results = await _searchService.search(query);
+      final results = _searchService.searchStations(query, _stations);
       if (!mounted) return;
       if (results.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No matching place found.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No station found.')));
         return;
       }
       final selected = results.length == 1
@@ -132,12 +171,14 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
               ),
             );
       if (selected != null && _isMapReady) {
+        _filterService.updateQuery(selected.name);
+        _searchController.text = selected.name;
         _mapController.move(LatLng(selected.latitude, selected.longitude), 13);
       }
     } on Exception {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Place search is unavailable.')),
+          const SnackBar(content: Text('Station search is unavailable.')),
         );
       }
     } finally {
@@ -192,19 +233,33 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 for (final overlay in MapOverlay.values)
                   CheckboxListTile(
                     value: overlays.contains(overlay),
-                    enabled: overlay == MapOverlay.community,
                     title: Text(switch (overlay) {
-                      MapOverlay.community => 'Community',
-                      MapOverlay.catches => 'Catches (coming soon)',
-                      MapOverlay.favorites => 'Favorites (coming soon)',
+                      MapOverlay.waterStations => 'Water stations',
+                      MapOverlay.communityReports => 'Community reports',
+                      MapOverlay.recentCatches => 'Recent catches',
+                      MapOverlay.favoriteStations => 'Favourite stations',
                     }),
-                    onChanged: (value) => setSheetState(() {
-                      if (value == true) {
-                        overlays.add(overlay);
-                      } else {
-                        overlays.remove(overlay);
+                    onChanged: (value) {
+                      if (overlay == MapOverlay.favoriteStations &&
+                          value == true &&
+                          !_favoriteStationsService.isAuthenticated) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Please sign in to filter favourite stations.',
+                            ),
+                          ),
+                        );
+                        return;
                       }
-                    }),
+                      setSheetState(() {
+                        if (value == true) {
+                          overlays.add(overlay);
+                        } else {
+                          overlays.remove(overlay);
+                        }
+                      });
+                    },
                   ),
                 Align(
                   alignment: Alignment.centerRight,
@@ -332,7 +387,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
             reports: (snapshot.data ?? const <CommunityPost>[])
                 .where((report) => report.isActiveReport)
                 .toList(growable: false),
-            stations: _stations,
+            stations: _filterService.apply(_stations),
+            recentCatches: _recentCatches,
+            favoriteStationIds: _favoriteStationIds,
             onStationTap: _openStation,
             mapController: _mapController,
             currentLocation: _currentLocation,
@@ -726,6 +783,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                             Expanded(
                               child: TextField(
                                 controller: _searchController,
+                                onChanged: _filterService.updateQuery,
                                 onSubmitted: _submitSearch,
                                 textInputAction: TextInputAction.search,
                                 maxLines: 1,
@@ -745,7 +803,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                                   errorBorder: InputBorder.none,
                                   focusedErrorBorder: InputBorder.none,
                                   contentPadding: EdgeInsets.zero,
-                                  hintText: 'Search for lake, river, spot...',
+                                  hintText: 'Search station name...',
                                   hintStyle: TextStyle(
                                     color: Colors.white70,
                                     fontSize: 13,

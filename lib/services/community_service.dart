@@ -282,6 +282,8 @@ class CommunityService {
             imageUrl: _text(row['image']),
             weight: _number(row['weight']),
             length: _number(row['length']),
+            latitude: _number(row['latitude']),
+            longitude: _number(row['longitude']),
             createdAt: _date(row['timestamp']),
             authorName: _profileName(profiles, _text(row['user_id'])),
             authorAvatar: _profileAvatar(profiles, _text(row['user_id'])),
