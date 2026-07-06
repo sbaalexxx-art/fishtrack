@@ -151,7 +151,14 @@ class _CommunityPostCard extends StatelessWidget {
                     : const Icon(Icons.person_rounded),
               ),
               title: Text(post.authorName),
-              subtitle: Text(_relativeTime(post.createdAt)),
+              subtitle: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(_relativeTime(post.createdAt)),
+                  if (post.isSuspicious) const _UnderReviewBadge(),
+                ],
+              ),
               trailing: Icon(
                 isCatch ? Icons.set_meal_outlined : Icons.campaign_outlined,
               ),
@@ -265,6 +272,20 @@ class _CommunityPostCard extends StatelessWidget {
     if (difference.inDays < 1) return '${difference.inHours}h ago';
     return '${difference.inDays}d ago';
   }
+}
+
+class _UnderReviewBadge extends StatelessWidget {
+  const _UnderReviewBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Text('Under review', style: Theme.of(context).textTheme.labelSmall),
+  );
 }
 
 class _CreateReportDialog extends StatefulWidget {

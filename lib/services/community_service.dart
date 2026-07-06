@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'location_service.dart';
+import 'report_spam_service.dart';
 
 enum CommunityPostType { catchPost, report }
 
@@ -84,6 +85,9 @@ class CommunityPost {
     this.expiresAt,
     this.stillValidCount = 0,
     this.noLongerValidCount = 0,
+    this.spamScore = 0,
+    this.isSuspicious = false,
+    this.spamReason,
   });
 
   final String id;
@@ -105,6 +109,9 @@ class CommunityPost {
   final DateTime? expiresAt;
   final int stillValidCount;
   final int noLongerValidCount;
+  final int spamScore;
+  final bool isSuspicious;
+  final String? spamReason;
 
   bool get isActiveReport =>
       type == CommunityPostType.report &&
@@ -131,6 +138,9 @@ class CommunityPost {
     expiresAt: expiresAt,
     stillValidCount: stillValidCount,
     noLongerValidCount: noLongerValidCount,
+    spamScore: spamScore,
+    isSuspicious: isSuspicious,
+    spamReason: spamReason,
   );
 }
 
@@ -211,6 +221,9 @@ class CommunityService {
                 expiresAt: _nullableDate(row['expires_at']),
                 stillValidCount: _integer(row['still_valid_count']),
                 noLongerValidCount: _integer(row['no_longer_valid_count']),
+                spamScore: _integer(row['spam_score']),
+                isSuspicious: row['is_suspicious'] == true,
+                spamReason: _text(row['spam_reason']),
               ),
             )
             .where((report) => report.id.isNotEmpty)
@@ -286,6 +299,9 @@ class CommunityService {
             expiresAt: _nullableDate(row['expires_at']),
             stillValidCount: _integer(row['still_valid_count']),
             noLongerValidCount: _integer(row['no_longer_valid_count']),
+            spamScore: _integer(row['spam_score']),
+            isSuspicious: row['is_suspicious'] == true,
+            spamReason: _text(row['spam_reason']),
             authorName: _profileName(profiles, _text(row['user_id'])),
             authorAvatar: _profileAvatar(profiles, _text(row['user_id'])),
           ),
@@ -330,6 +346,9 @@ class CommunityService {
             expiresAt: _nullableDate(row['expires_at']),
             stillValidCount: _integer(row['still_valid_count']),
             noLongerValidCount: _integer(row['no_longer_valid_count']),
+            spamScore: _integer(row['spam_score']),
+            isSuspicious: row['is_suspicious'] == true,
+            spamReason: _text(row['spam_reason']),
             authorName: _profileName(profiles, _text(row['user_id'])),
             authorAvatar: _profileAvatar(profiles, _text(row['user_id'])),
           ),
@@ -360,6 +379,42 @@ class CommunityService {
         ? position.longitude
         : (position.longitude * 100).round() / 100;
     final now = DateTime.now().toUtc();
+    final description = text?.trim() ?? '';
+    final moderation = const ReportSpamService();
+    final hash = await moderation.imageHash(cameraPhoto);
+    final previousRows = _maps(
+      await _supabase
+          .from('reports')
+          .select(
+            'category,description,latitude,longitude,created_at,image_hash',
+          )
+          .eq('user_id', user.id)
+          .gte(
+            'created_at',
+            now.subtract(const Duration(hours: 24)).toIso8601String(),
+          )
+          .order('created_at', ascending: false)
+          .limit(50),
+    );
+    final assessment = moderation.assess(
+      category: category.name,
+      description: description,
+      latitude: latitude,
+      longitude: longitude,
+      now: now,
+      imageHash: hash,
+      history: [
+        for (final row in previousRows)
+          SpamReportHistory(
+            category: _text(row['category']) ?? '',
+            description: _text(row['description']) ?? '',
+            latitude: _number(row['latitude']),
+            longitude: _number(row['longitude']),
+            createdAt: _date(row['created_at']).toUtc(),
+            imageHash: _text(row['image_hash']),
+          ),
+      ],
+    );
     String? imageUrl;
     if (cameraPhoto != null) {
       final path = '${user.id}/${now.microsecondsSinceEpoch}.jpg';
@@ -373,12 +428,16 @@ class CommunityService {
             'user_id': user.id,
             'type': category.label,
             'category': category.name,
-            'description': text?.trim(),
+            'description': description.isEmpty ? null : description,
             'image_url': imageUrl,
             'latitude': latitude,
             'longitude': longitude,
             'created_at': now.toIso8601String(),
             'expires_at': now.add(const Duration(hours: 12)).toIso8601String(),
+            'spam_score': assessment.score,
+            'is_suspicious': assessment.isSuspicious,
+            'spam_reason': assessment.reason,
+            'image_hash': hash,
           })
           .select('id')
           .single(),

@@ -259,6 +259,20 @@ class _ReportTile extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (report.isSuspicious) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'Under review',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
           if (report.body.trim().isNotEmpty) Text(report.body),
           const SizedBox(height: 4),
           Text(
