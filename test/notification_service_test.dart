@@ -15,7 +15,7 @@ void main() {
     relatedStation: 'station-1',
     createdAt: DateTime.utc(2026, 7, 6),
     isRead: isRead,
-    priority: NotificationPriority.high,
+    priority: NotificationPriority.important,
   );
 
   test('notification JSON uses backend-ready field names', () {
@@ -27,7 +27,7 @@ void main() {
     expect(json['related_station'], 'station-1');
     expect(json['read'], isFalse);
     expect(restored.type, AppNotificationType.waterTrendChanged);
-    expect(restored.priority, NotificationPriority.high);
+    expect(restored.priority, NotificationPriority.important);
   });
 
   test('store scopes notifications and read state per user', () {

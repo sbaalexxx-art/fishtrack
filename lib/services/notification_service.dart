@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'favorite_stations_service.dart';
+import 'notification_preferences_service.dart';
 import 'reputation_service.dart';
 import 'water_alert_service.dart';
 import 'water_service.dart';
@@ -24,16 +25,19 @@ enum AppNotificationType {
 }
 
 enum NotificationPriority {
-  low,
-  normal,
-  high,
+  silent,
+  important,
   critical;
 
-  static NotificationPriority parse(Object? value) => values.firstWhere(
-    (priority) => priority.name == value,
-    orElse: () => normal,
-  );
+  static NotificationPriority parse(Object? value) => switch (value) {
+    'silent' || 'low' => silent,
+    'critical' => critical,
+    'important' || 'normal' || 'high' => important,
+    _ => important,
+  };
 }
+
+enum NotificationDelivery { storedOnly, deliver, postponed }
 
 class AppNotification {
   const AppNotification({
@@ -45,6 +49,9 @@ class AppNotification {
     required this.createdAt,
     required this.isRead,
     required this.priority,
+    this.delivery = NotificationDelivery.deliver,
+    this.deliverAfter,
+    this.groupCount = 1,
     this.relatedStation,
     this.relatedReport,
   });
@@ -63,6 +70,16 @@ class AppNotification {
             DateTime.now(),
         isRead: json['read'] == true,
         priority: NotificationPriority.parse(json['priority']),
+        delivery: NotificationDelivery.values.firstWhere(
+          (delivery) => delivery.name == json['delivery'],
+          orElse: () => NotificationDelivery.deliver,
+        ),
+        deliverAfter: DateTime.tryParse(
+          json['deliver_after']?.toString() ?? '',
+        ),
+        groupCount: json['group_count'] is num
+            ? (json['group_count'] as num).toInt()
+            : 1,
       );
 
   final String id;
@@ -75,18 +92,31 @@ class AppNotification {
   final DateTime createdAt;
   final bool isRead;
   final NotificationPriority priority;
+  final NotificationDelivery delivery;
+  final DateTime? deliverAfter;
+  final int groupCount;
 
-  AppNotification copyWith({bool? isRead}) => AppNotification(
+  AppNotification copyWith({
+    bool? isRead,
+    String? message,
+    DateTime? createdAt,
+    NotificationDelivery? delivery,
+    DateTime? deliverAfter,
+    int? groupCount,
+  }) => AppNotification(
     id: id,
     userId: userId,
     title: title,
-    message: message,
+    message: message ?? this.message,
     type: type,
     relatedStation: relatedStation,
     relatedReport: relatedReport,
-    createdAt: createdAt,
+    createdAt: createdAt ?? this.createdAt,
     isRead: isRead ?? this.isRead,
     priority: priority,
+    delivery: delivery ?? this.delivery,
+    deliverAfter: deliverAfter ?? this.deliverAfter,
+    groupCount: groupCount ?? this.groupCount,
   );
 
   Map<String, dynamic> toJson() => {
@@ -100,12 +130,16 @@ class AppNotification {
     'created_at': createdAt.toUtc().toIso8601String(),
     'read': isRead,
     'priority': priority.name,
+    'delivery': delivery.name,
+    'deliver_after': deliverAfter?.toUtc().toIso8601String(),
+    'group_count': groupCount,
   };
 }
 
 abstract interface class NotificationStore {
   List<AppNotification> forUser(String userId);
   void add(AppNotification notification);
+  void upsert(AppNotification notification);
   void markAsRead(String userId, String notificationId);
   void clearRead(String userId);
 }
@@ -128,6 +162,18 @@ class MemoryNotificationStore implements NotificationStore {
     if (_items.length > maximumNotifications) {
       _ids.remove(_items.removeLast().id);
     }
+  }
+
+  @override
+  void upsert(AppNotification notification) {
+    final index = _items.indexWhere((item) => item.id == notification.id);
+    if (index < 0) {
+      add(notification);
+      return;
+    }
+    _items[index] = notification;
+    final item = _items.removeAt(index);
+    _items.insert(0, item);
   }
 
   @override
@@ -157,6 +203,7 @@ class NotificationService {
     ReputationService? reputationService,
     FavoriteStationsService? favoriteStationsService,
     WaterService? waterService,
+    NotificationPreferencesService? preferencesService,
   }) : _client = client,
        _store = store ?? _sharedStore,
        _waterAlertService = waterAlertService ?? WaterAlertService(),
@@ -164,12 +211,15 @@ class NotificationService {
            reputationService ?? ReputationService(client: client),
        _favoriteStationsService =
            favoriteStationsService ?? FavoriteStationsService(client: client),
-       _waterService = waterService ?? WaterService();
+       _waterService = waterService ?? WaterService(),
+       _preferencesService =
+           preferencesService ?? NotificationPreferencesService();
 
   static final MemoryNotificationStore _sharedStore = MemoryNotificationStore();
   static final Map<String, int> _lastReputation = {};
   static final Map<String, TrustLevel> _lastTrustLevel = {};
   static final Map<String, Set<String>> _lastFavorites = {};
+  static final Map<String, Set<String>> _processedEventIds = {};
 
   final SupabaseClient? _client;
   final NotificationStore _store;
@@ -177,6 +227,7 @@ class NotificationService {
   final ReputationService _reputationService;
   final FavoriteStationsService _favoriteStationsService;
   final WaterService _waterService;
+  final NotificationPreferencesService _preferencesService;
 
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
@@ -187,6 +238,7 @@ class NotificationService {
       _generateReputationNotifications(userId),
       _generateFavoriteNotifications(userId),
     ]);
+    _releasePostponed(userId);
     return _store.forUser(userId);
   }
 
@@ -226,7 +278,8 @@ class NotificationService {
             AppNotificationType.newReportNearFavoriteStation,
           WaterAlertType.dangerousReport => AppNotificationType.dangerousReport,
         };
-        _store.add(
+        _addSmart(
+          userId,
           AppNotification(
             id: '$userId:water:${alert.id}',
             userId: userId,
@@ -239,9 +292,7 @@ class NotificationService {
             isRead: false,
             priority: alert.type == WaterAlertType.dangerousReport
                 ? NotificationPriority.critical
-                : alert.type == WaterAlertType.rapidChange
-                ? NotificationPriority.high
-                : NotificationPriority.normal,
+                : NotificationPriority.important,
           ),
         );
       }
@@ -258,7 +309,8 @@ class NotificationService {
       _lastReputation[userId] = current.reputationScore;
       _lastTrustLevel[userId] = current.trustLevel;
       if (previousScore != null && current.reputationScore > previousScore) {
-        _store.add(
+        _addSmart(
+          userId,
           AppNotification(
             id: '$userId:reputation:${current.reputationScore}',
             userId: userId,
@@ -267,13 +319,14 @@ class NotificationService {
             type: AppNotificationType.reputationIncreased,
             createdAt: current.updatedAt ?? DateTime.now(),
             isRead: false,
-            priority: NotificationPriority.normal,
+            priority: NotificationPriority.important,
           ),
         );
       }
       if (previousLevel != null &&
           current.trustLevel.index > previousLevel.index) {
-        _store.add(
+        _addSmart(
+          userId,
           AppNotification(
             id: '$userId:trust:${current.trustLevel.name}',
             userId: userId,
@@ -282,7 +335,7 @@ class NotificationService {
             type: AppNotificationType.trustBadgeUpgraded,
             createdAt: current.updatedAt ?? DateTime.now(),
             isRead: false,
-            priority: NotificationPriority.high,
+            priority: NotificationPriority.important,
           ),
         );
       }
@@ -307,7 +360,8 @@ class NotificationService {
       for (final stationId in changed) {
         final added = current.contains(stationId);
         final stationName = names[stationId] ?? 'Water station';
-        _store.add(
+        _addSmart(
+          userId,
           AppNotification(
             id:
                 '$userId:favorite:$stationId:$added:'
@@ -321,7 +375,7 @@ class NotificationService {
             relatedStation: stationId,
             createdAt: DateTime.now(),
             isRead: false,
-            priority: NotificationPriority.low,
+            priority: NotificationPriority.silent,
           ),
         );
       }
@@ -342,6 +396,106 @@ class NotificationService {
     final match = RegExp(r'(?:report|danger):([^:]+)$').firstMatch(alertId);
     return match?.group(1);
   }
+
+  void _addSmart(String userId, AppNotification candidate) {
+    final preferences = _preferencesService.getForUser(userId);
+    final category = _categoryFor(candidate.type);
+    final processed = _processedEventIds.putIfAbsent(userId, () => {});
+    if (!processed.add(candidate.id)) return;
+    if (!preferences.isCategoryEnabled(category)) return;
+
+    final existing = _store.forUser(userId);
+    final groupable =
+        candidate.type == AppNotificationType.newReportNearFavoriteStation ||
+        candidate.type == AppNotificationType.dangerousReport;
+    if (preferences.groupingEnabled && groupable) {
+      AppNotification? match;
+      for (final item in existing) {
+        if (item.type == candidate.type &&
+            item.relatedStation == candidate.relatedStation &&
+            candidate.createdAt.difference(item.createdAt).abs() <=
+                const Duration(minutes: 30)) {
+          match = item;
+          break;
+        }
+      }
+      if (match != null) {
+        final count = match.groupCount + 1;
+        _store.upsert(
+          match.copyWith(
+            groupCount: count,
+            createdAt: candidate.createdAt.isAfter(match.createdAt)
+                ? candidate.createdAt
+                : match.createdAt,
+            message: _groupedMessage(candidate.type, count),
+          ),
+        );
+        return;
+      }
+    }
+
+    final withinCooldown = existing.any(
+      (item) =>
+          item.type == candidate.type &&
+          item.relatedStation == candidate.relatedStation &&
+          candidate.createdAt.difference(item.createdAt).abs() <
+              preferences.cooldown,
+    );
+    if (withinCooldown) return;
+
+    final now = DateTime.now();
+    final quiet = preferences.isQuietAt(now);
+    final delivery = switch (candidate.priority) {
+      NotificationPriority.silent => NotificationDelivery.storedOnly,
+      NotificationPriority.critical => NotificationDelivery.deliver,
+      NotificationPriority.important =>
+        quiet ? NotificationDelivery.postponed : NotificationDelivery.deliver,
+    };
+    _store.add(
+      candidate.copyWith(
+        delivery: delivery,
+        deliverAfter: delivery == NotificationDelivery.postponed
+            ? preferences.nextQuietEnd(now)
+            : null,
+      ),
+    );
+  }
+
+  void _releasePostponed(String userId) {
+    final now = DateTime.now();
+    for (final item in _store.forUser(userId)) {
+      if (item.delivery == NotificationDelivery.postponed &&
+          item.deliverAfter != null &&
+          !item.deliverAfter!.isAfter(now)) {
+        _store.upsert(item.copyWith(delivery: NotificationDelivery.deliver));
+      }
+    }
+  }
+
+  static NotificationCategory _categoryFor(AppNotificationType type) =>
+      switch (type) {
+        AppNotificationType.waterLevelChanged ||
+        AppNotificationType.waterTrendChanged =>
+          NotificationCategory.waterAlerts,
+        AppNotificationType.newReportNearFavoriteStation =>
+          NotificationCategory.communityReports,
+        AppNotificationType.dangerousReport =>
+          NotificationCategory.dangerousReports,
+        AppNotificationType.reputationIncreased ||
+        AppNotificationType.trustBadgeUpgraded =>
+          NotificationCategory.reputationTrust,
+        AppNotificationType.favoriteStationUpdate =>
+          NotificationCategory.favoriteStations,
+      };
+
+  static String _groupedMessage(AppNotificationType type, int count) =>
+      switch (type) {
+        AppNotificationType.newReportNearFavoriteStation =>
+          '$count new reports near your favourite station.',
+        AppNotificationType.dangerousReport =>
+          '$count dangerous reports near your favourite station.',
+        _ => '$count notification events.',
+      };
 }
 
 class NotificationException implements Exception {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/notification_service.dart';
+import 'notification_preferences_page.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -64,6 +65,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
           },
         ),
         actions: [
+          IconButton(
+            tooltip: 'Notification preferences',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const NotificationPreferencesPage(),
+              ),
+            ),
+            icon: const Icon(Icons.tune_rounded),
+          ),
           IconButton(
             tooltip: 'Clear read notifications',
             onPressed: _clearRead,
@@ -150,9 +160,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   };
 
   static Color _color(NotificationPriority priority) => switch (priority) {
-    NotificationPriority.low => Colors.grey,
-    NotificationPriority.normal => Colors.blue,
-    NotificationPriority.high => Colors.orange,
+    NotificationPriority.silent => Colors.grey,
+    NotificationPriority.important => Colors.blue,
     NotificationPriority.critical => Colors.red,
   };
 
