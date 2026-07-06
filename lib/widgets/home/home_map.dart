@@ -65,9 +65,6 @@ class HomeMap extends StatelessWidget {
             userAgentPackageName: 'com.aifishmap.app',
             tileProvider: NetworkTileProvider(),
             panBuffer: 2,
-            errorTileCallback: (tile, error, stackTrace) {
-              debugPrint('OpenStreetMap tile error: $error');
-            },
           ),
           MarkerLayer(
             markers: [

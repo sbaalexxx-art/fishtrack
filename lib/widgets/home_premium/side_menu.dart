@@ -242,6 +242,9 @@ class HomeSideMenu extends StatelessWidget {
   }
 
   Widget _placeholderItem(BuildContext context, IconData icon, String title) {
+    if (!BuildModeService.isDeveloperVisible) {
+      return const SizedBox.shrink();
+    }
     return _item(
       context,
       icon,

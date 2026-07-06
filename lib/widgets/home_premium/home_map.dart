@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../models/station.dart';
 import '../../services/community_service.dart';
+import '../../services/build_mode_service.dart';
 import '../../services/favorite_stations_service.dart';
 import '../../services/location_service.dart';
 import '../../services/map_search_service.dart';
@@ -214,18 +215,20 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                         value: MapBaseLayer.standard,
                         title: const Text('Standard'),
                       ),
-                      const RadioListTile(
-                        value: MapBaseLayer.satellite,
-                        enabled: false,
-                        title: Text('Satellite'),
-                        subtitle: Text('Coming soon'),
-                      ),
-                      const RadioListTile(
-                        value: MapBaseLayer.fishingMode,
-                        enabled: false,
-                        title: Text('Fishing Mode'),
-                        subtitle: Text('Coming soon'),
-                      ),
+                      if (BuildModeService.isDeveloperVisible) ...[
+                        const RadioListTile(
+                          value: MapBaseLayer.satellite,
+                          enabled: false,
+                          title: Text('Satellite'),
+                          subtitle: Text('Coming soon'),
+                        ),
+                        const RadioListTile(
+                          value: MapBaseLayer.fishingMode,
+                          enabled: false,
+                          title: Text('Fishing Mode'),
+                          subtitle: Text('Coming soon'),
+                        ),
+                      ],
                     ],
                   ),
                 ),
