@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/weather.dart';
+import '../services/astronomy_service.dart';
 import '../services/weather_service.dart';
 
 class WeatherPage extends StatefulWidget {
@@ -12,16 +13,27 @@ class WeatherPage extends StatefulWidget {
 
 class _WeatherPageState extends State<WeatherPage> {
   final _service = WeatherService();
-  late Future<WeatherData> _weather;
+  late Future<_WeatherViewData> _weather;
 
   @override
   void initState() {
     super.initState();
-    _weather = _service.getCurrentWeather();
+    _weather = _load();
+  }
+
+  Future<_WeatherViewData> _load() async {
+    final values = await Future.wait([
+      _service.getCurrentWeather(),
+      _service.getAstronomyContext(),
+    ]);
+    return _WeatherViewData(
+      weather: values[0] as WeatherData,
+      astronomy: values[1] as AstronomyContext,
+    );
   }
 
   Future<void> _refresh() async {
-    final weather = _service.getCurrentWeather();
+    final weather = _load();
     setState(() => _weather = weather);
     await weather;
   }
@@ -32,7 +44,7 @@ class _WeatherPageState extends State<WeatherPage> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('Weather')),
       body: SafeArea(
-        child: FutureBuilder<WeatherData>(
+        child: FutureBuilder<_WeatherViewData>(
           future: _weather,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -42,7 +54,8 @@ class _WeatherPageState extends State<WeatherPage> {
               return _WeatherMessage(onRetry: _refresh);
             }
             return _WeatherContent(
-              weather: snapshot.data!,
+              weather: snapshot.data!.weather,
+              astronomy: snapshot.data!.astronomy,
               onRefresh: _refresh,
             );
           },
@@ -53,9 +66,14 @@ class _WeatherPageState extends State<WeatherPage> {
 }
 
 class _WeatherContent extends StatelessWidget {
-  const _WeatherContent({required this.weather, required this.onRefresh});
+  const _WeatherContent({
+    required this.weather,
+    required this.astronomy,
+    required this.onRefresh,
+  });
 
   final WeatherData weather;
+  final AstronomyContext astronomy;
   final Future<void> Function() onRefresh;
 
   @override
@@ -287,20 +305,23 @@ class _WeatherContent extends StatelessWidget {
                 color: Color(0xFFE0E7FF),
               ),
               title: Text(
-                weather.moonPhase,
+                '${astronomy.moon.name} • '
+                '${astronomy.moon.illuminationPercent.round()}% illuminated',
                 style: const TextStyle(color: Colors.white),
               ),
-              subtitle: const Text(
-                'Solunar activity estimate',
-                style: TextStyle(color: Colors.white70),
+              subtitle: Text(
+                'Moon age ${astronomy.moon.ageDays.toStringAsFixed(1)} days',
+                style: const TextStyle(color: Colors.white70),
               ),
-              trailing: Text(
-                weather.fishingActivity.name.toUpperCase(),
-                style: const TextStyle(
-                  color: Color(0xFF80CBC4),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            color: Theme.of(context).colorScheme.surface,
+            child: ListTile(
+              leading: const Icon(Icons.wb_twilight_rounded),
+              title: const Text('Golden hour'),
+              subtitle: Text(_goldenHourLabel(astronomy)),
             ),
           ),
         ],
@@ -339,6 +360,29 @@ class _WeatherContent extends StatelessWidget {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return days[date.weekday - 1];
   }
+
+  static String _goldenHourLabel(AstronomyContext context) {
+    final golden = context.goldenHour;
+    if (context.availability == AstronomyAvailability.locationRequired) {
+      return 'Location required';
+    }
+    if (context.availability == AstronomyAvailability.notAvailable ||
+        golden == null) {
+      return 'Not available';
+    }
+    return '${_clock(golden.morningStart)}–${_clock(golden.morningEnd)} or '
+        '${_clock(golden.eveningStart)}–${_clock(golden.eveningEnd)}';
+  }
+
+  static String _clock(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:'
+      '${value.minute.toString().padLeft(2, '0')}';
+}
+
+class _WeatherViewData {
+  const _WeatherViewData({required this.weather, required this.astronomy});
+  final WeatherData weather;
+  final AstronomyContext astronomy;
 }
 
 class _WeatherMessage extends StatelessWidget {

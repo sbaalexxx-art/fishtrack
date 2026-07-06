@@ -1,6 +1,7 @@
 import '../models/station.dart';
 import '../models/weather.dart';
 import '../repositories/weather_repository.dart';
+import 'astronomy_service.dart';
 import 'location_service.dart';
 import 'water_service.dart';
 
@@ -22,6 +23,33 @@ class WeatherService {
   final WaterService _waterService;
 
   static void clearCache() => _cache.clear();
+
+  Future<AstronomyContext> getAstronomyContext({
+    Station? fallbackStation,
+    DateTime? dateTime,
+  }) async {
+    final moon = const AstronomyService().moonPhase(dateTime ?? DateTime.now());
+    try {
+      final position = await _locationService.determinePosition();
+      return const AstronomyService().calculate(
+        dateTime: dateTime ?? DateTime.now(),
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+    } on LocationFailure {
+      final station = fallbackStation ?? _waterService.selectedStation;
+      if (station == null) {
+        return AstronomyContext.locationRequired(moon: moon);
+      }
+      return const AstronomyService().calculate(
+        dateTime: dateTime ?? DateTime.now(),
+        latitude: station.latitude,
+        longitude: station.longitude,
+      );
+    } on Exception {
+      return AstronomyContext.notAvailable(moon: moon);
+    }
+  }
 
   Future<WeatherData> getCurrentWeather({Station? fallbackStation}) async {
     final coordinates = await _resolveCoordinates(fallbackStation);

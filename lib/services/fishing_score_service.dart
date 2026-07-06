@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import '../models/station.dart';
 import '../models/water_level.dart';
 import '../models/weather.dart';
+import 'astronomy_service.dart';
 import 'community_service.dart';
 import 'water_service.dart';
 import 'weather_service.dart';
@@ -24,6 +25,8 @@ class FishingScoreResult {
     required this.missingFactors,
     required this.bestTime,
     required this.confidence,
+    required this.moonPhase,
+    required this.goldenHour,
   });
 
   const FishingScoreResult.notEnough()
@@ -35,7 +38,9 @@ class FishingScoreResult {
       negativeFactors = const [],
       missingFactors = const ['No live inputs are currently available.'],
       bestTime = 'No data',
-      confidence = 0;
+      confidence = 0,
+      moonPhase = 'Not available',
+      goldenHour = 'Location required';
 
   final double? score;
   final FishingScoreRating? rating;
@@ -46,6 +51,8 @@ class FishingScoreResult {
   final List<String> missingFactors;
   final String bestTime;
   final int confidence;
+  final String moonPhase;
+  final String goldenHour;
 
   bool get hasEnoughData => score != null;
 }
@@ -154,6 +161,7 @@ class FishingScoreService implements FishingDecisionProvider {
   }) {
     final factors = <_Factor>[];
     final missing = <String>[];
+    final astronomy = _astronomy(station, localTime);
     if (weatherAvailable && weather != null) {
       factors.addAll(_weatherFactors(weather));
     } else {
@@ -178,6 +186,16 @@ class FishingScoreService implements FishingDecisionProvider {
       factors.addAll(_catchFactors(posts, localTime));
     } else {
       missing.add('Score calculated without recent catch data.');
+    }
+    factors.add(
+      _Factor(
+        .5,
+        '${astronomy.moon.name} '
+        '(${astronomy.moon.illuminationPercent.round()}% illuminated)',
+      ),
+    );
+    if (astronomy.goldenHour?.contains(localTime) == true) {
+      factors.add(const _Factor(2, 'Current time is within golden hour'));
     }
 
     for (final message in missing) {
@@ -217,6 +235,10 @@ class FishingScoreService implements FishingDecisionProvider {
       missingFactors: missing,
       bestTime: _bestTime(weather),
       confidence: confidence,
+      moonPhase:
+          '${astronomy.moon.name} • '
+          '${astronomy.moon.illuminationPercent.round()}% illuminated',
+      goldenHour: _goldenHourLabel(astronomy),
     );
   }
 
@@ -366,6 +388,32 @@ class FishingScoreService implements FishingDecisionProvider {
   static String _clock(DateTime value) =>
       '${value.hour.toString().padLeft(2, '0')}:'
       '${value.minute.toString().padLeft(2, '0')}';
+
+  AstronomyContext _astronomy(Station? station, DateTime dateTime) {
+    final service = const AstronomyService();
+    final moon = service.moonPhase(dateTime);
+    if (station == null) {
+      return AstronomyContext.locationRequired(moon: moon);
+    }
+    return service.calculate(
+      dateTime: dateTime,
+      latitude: station.latitude,
+      longitude: station.longitude,
+    );
+  }
+
+  String _goldenHourLabel(AstronomyContext context) {
+    final golden = context.goldenHour;
+    if (context.availability == AstronomyAvailability.locationRequired) {
+      return 'Location required';
+    }
+    if (context.availability == AstronomyAvailability.notAvailable ||
+        golden == null) {
+      return 'Not available';
+    }
+    return '${_clock(golden.morningStart)}–${_clock(golden.morningEnd)} or '
+        '${_clock(golden.eveningStart)}–${_clock(golden.eveningEnd)}';
+  }
 
   String _explanation(List<_Factor> positive, List<_Factor> negative) {
     if (positive.isEmpty && negative.isEmpty) {

@@ -99,6 +99,17 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
                     subtitle: Text(result.bestTime),
                   ),
                 ),
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(
+                      Icons.dark_mode_outlined,
+                      color: Colors.indigo,
+                    ),
+                    title: Text(result.moonPhase),
+                    subtitle: Text('Golden hour: ${result.goldenHour}'),
+                  ),
+                ),
                 if (result.missingFactors.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   _FactorCard(
