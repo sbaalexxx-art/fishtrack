@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/notification_service.dart';
+import '../widgets/loading_list_skeleton.dart';
 import 'notification_preferences_page.dart';
 
 class NotificationsPage extends StatefulWidget {
@@ -86,7 +87,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           future: _notifications,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const LoadingListSkeleton();
             }
             if (snapshot.hasError) {
               final message = snapshot.error is NotificationException
@@ -118,6 +119,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       ),
                       title: Text(
                         notification.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontWeight: notification.isRead
                               ? FontWeight.normal
@@ -127,6 +130,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       subtitle: Text(
                         '${notification.message}\n'
                         '${_relativeTime(notification.createdAt)}',
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       isThreeLine: true,
                       trailing: Icon(
@@ -183,19 +188,31 @@ class _NotificationMessage extends StatelessWidget {
   final Future<void> Function() onRetry;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.notifications_none_rounded, size: 52),
-          const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: onRetry, child: const Text('Refresh')),
-        ],
-      ),
+  Widget build(BuildContext context) => RefreshIndicator(
+    onRefresh: onRetry,
+    child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(
+          height: MediaQuery.sizeOf(context).height * .65,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.notifications_none_rounded, size: 52),
+                const SizedBox(height: 12),
+                Text(message, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: onRetry,
+                  child: const Text('Refresh'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }

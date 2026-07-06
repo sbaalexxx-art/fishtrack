@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/station.dart';
 import '../services/favorite_stations_service.dart';
 import '../services/water_service.dart';
+import '../widgets/loading_list_skeleton.dart';
 import 'station_details_page.dart';
 
 class FavoritesPage extends StatefulWidget {
@@ -64,7 +65,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
           future: _favorites,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const LoadingListSkeleton();
             }
             if (snapshot.hasError) {
               return _FavoriteMessage(
@@ -91,7 +92,11 @@ class _FavoritesPageState extends State<FavoritesPage> {
                   return Card(
                     child: ListTile(
                       leading: const Icon(Icons.water_drop_outlined),
-                      title: Text(station.name),
+                      title: Text(
+                        station.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       subtitle: Text(_stationSubtitle(station)),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
@@ -128,14 +133,27 @@ class _FavoriteMessage extends StatelessWidget {
   final Future<void> Function() onRetry;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
+  Widget build(BuildContext context) => RefreshIndicator(
+    onRefresh: onRetry,
+    child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       children: [
-        const Icon(Icons.favorite_border_rounded, size: 48),
-        const SizedBox(height: 12),
-        Text(message, textAlign: TextAlign.center),
-        TextButton(onPressed: onRetry, child: const Text('Refresh')),
+        SizedBox(
+          height: MediaQuery.sizeOf(context).height * .65,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.favorite_border_rounded, size: 48),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(message, textAlign: TextAlign.center),
+              ),
+              const SizedBox(height: 8),
+              TextButton(onPressed: onRetry, child: const Text('Refresh')),
+            ],
+          ),
+        ),
       ],
     ),
   );

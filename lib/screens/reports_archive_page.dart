@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/community_service.dart';
+import '../widgets/loading_list_skeleton.dart';
 import '../widgets/trust_badge.dart';
 
 enum _ArchivePeriod {
@@ -72,14 +73,29 @@ class _ReportsArchivePageState extends State<ReportsArchivePage> {
                 future: _reports,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const LoadingListSkeleton();
                   }
                   if (snapshot.hasError || !snapshot.hasData) {
                     return Center(
-                      child: OutlinedButton.icon(
-                        onPressed: _retry,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.cloud_off_outlined, size: 48),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Reports archive is currently unavailable.',
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _retry,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Retry'),
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   }

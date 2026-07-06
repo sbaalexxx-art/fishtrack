@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/community_service.dart';
+import '../widgets/loading_list_skeleton.dart';
 import '../widgets/trust_badge.dart';
 import 'community_details_page.dart';
 
@@ -51,7 +52,7 @@ class _ReportsPageState extends State<ReportsPage> {
           future: _feed,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const LoadingListSkeleton();
             }
             if (snapshot.hasError) {
               return _FeedMessage(
@@ -155,7 +156,11 @@ class _CommunityPostCard extends StatelessWidget {
                 spacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(post.authorName),
+                  Text(
+                    post.authorName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   if (!isCatch) TrustBadge(level: post.authorTrustLevel),
                 ],
               ),
@@ -467,19 +472,28 @@ class _FeedMessage extends StatelessWidget {
   final Future<void> Function() action;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 48),
-          const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: action, child: const Text('Retry')),
-        ],
-      ),
+  Widget build(BuildContext context) => RefreshIndicator(
+    onRefresh: action,
+    child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(
+          height: MediaQuery.sizeOf(context).height * .65,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 48),
+                const SizedBox(height: 12),
+                Text(message, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                OutlinedButton(onPressed: action, child: const Text('Retry')),
+              ],
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }

@@ -15,18 +15,23 @@ class RecentCatchesCardPremium extends StatefulWidget {
 }
 
 class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
-  late final Future<List<CommunityPost>> _catches;
+  late Future<List<CommunityPost>> _catches;
 
   @override
   void initState() {
     super.initState();
-    _catches = const CommunityService().getFeed().then(
-      (posts) => posts
-          .where((post) => post.type == CommunityPostType.catchPost)
-          .take(10)
-          .toList(),
-    );
+    _catches = _load();
   }
+
+  Future<List<CommunityPost>> _load() =>
+      const CommunityService().getFeed().then(
+        (posts) => posts
+            .where((post) => post.type == CommunityPostType.catchPost)
+            .take(10)
+            .toList(),
+      );
+
+  void _retry() => setState(() => _catches = _load());
 
   void _openAll() {
     Navigator.of(
@@ -67,9 +72,8 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                 TextButton(
                   onPressed: _openAll,
                   style: TextButton.styleFrom(
-                    minimumSize: const Size(0, 32),
+                    minimumSize: const Size(48, 48),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     foregroundColor: const Color(0xFF12D8D6),
                     textStyle: TextStyle(
                       fontSize: 12 * layout.bodyFontScale,
@@ -87,15 +91,29 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                 future: _catches,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                    return Row(
+                      children: List.generate(
+                        3,
+                        (index) => Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(right: index < 2 ? 8 : 0),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF202633),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     );
                   }
                   if (snapshot.hasError) {
-                    return const Center(
-                      child: Text(
-                        'Recent catches unavailable',
-                        style: TextStyle(color: Colors.white70),
+                    return Center(
+                      child: TextButton.icon(
+                        onPressed: _retry,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry recent catches'),
                       ),
                     );
                   }
