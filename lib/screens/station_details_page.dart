@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../models/station.dart';
 import '../models/water_level.dart';
 import '../models/weather.dart';
+import '../services/favorite_stations_service.dart';
 import '../services/water_service.dart';
 import '../services/weather_service.dart';
-import 'favorites_page.dart';
 
 class StationDetailsPage extends StatefulWidget {
   final Station station;
@@ -17,7 +17,7 @@ class StationDetailsPage extends StatefulWidget {
 }
 
 class _StationDetailsPageState extends State<StationDetailsPage> {
-  final _favoritesRepository = const FavoriteStationsRepository();
+  final _favoritesService = const FavoriteStationsService();
   bool _isFavorite = false;
   bool _favoriteLoading = true;
   late final Future<List<WaterLevel>> _history;
@@ -36,7 +36,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
 
   Future<void> _loadFavorite() async {
     try {
-      final isFavorite = await _favoritesRepository.isFavorite(station.id);
+      final isFavorite = await _favoritesService.isFavorite(station.id);
       if (mounted) setState(() => _isFavorite = isFavorite);
     } on FavoriteException catch (error) {
       if (mounted) _showError(error.message);
@@ -51,9 +51,9 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   Future<void> _toggleFavorite() async {
     setState(() => _favoriteLoading = true);
     try {
-      final isFavorite = await _favoritesRepository.toggle(
+      final isFavorite = await _favoritesService.setFavorite(
         station.id,
-        isFavorite: _isFavorite,
+        favorite: !_isFavorite,
       );
       if (mounted) setState(() => _isFavorite = isFavorite);
     } on FavoriteException catch (error) {
@@ -387,7 +387,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                   _isFavorite ? Icons.favorite : Icons.favorite_border,
                 ),
                 label: Text(
-                  _isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+                  _isFavorite ? 'Remove from Favourites' : 'Add to Favourites',
                 ),
               ),
             ),
