@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/auth_service.dart';
+import '../services/reputation_service.dart';
+import '../widgets/trust_badge.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -17,6 +19,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _saving = false;
   String? _avatarUrl;
   String? _error;
+  late final Future<ReputationMetrics> _reputation;
 
   @override
   void initState() {
@@ -26,6 +29,7 @@ class _ProfilePageState extends State<ProfilePage> {
       text: metadata?['full_name']?.toString() ?? '',
     );
     _avatarUrl = metadata?['avatar_url']?.toString();
+    _reputation = const ReputationService().getCurrentUserReputation();
   }
 
   @override
@@ -147,6 +151,20 @@ class _ProfilePageState extends State<ProfilePage> {
                 labelText: 'Email',
                 prefixIcon: Icon(Icons.email_outlined),
               ),
+            ),
+            const SizedBox(height: 12),
+            FutureBuilder<ReputationMetrics>(
+              future: _reputation,
+              builder: (context, snapshot) {
+                final reputation = snapshot.data;
+                if (reputation == null) return const SizedBox.shrink();
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.verified_user_outlined),
+                  title: Text('Reputation ${reputation.reputationScore}/100'),
+                  trailing: TrustBadge(level: reputation.trustLevel),
+                );
+              },
             ),
             if (_error != null) ...[
               const SizedBox(height: 16),

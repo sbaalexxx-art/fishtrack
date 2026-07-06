@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/community_service.dart';
+import '../widgets/trust_badge.dart';
 
 class CatchDetailsPage extends StatefulWidget {
   const CatchDetailsPage({super.key, required this.post});
@@ -252,6 +253,7 @@ class CommunityProfilePage extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
+                Center(child: TrustBadge(level: profile.trustLevel)),
                 if (profile.country case final String country)
                   Text(country, textAlign: TextAlign.center),
                 const SizedBox(height: 24),

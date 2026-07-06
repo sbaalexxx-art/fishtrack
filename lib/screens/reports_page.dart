@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/community_service.dart';
+import '../widgets/trust_badge.dart';
 import 'community_details_page.dart';
 
 class ReportsPage extends StatefulWidget {
@@ -150,7 +151,14 @@ class _CommunityPostCard extends StatelessWidget {
                     ? null
                     : const Icon(Icons.person_rounded),
               ),
-              title: Text(post.authorName),
+              title: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(post.authorName),
+                  if (!isCatch) TrustBadge(level: post.authorTrustLevel),
+                ],
+              ),
               subtitle: Wrap(
                 spacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,

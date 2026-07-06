@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'location_service.dart';
 import 'report_spam_service.dart';
+import 'reputation_service.dart';
 
 enum CommunityPostType { catchPost, report }
 
@@ -88,6 +89,7 @@ class CommunityPost {
     this.spamScore = 0,
     this.isSuspicious = false,
     this.spamReason,
+    this.authorTrustLevel = TrustLevel.newUser,
   });
 
   final String id;
@@ -112,6 +114,7 @@ class CommunityPost {
   final int spamScore;
   final bool isSuspicious;
   final String? spamReason;
+  final TrustLevel authorTrustLevel;
 
   bool get isActiveReport =>
       type == CommunityPostType.report &&
@@ -141,6 +144,7 @@ class CommunityPost {
     spamScore: spamScore,
     isSuspicious: isSuspicious,
     spamReason: spamReason,
+    authorTrustLevel: authorTrustLevel,
   );
 }
 
@@ -168,6 +172,7 @@ class CommunityProfile {
     required this.name,
     required this.reputation,
     required this.catchCount,
+    required this.trustLevel,
     this.avatarUrl,
     this.country,
   });
@@ -178,6 +183,7 @@ class CommunityProfile {
   final String? country;
   final int reputation;
   final int catchCount;
+  final TrustLevel trustLevel;
 }
 
 class CommunityException implements Exception {
@@ -254,6 +260,9 @@ class CommunityService {
       ...reports.map((row) => _text(row['user_id'])).whereType<String>(),
     };
     final profiles = await _profiles(userIds);
+    final reputations = await ReputationService(
+      client: _supabase,
+    ).getReputations(userIds);
     final catchIds = catches
         .map((row) => _text(row['id']))
         .whereType<String>()
@@ -276,6 +285,7 @@ class CommunityService {
             createdAt: _date(row['timestamp']),
             authorName: _profileName(profiles, _text(row['user_id'])),
             authorAvatar: _profileAvatar(profiles, _text(row['user_id'])),
+            authorTrustLevel: _trustLevel(reputations, _text(row['user_id'])),
             likeCount: likes.where((like) => like.catchId == id).length,
             isLiked: likes.any(
               (like) => like.catchId == id && like.userId == currentUserId,
@@ -304,6 +314,7 @@ class CommunityService {
             spamReason: _text(row['spam_reason']),
             authorName: _profileName(profiles, _text(row['user_id'])),
             authorAvatar: _profileAvatar(profiles, _text(row['user_id'])),
+            authorTrustLevel: _trustLevel(reputations, _text(row['user_id'])),
           ),
     ];
     posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -327,6 +338,10 @@ class CommunityService {
     final profiles = await _profiles(
       reports.map((row) => _text(row['user_id'])).whereType<String>().toSet(),
     );
+    final reputations = await ReputationService(client: _supabase)
+        .getReputations(
+          reports.map((row) => _text(row['user_id'])).whereType<String>(),
+        );
     final archive = <CommunityPost>[
       for (final row in reports)
         if (_text(row['id']) case final String id)
@@ -351,6 +366,7 @@ class CommunityService {
             spamReason: _text(row['spam_reason']),
             authorName: _profileName(profiles, _text(row['user_id'])),
             authorAvatar: _profileAvatar(profiles, _text(row['user_id'])),
+            authorTrustLevel: _trustLevel(reputations, _text(row['user_id'])),
           ),
     ];
     developer.log(
@@ -584,16 +600,17 @@ class CommunityService {
     final row = Map<String, dynamic>.from(
       await _supabase.from('profiles').select().eq('id', userId).single(),
     );
-    final catches = _maps(
-      await _supabase.from('catches').select('id').eq('user_id', userId),
-    );
+    final reputation = await ReputationService(
+      client: _supabase,
+    ).getReputation(userId);
     return CommunityProfile(
       id: userId,
       name: _text(row['username'] ?? row['full_name']) ?? 'Angler',
       avatarUrl: _text(row['avatar'] ?? row['avatar_url']),
       country: _text(row['country']),
-      reputation: _integer(row['reputation']),
-      catchCount: catches.length,
+      reputation: reputation.reputationScore,
+      catchCount: reputation.catchesCount,
+      trustLevel: reputation.trustLevel,
     );
   });
 
@@ -635,6 +652,11 @@ class CommunityService {
     final profile = profiles[id];
     return _text(profile?['avatar'] ?? profile?['avatar_url']);
   }
+
+  TrustLevel _trustLevel(
+    Map<String, ReputationMetrics> reputations,
+    String? id,
+  ) => reputations[id]?.trustLevel ?? TrustLevel.newUser;
 
   Future<T> _guard<T>(
     Future<T> Function() operation, {

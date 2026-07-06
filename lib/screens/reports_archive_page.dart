@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/community_service.dart';
+import '../widgets/trust_badge.dart';
 
 enum _ArchivePeriod {
   day('Last 24h', Duration(hours: 24)),
@@ -275,8 +276,16 @@ class _ReportTile extends StatelessWidget {
           ],
           if (report.body.trim().isNotEmpty) Text(report.body),
           const SizedBox(height: 4),
-          Text(
-            '${_dateLabel(report.createdAt)} • Community • ${report.authorName}',
+          Wrap(
+            spacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                '${_dateLabel(report.createdAt)} • Community • '
+                '${report.authorName}',
+              ),
+              TrustBadge(level: report.authorTrustLevel),
+            ],
           ),
         ],
       ),
