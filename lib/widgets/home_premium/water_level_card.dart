@@ -64,7 +64,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         final stationName =
             station?.name ??
             (snapshot.hasError
-                ? context.l10n.waterUnavailable
+                ? 'Unable to update data right now'
                 : isLoading
                 ? context.l10n.loadingEllipsis
                 : context.l10n.noStationAvailable);
@@ -83,7 +83,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
             : context.l10n.noData;
         final lastUpdate = station == null
             ? (snapshot.hasError
-                  ? context.l10n.updateFailed
+                  ? 'Please try again in a few moments'
                   : context.l10n.waitingForData)
             : _relativeUpdate(context, station.lastUpdate);
         final sourceLabel = station?.hasWaterLevel == true

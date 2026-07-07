@@ -58,7 +58,7 @@ class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
             score: result?.score,
             rating: rating,
             recommendation: snapshot.hasError
-                ? 'Not enough data yet'
+                ? 'No data available yet'
                 : result?.recommendation ?? 'Calculating...',
             bestTime: result?.bestTime ?? '--:--',
             confidence: result?.confidence,

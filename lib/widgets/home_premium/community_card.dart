@@ -54,7 +54,7 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
               final status = isLoading
                   ? 'Loading community...'
                   : snapshot.hasError
-                  ? 'Community unavailable'
+                  ? 'No community updates available yet'
                   : '$activeReports active reports';
 
               return Container(

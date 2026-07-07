@@ -52,7 +52,7 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
             ? '--'
             : weather.temperature.round().toString();
         final condition = snapshot.hasError
-            ? context.l10n.weatherUnavailableShort
+            ? 'Unable to update data right now'
             : weather?.condition ?? context.l10n.loadingEllipsis;
         final humidity = weather == null
             ? '--'
