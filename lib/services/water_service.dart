@@ -18,6 +18,7 @@ class WaterService {
       StreamController<Station>.broadcast(sync: true);
   static final TimedCache<List<Station>> _stationsCache =
       TimedCache<List<Station>>(duration: cacheDuration);
+  static final Map<String, TimedCache<List<WaterLevel>>> _historyCache = {};
   static Station? _selectedStation;
 
   final WaterRepository _repository;
@@ -35,6 +36,7 @@ class WaterService {
 
   static void clearCache() {
     _stationsCache.clear();
+    _historyCache.clear();
   }
 
   Stream<Station> get stationSelections => _stationSelectionController.stream;
@@ -50,12 +52,21 @@ class WaterService {
     String? stationName,
     int limit = 14,
   }) async {
+    final key = '$stationId:${stationName ?? ''}:$limit';
+    final cache = _historyCache.putIfAbsent(
+      key,
+      () => TimedCache<List<WaterLevel>>(duration: cacheDuration),
+    );
     try {
-      return await _repository.getHistory(
-        stationId,
-        stationName: stationName,
-        limit: limit,
-      );
+      return (await cache.get(
+        () async => List<WaterLevel>.unmodifiable(
+          await _repository.getHistory(
+            stationId,
+            stationName: stationName,
+            limit: limit,
+          ),
+        ),
+      )).value;
     } on Exception {
       return const <WaterLevel>[];
     }
@@ -69,9 +80,7 @@ class WaterService {
   }) async {
     try {
       return await _stationsCache.get(
-        () async => List<Station>.unmodifiable(
-          await _repository.getStations(),
-        ),
+        () async => List<Station>.unmodifiable(await _repository.getStations()),
         forceRefresh: forceRefresh,
       );
     } on Exception {
