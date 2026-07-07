@@ -51,14 +51,19 @@ class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
       builder: (context, snapshot) {
         final result = snapshot.data;
         final rating = _rating(result?.rating);
-        return _AIConditionsCardView(
-          score: result?.score,
-          rating: rating,
-          recommendation: snapshot.hasError
-              ? 'Not enough data yet'
-              : result?.recommendation ?? 'Calculating...',
-          bestTime: result?.bestTime ?? '--:--',
-          confidence: result?.confidence,
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        return PremiumLoadingShimmer(
+          isLoading: isLoading,
+          child: _AIConditionsCardView(
+            score: result?.score,
+            rating: rating,
+            recommendation: snapshot.hasError
+                ? 'Not enough data yet'
+                : result?.recommendation ?? 'Calculating...',
+            bestTime: result?.bestTime ?? '--:--',
+            confidence: result?.confidence,
+            isLoading: isLoading,
+          ),
         );
       },
     );
@@ -79,6 +84,7 @@ class _AIConditionsCardView extends StatelessWidget {
     required this.recommendation,
     required this.bestTime,
     required this.confidence,
+    required this.isLoading,
   });
 
   final double? score;
@@ -86,6 +92,7 @@ class _AIConditionsCardView extends StatelessWidget {
   final String recommendation;
   final String bestTime;
   final int? confidence;
+  final bool isLoading;
 
   Color get _color => switch (rating) {
     FishingRating.excellent => const Color(0xFF4CAF50),
@@ -175,7 +182,7 @@ class _AIConditionsCardView extends StatelessWidget {
                           dimension: gaugeSize,
                           child: CircularProgressIndicator(
                             value: score == null
-                                ? null
+                                ? (isLoading ? 0 : null)
                                 : (score! / 100).clamp(0, 1),
                             strokeWidth: compact ? 5 : 6,
                             backgroundColor: Colors.white10,
@@ -215,6 +222,97 @@ class _AIConditionsCardView extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// A restrained loading sheen that keeps its child's exact constraints.
+class PremiumLoadingShimmer extends StatefulWidget {
+  const PremiumLoadingShimmer({
+    super.key,
+    required this.isLoading,
+    required this.child,
+    this.borderRadius = 16,
+  });
+
+  final bool isLoading;
+  final Widget child;
+  final double borderRadius;
+
+  @override
+  State<PremiumLoadingShimmer> createState() => _PremiumLoadingShimmerState();
+}
+
+class _PremiumLoadingShimmerState extends State<PremiumLoadingShimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isLoading) _controller.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant PremiumLoadingShimmer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isLoading == oldWidget.isLoading) return;
+    if (widget.isLoading) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isLoading) return widget.child;
+
+    return Stack(
+      fit: StackFit.passthrough,
+      children: [
+        Opacity(opacity: .58, child: widget.child),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(widget.borderRadius),
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) => FractionalTranslation(
+                  translation: Offset((_controller.value * 2.6) - 1.3, 0),
+                  child: child,
+                ),
+                child: const FractionallySizedBox(
+                  widthFactor: .42,
+                  alignment: Alignment.centerLeft,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.transparent,
+                          Color(0x18FFFFFF),
+                          Color(0x30FFFFFF),
+                          Color(0x18FFFFFF),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

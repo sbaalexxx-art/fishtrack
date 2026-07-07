@@ -5,6 +5,7 @@ import '../../l10n/l10n.dart';
 import '../../screens/community_details_page.dart';
 import '../../screens/reports_page.dart';
 import '../../services/community_service.dart';
+import 'ai_conditions_card.dart' show PremiumLoadingShimmer;
 import 'home_premium_layout.dart';
 
 class RecentCatchesCardPremium extends StatefulWidget {
@@ -25,12 +26,14 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
   }
 
   Future<List<CommunityPost>> _load({bool forceRefresh = false}) =>
-      const CommunityService().getFeed(forceRefresh: forceRefresh).then(
-        (posts) => posts
-            .where((post) => post.type == CommunityPostType.catchPost)
-            .take(10)
-            .toList(),
-      );
+      const CommunityService()
+          .getFeed(forceRefresh: forceRefresh)
+          .then(
+            (posts) => posts
+                .where((post) => post.type == CommunityPostType.catchPost)
+                .take(10)
+                .toList(),
+          );
 
   void _retry() => setState(() => _catches = _load(forceRefresh: true));
 
@@ -92,16 +95,22 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                 future: _catches,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Row(
-                      children: List.generate(
-                        3,
-                        (index) => Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(right: index < 2 ? 8 : 0),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF202633),
-                                borderRadius: BorderRadius.circular(14),
+                    return PremiumLoadingShimmer(
+                      isLoading: true,
+                      borderRadius: 14,
+                      child: Row(
+                        children: List.generate(
+                          3,
+                          (index) => Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: index < 2 ? 8 : 0,
+                              ),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF202633),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
                               ),
                             ),
                           ),

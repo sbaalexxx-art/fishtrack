@@ -5,6 +5,7 @@ import '../../l10n/l10n.dart';
 import '../../models/station.dart';
 import '../../models/weather.dart';
 import '../../services/weather_service.dart';
+import 'ai_conditions_card.dart' show PremiumLoadingShimmer;
 import 'home_premium_layout.dart';
 
 class WeatherCardPremium extends StatefulWidget {
@@ -46,6 +47,7 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
       future: _weatherFuture,
       builder: (context, snapshot) {
         final weather = snapshot.data;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
         final temperature = weather == null
             ? '--'
             : weather.temperature.round().toString();
@@ -59,104 +61,108 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
             ? '--'
             : '${weather.windSpeed.toStringAsFixed(1)} km/h';
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final layout = HomePremiumLayout.of(context);
-            final compact = constraints.maxWidth < 180;
+        return PremiumLoadingShimmer(
+          isLoading: isLoading,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final layout = HomePremiumLayout.of(context);
+              final compact = constraints.maxWidth < 180;
 
-            return Container(
-              padding: EdgeInsets.all(
-                layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
-              ),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2C2216),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.wb_sunny_rounded,
-                        color: const Color(0xFFFFB300),
-                        size: 20 * layout.iconScale,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          context.l10n.weather.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16 * layout.titleFontScale,
+              return Container(
+                padding: EdgeInsets.all(
+                  layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2C2216),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.wb_sunny_rounded,
+                          color: const Color(0xFFFFB300),
+                          size: 20 * layout.iconScale,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            context.l10n.weather.toUpperCase(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16 * layout.titleFontScale,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.wb_sunny_rounded,
-                        size: compact ? 32 : 40,
-                        color: const Color(0xFFFFC107),
-                      ),
-                      SizedBox(width: compact ? 8 : 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '$temperature°',
-                              maxLines: 1,
-                              style: TextStyle(
-                                fontSize:
-                                    (compact ? 26 : 32) * layout.titleFontScale,
-                                height: 1,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.wb_sunny_rounded,
+                          size: compact ? 32 : 40,
+                          color: const Color(0xFFFFC107),
+                        ),
+                        SizedBox(width: compact ? 8 : 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$temperature°',
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize:
+                                      (compact ? 26 : 32) *
+                                      layout.titleFontScale,
+                                  height: 1,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              condition,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTextStyles.caption,
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                condition,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTextStyles.caption,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _WeatherMetric(
-                          icon: Icons.water_drop_outlined,
-                          value: humidity,
-                          compact: compact,
+                      ],
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _WeatherMetric(
+                            icon: Icons.water_drop_outlined,
+                            value: humidity,
+                            compact: compact,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: _WeatherMetric(
-                          icon: Icons.air,
-                          value: wind,
-                          compact: compact,
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _WeatherMetric(
+                            icon: Icons.air,
+                            value: wind,
+                            compact: compact,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         );
       },
     );

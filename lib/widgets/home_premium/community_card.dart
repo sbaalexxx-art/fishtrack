@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
 import '../../services/community_service.dart';
+import 'ai_conditions_card.dart' show PremiumLoadingShimmer;
 import 'home_premium_layout.dart';
 
 class CommunityCardPremium extends StatefulWidget {
@@ -42,112 +43,116 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
             .toSet()
             .take(3)
             .toList();
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final layout = HomePremiumLayout.of(context);
-            final compact = constraints.maxWidth < 180;
-            final status = snapshot.connectionState == ConnectionState.waiting
-                ? 'Loading community...'
-                : snapshot.hasError
-                ? 'Community unavailable'
-                : '$activeReports active reports';
+        return PremiumLoadingShimmer(
+          isLoading: isLoading,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final layout = HomePremiumLayout.of(context);
+              final compact = constraints.maxWidth < 180;
+              final status = isLoading
+                  ? 'Loading community...'
+                  : snapshot.hasError
+                  ? 'Community unavailable'
+                  : '$activeReports active reports';
 
-            return Container(
-              padding: EdgeInsets.all(
-                layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
-              ),
-              decoration: BoxDecoration(
-                color: const Color(0xFF183021),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.groups_rounded,
-                        color: const Color(0xFF4CAF50),
-                        size: 20 * layout.iconScale,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'COMMUNITY',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.cardTitle.copyWith(
-                            fontSize: 16 * layout.titleFontScale,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: compact ? 6 : 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
+              return Container(
+                padding: EdgeInsets.all(
+                  layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF183021),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.groups_rounded,
                           color: const Color(0xFF4CAF50),
-                          borderRadius: BorderRadius.circular(20),
+                          size: 20 * layout.iconScale,
                         ),
-                        child: const Text(
-                          'LIVE',
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'COMMUNITY',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.cardTitle.copyWith(
+                              fontSize: 16 * layout.titleFontScale,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  _AnglerAvatars(avatarUrls: avatars),
-                  const SizedBox(height: 4),
-                  Text(
-                    status,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: (compact ? 15 : 17) * layout.titleFontScale,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '$reportsToday reports today',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.caption.copyWith(
-                      fontSize: compact ? 11 : 13,
-                    ),
-                  ),
-                  const Spacer(),
-                  const Row(
-                    children: [
-                      Icon(Icons.circle, size: 9, color: Color(0xFF4CAF50)),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          'Live activity',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Color(0xFF4CAF50),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compact ? 6 : 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4CAF50),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'LIVE',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    _AnglerAvatars(avatarUrls: avatars),
+                    const SizedBox(height: 4),
+                    Text(
+                      status,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: (compact ? 15 : 17) * layout.titleFontScale,
+                        fontWeight: FontWeight.bold,
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '$reportsToday reports today',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.caption.copyWith(
+                        fontSize: compact ? 11 : 13,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Row(
+                      children: [
+                        Icon(Icons.circle, size: 9, color: Color(0xFF4CAF50)),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Live activity',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Color(0xFF4CAF50),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         );
       },
     );
