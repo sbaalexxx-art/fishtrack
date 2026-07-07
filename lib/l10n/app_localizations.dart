@@ -883,6 +883,780 @@ abstract class AppLocalizations {
   /// In ro, this message translates to:
   /// **'Ești aici'**
   String get youAreHere;
+
+  /// No description provided for @mainSection.
+  ///
+  /// In ro, this message translates to:
+  /// **'Principal'**
+  String get mainSection;
+
+  /// No description provided for @myFishing.
+  ///
+  /// In ro, this message translates to:
+  /// **'Pescuitul meu'**
+  String get myFishing;
+
+  /// No description provided for @useful.
+  ///
+  /// In ro, this message translates to:
+  /// **'Utile'**
+  String get useful;
+
+  /// No description provided for @account.
+  ///
+  /// In ro, this message translates to:
+  /// **'Cont'**
+  String get account;
+
+  /// No description provided for @support.
+  ///
+  /// In ro, this message translates to:
+  /// **'Asistență'**
+  String get support;
+
+  /// No description provided for @developer.
+  ///
+  /// In ro, this message translates to:
+  /// **'Dezvoltator'**
+  String get developer;
+
+  /// No description provided for @aiFishingInsights.
+  ///
+  /// In ro, this message translates to:
+  /// **'Informații AI pentru pescuit'**
+  String get aiFishingInsights;
+
+  /// No description provided for @myCatches.
+  ///
+  /// In ro, this message translates to:
+  /// **'Capturile mele'**
+  String get myCatches;
+
+  /// No description provided for @fishingDiary.
+  ///
+  /// In ro, this message translates to:
+  /// **'Jurnal de pescuit'**
+  String get fishingDiary;
+
+  /// No description provided for @fishingPermit.
+  ///
+  /// In ro, this message translates to:
+  /// **'Permis de pescuit'**
+  String get fishingPermit;
+
+  /// No description provided for @regulations.
+  ///
+  /// In ro, this message translates to:
+  /// **'Reglementări'**
+  String get regulations;
+
+  /// No description provided for @closedSeason.
+  ///
+  /// In ro, this message translates to:
+  /// **'Perioadă de prohibiție'**
+  String get closedSeason;
+
+  /// No description provided for @minimumLegalSizes.
+  ///
+  /// In ro, this message translates to:
+  /// **'Dimensiuni minime legale'**
+  String get minimumLegalSizes;
+
+  /// No description provided for @protectedSpecies.
+  ///
+  /// In ro, this message translates to:
+  /// **'Specii protejate'**
+  String get protectedSpecies;
+
+  /// No description provided for @dailyCatchLimits.
+  ///
+  /// In ro, this message translates to:
+  /// **'Limite zilnice de captură'**
+  String get dailyCatchLimits;
+
+  /// No description provided for @protectedAreas.
+  ///
+  /// In ro, this message translates to:
+  /// **'Zone protejate'**
+  String get protectedAreas;
+
+  /// No description provided for @reportPoaching.
+  ///
+  /// In ro, this message translates to:
+  /// **'Raportează braconajul'**
+  String get reportPoaching;
+
+  /// No description provided for @solunar.
+  ///
+  /// In ro, this message translates to:
+  /// **'Solunar'**
+  String get solunar;
+
+  /// No description provided for @fishingCalendar.
+  ///
+  /// In ro, this message translates to:
+  /// **'Calendar de pescuit'**
+  String get fishingCalendar;
+
+  /// No description provided for @knots.
+  ///
+  /// In ro, this message translates to:
+  /// **'Noduri'**
+  String get knots;
+
+  /// No description provided for @unitConversions.
+  ///
+  /// In ro, this message translates to:
+  /// **'Conversii de unități'**
+  String get unitConversions;
+
+  /// No description provided for @authorityContacts.
+  ///
+  /// In ro, this message translates to:
+  /// **'Contacte autorități'**
+  String get authorityContacts;
+
+  /// No description provided for @premium.
+  ///
+  /// In ro, this message translates to:
+  /// **'Premium'**
+  String get premium;
+
+  /// No description provided for @helpFaq.
+  ///
+  /// In ro, this message translates to:
+  /// **'Ajutor și întrebări frecvente'**
+  String get helpFaq;
+
+  /// No description provided for @contactSupport.
+  ///
+  /// In ro, this message translates to:
+  /// **'Contactează asistența'**
+  String get contactSupport;
+
+  /// No description provided for @feedback.
+  ///
+  /// In ro, this message translates to:
+  /// **'Feedback'**
+  String get feedback;
+
+  /// No description provided for @privacyPolicy.
+  ///
+  /// In ro, this message translates to:
+  /// **'Politica de confidențialitate'**
+  String get privacyPolicy;
+
+  /// No description provided for @terms.
+  ///
+  /// In ro, this message translates to:
+  /// **'Termeni și condiții'**
+  String get terms;
+
+  /// No description provided for @aboutApp.
+  ///
+  /// In ro, this message translates to:
+  /// **'Despre AIFishMap'**
+  String get aboutApp;
+
+  /// No description provided for @developerMode.
+  ///
+  /// In ro, this message translates to:
+  /// **'Mod dezvoltator'**
+  String get developerMode;
+
+  /// No description provided for @featureComingSoon.
+  ///
+  /// In ro, this message translates to:
+  /// **'Această funcție va fi disponibilă în curând.'**
+  String get featureComingSoon;
+
+  /// No description provided for @liveWaterLevels.
+  ///
+  /// In ro, this message translates to:
+  /// **'Niveluri ale apei în timp real'**
+  String get liveWaterLevels;
+
+  /// No description provided for @monitoredStationsTitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stații monitorizate'**
+  String get monitoredStationsTitle;
+
+  /// No description provided for @updateTimeUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Ora actualizării nu este disponibilă'**
+  String get updateTimeUnavailable;
+
+  /// No description provided for @updatedNow.
+  ///
+  /// In ro, this message translates to:
+  /// **'Actualizat chiar acum'**
+  String get updatedNow;
+
+  /// No description provided for @updatedMinutesAgo.
+  ///
+  /// In ro, this message translates to:
+  /// **'Actualizat acum {count, plural, =1{1 minut} other{{count} minute}}'**
+  String updatedMinutesAgo(int count);
+
+  /// No description provided for @updatedHoursAgo.
+  ///
+  /// In ro, this message translates to:
+  /// **'Actualizat acum {count, plural, =1{1 oră} other{{count} ore}}'**
+  String updatedHoursAgo(int count);
+
+  /// No description provided for @updatedDaysAgo.
+  ///
+  /// In ro, this message translates to:
+  /// **'Actualizat acum {count, plural, =1{1 zi} other{{count} zile}}'**
+  String updatedDaysAgo(int count);
+
+  /// No description provided for @feelsLike.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se simte ca {temperature}°C'**
+  String feelsLike(int temperature);
+
+  /// No description provided for @humidity.
+  ///
+  /// In ro, this message translates to:
+  /// **'Umiditate'**
+  String get humidity;
+
+  /// No description provided for @windSpeed.
+  ///
+  /// In ro, this message translates to:
+  /// **'Viteza vântului'**
+  String get windSpeed;
+
+  /// No description provided for @windDirection.
+  ///
+  /// In ro, this message translates to:
+  /// **'Direcția vântului'**
+  String get windDirection;
+
+  /// No description provided for @windGusts.
+  ///
+  /// In ro, this message translates to:
+  /// **'Rafale de vânt'**
+  String get windGusts;
+
+  /// No description provided for @precipitationProbability.
+  ///
+  /// In ro, this message translates to:
+  /// **'Probabilitate de precipitații'**
+  String get precipitationProbability;
+
+  /// No description provided for @cloudCover.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nebulozitate'**
+  String get cloudCover;
+
+  /// No description provided for @pressure.
+  ///
+  /// In ro, this message translates to:
+  /// **'Presiune'**
+  String get pressure;
+
+  /// No description provided for @lastUpdated.
+  ///
+  /// In ro, this message translates to:
+  /// **'Ultima actualizare'**
+  String get lastUpdated;
+
+  /// No description provided for @next24Hours.
+  ///
+  /// In ro, this message translates to:
+  /// **'Următoarele 24 de ore'**
+  String get next24Hours;
+
+  /// No description provided for @temperature.
+  ///
+  /// In ro, this message translates to:
+  /// **'Temperatură'**
+  String get temperature;
+
+  /// No description provided for @wind.
+  ///
+  /// In ro, this message translates to:
+  /// **'Vânt'**
+  String get wind;
+
+  /// No description provided for @direction.
+  ///
+  /// In ro, this message translates to:
+  /// **'Direcție'**
+  String get direction;
+
+  /// No description provided for @precipitation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Precipitații'**
+  String get precipitation;
+
+  /// No description provided for @threeDayForecast.
+  ///
+  /// In ro, this message translates to:
+  /// **'Prognoză pe 3 zile'**
+  String get threeDayForecast;
+
+  /// No description provided for @sunrise.
+  ///
+  /// In ro, this message translates to:
+  /// **'Răsărit'**
+  String get sunrise;
+
+  /// No description provided for @sunset.
+  ///
+  /// In ro, this message translates to:
+  /// **'Apus'**
+  String get sunset;
+
+  /// No description provided for @illuminated.
+  ///
+  /// In ro, this message translates to:
+  /// **'iluminată'**
+  String get illuminated;
+
+  /// No description provided for @moonAge.
+  ///
+  /// In ro, this message translates to:
+  /// **'Vârsta Lunii: {value} zile'**
+  String moonAge(String value);
+
+  /// No description provided for @locationRequired.
+  ///
+  /// In ro, this message translates to:
+  /// **'Locația este necesară'**
+  String get locationRequired;
+
+  /// No description provided for @notAvailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu este disponibil'**
+  String get notAvailable;
+
+  /// No description provided for @or.
+  ///
+  /// In ro, this message translates to:
+  /// **'sau'**
+  String get or;
+
+  /// No description provided for @mondayShort.
+  ///
+  /// In ro, this message translates to:
+  /// **'Lun'**
+  String get mondayShort;
+
+  /// No description provided for @tuesdayShort.
+  ///
+  /// In ro, this message translates to:
+  /// **'Mar'**
+  String get tuesdayShort;
+
+  /// No description provided for @wednesdayShort.
+  ///
+  /// In ro, this message translates to:
+  /// **'Mie'**
+  String get wednesdayShort;
+
+  /// No description provided for @thursdayShort.
+  ///
+  /// In ro, this message translates to:
+  /// **'Joi'**
+  String get thursdayShort;
+
+  /// No description provided for @fridayShort.
+  ///
+  /// In ro, this message translates to:
+  /// **'Vin'**
+  String get fridayShort;
+
+  /// No description provided for @saturdayShort.
+  ///
+  /// In ro, this message translates to:
+  /// **'Sâm'**
+  String get saturdayShort;
+
+  /// No description provided for @sundayShort.
+  ///
+  /// In ro, this message translates to:
+  /// **'Dum'**
+  String get sundayShort;
+
+  /// No description provided for @savingCatch.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se salvează captura…'**
+  String get savingCatch;
+
+  /// No description provided for @saveCatch.
+  ///
+  /// In ro, this message translates to:
+  /// **'Salvează captura'**
+  String get saveCatch;
+
+  /// No description provided for @catchLocationRequired.
+  ///
+  /// In ro, this message translates to:
+  /// **'Folosește GPS-ul sau introdu numele locului capturii.'**
+  String get catchLocationRequired;
+
+  /// No description provided for @noCatchesYet.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu există încă nicio captură.'**
+  String get noCatchesYet;
+
+  /// No description provided for @loadingEllipsis.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se încarcă…'**
+  String get loadingEllipsis;
+
+  /// No description provided for @waterUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Datele despre apă sunt indisponibile'**
+  String get waterUnavailable;
+
+  /// No description provided for @noStationAvailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu există nicio stație disponibilă'**
+  String get noStationAvailable;
+
+  /// No description provided for @updateFailed.
+  ///
+  /// In ro, this message translates to:
+  /// **'Actualizarea a eșuat'**
+  String get updateFailed;
+
+  /// No description provided for @waitingForData.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se așteaptă date'**
+  String get waitingForData;
+
+  /// No description provided for @unknown.
+  ///
+  /// In ro, this message translates to:
+  /// **'Necunoscut'**
+  String get unknown;
+
+  /// No description provided for @noSource.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fără sursă'**
+  String get noSource;
+
+  /// No description provided for @rising.
+  ///
+  /// In ro, this message translates to:
+  /// **'În creștere'**
+  String get rising;
+
+  /// No description provided for @stable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stabil'**
+  String get stable;
+
+  /// No description provided for @falling.
+  ///
+  /// In ro, this message translates to:
+  /// **'În scădere'**
+  String get falling;
+
+  /// No description provided for @weatherUnavailableShort.
+  ///
+  /// In ro, this message translates to:
+  /// **'Date meteo indisponibile'**
+  String get weatherUnavailableShort;
+
+  /// No description provided for @mapLayers.
+  ///
+  /// In ro, this message translates to:
+  /// **'Straturi hartă'**
+  String get mapLayers;
+
+  /// No description provided for @waterStations.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stații hidrometrice'**
+  String get waterStations;
+
+  /// No description provided for @communityReports.
+  ///
+  /// In ro, this message translates to:
+  /// **'Rapoarte comunitare'**
+  String get communityReports;
+
+  /// No description provided for @favoriteStations.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stații favorite'**
+  String get favoriteStations;
+
+  /// No description provided for @signInForFavoriteStations.
+  ///
+  /// In ro, this message translates to:
+  /// **'Autentifică-te pentru a filtra stațiile favorite.'**
+  String get signInForFavoriteStations;
+
+  /// No description provided for @retryLoadingReports.
+  ///
+  /// In ro, this message translates to:
+  /// **'Reîncearcă încărcarea rapoartelor'**
+  String get retryLoadingReports;
+
+  /// No description provided for @loadingFishingReports.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se încarcă rapoartele de pescuit…'**
+  String get loadingFishingReports;
+
+  /// No description provided for @fishingFilters.
+  ///
+  /// In ro, this message translates to:
+  /// **'Filtre de pescuit'**
+  String get fishingFilters;
+
+  /// No description provided for @photoCaptureFailed.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fotografia nu a putut fi realizată.'**
+  String get photoCaptureFailed;
+
+  /// No description provided for @cameraPhotoRequired.
+  ///
+  /// In ro, this message translates to:
+  /// **'Realizează o fotografie cu camera.'**
+  String get cameraPhotoRequired;
+
+  /// No description provided for @catchSaved.
+  ///
+  /// In ro, this message translates to:
+  /// **'Captura a fost salvată.'**
+  String get catchSaved;
+
+  /// No description provided for @requiredField.
+  ///
+  /// In ro, this message translates to:
+  /// **'Câmp obligatoriu'**
+  String get requiredField;
+
+  /// No description provided for @positiveValueRequired.
+  ///
+  /// In ro, this message translates to:
+  /// **'Introdu o valoare mai mare decât 0'**
+  String get positiveValueRequired;
+
+  /// No description provided for @exactLocation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Locație exactă'**
+  String get exactLocation;
+
+  /// No description provided for @approximateLocation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Locație aproximativă'**
+  String get approximateLocation;
+
+  /// No description provided for @hiddenLocation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Locație ascunsă'**
+  String get hiddenLocation;
+
+  /// No description provided for @reservoir.
+  ///
+  /// In ro, this message translates to:
+  /// **'Lac de acumulare'**
+  String get reservoir;
+
+  /// No description provided for @canal.
+  ///
+  /// In ro, this message translates to:
+  /// **'Canal'**
+  String get canal;
+
+  /// No description provided for @danube.
+  ///
+  /// In ro, this message translates to:
+  /// **'Dunăre'**
+  String get danube;
+
+  /// No description provided for @other.
+  ///
+  /// In ro, this message translates to:
+  /// **'Altul'**
+  String get other;
+
+  /// No description provided for @checkEmailConfirmation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Verifică e-mailul pentru a confirma contul.'**
+  String get checkEmailConfirmation;
+
+  /// No description provided for @passwordResetSent.
+  ///
+  /// In ro, this message translates to:
+  /// **'Instrucțiunile pentru resetarea parolei au fost trimise prin e-mail.'**
+  String get passwordResetSent;
+
+  /// No description provided for @validEmailRequired.
+  ///
+  /// In ro, this message translates to:
+  /// **'Introdu o adresă de e-mail validă'**
+  String get validEmailRequired;
+
+  /// No description provided for @minimumEightCharacters.
+  ///
+  /// In ro, this message translates to:
+  /// **'Folosește cel puțin 8 caractere'**
+  String get minimumEightCharacters;
+
+  /// No description provided for @createAccountTitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Creează cont'**
+  String get createAccountTitle;
+
+  /// No description provided for @resetPassword.
+  ///
+  /// In ro, this message translates to:
+  /// **'Resetează parola'**
+  String get resetPassword;
+
+  /// No description provided for @welcomeBack.
+  ///
+  /// In ro, this message translates to:
+  /// **'Bine ai revenit'**
+  String get welcomeBack;
+
+  /// No description provided for @recoveryInstructionsHint.
+  ///
+  /// In ro, this message translates to:
+  /// **'Vom trimite instrucțiunile de recuperare la adresa ta de e-mail.'**
+  String get recoveryInstructionsHint;
+
+  /// No description provided for @signInToContinue.
+  ///
+  /// In ro, this message translates to:
+  /// **'Autentifică-te pentru a continua în AIFishMap.'**
+  String get signInToContinue;
+
+  /// No description provided for @passwordsDoNotMatch.
+  ///
+  /// In ro, this message translates to:
+  /// **'Parolele nu coincid'**
+  String get passwordsDoNotMatch;
+
+  /// No description provided for @register.
+  ///
+  /// In ro, this message translates to:
+  /// **'Înregistrare'**
+  String get register;
+
+  /// No description provided for @sendResetEmail.
+  ///
+  /// In ro, this message translates to:
+  /// **'Trimite e-mailul de resetare'**
+  String get sendResetEmail;
+
+  /// No description provided for @login.
+  ///
+  /// In ro, this message translates to:
+  /// **'Autentificare'**
+  String get login;
+
+  /// No description provided for @signInForFavorites.
+  ///
+  /// In ro, this message translates to:
+  /// **'Autentifică-te pentru a vedea stațiile favorite.'**
+  String get signInForFavorites;
+
+  /// No description provided for @favoritesUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stațiile favorite sunt indisponibile.'**
+  String get favoritesUnavailable;
+
+  /// No description provided for @waterLevelUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nivelul apei este indisponibil'**
+  String get waterLevelUnavailable;
+
+  /// No description provided for @nameRequired.
+  ///
+  /// In ro, this message translates to:
+  /// **'Numele este obligatoriu.'**
+  String get nameRequired;
+
+  /// No description provided for @profileUpdated.
+  ///
+  /// In ro, this message translates to:
+  /// **'Profilul a fost actualizat.'**
+  String get profileUpdated;
+
+  /// No description provided for @saving.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se salvează…'**
+  String get saving;
+
+  /// No description provided for @saveProfile.
+  ///
+  /// In ro, this message translates to:
+  /// **'Salvează profilul'**
+  String get saveProfile;
+
+  /// No description provided for @reputationValue.
+  ///
+  /// In ro, this message translates to:
+  /// **'Reputație {value}/100'**
+  String reputationValue(int value);
+
+  /// No description provided for @justNow.
+  ///
+  /// In ro, this message translates to:
+  /// **'Chiar acum'**
+  String get justNow;
+
+  /// No description provided for @minutesAgo.
+  ///
+  /// In ro, this message translates to:
+  /// **'Acum {count, plural, =1{1 minut} other{{count} minute}}'**
+  String minutesAgo(int count);
+
+  /// No description provided for @hoursAgo.
+  ///
+  /// In ro, this message translates to:
+  /// **'Acum {count, plural, =1{1 oră} other{{count} ore}}'**
+  String hoursAgo(int count);
+
+  /// No description provided for @daysAgo.
+  ///
+  /// In ro, this message translates to:
+  /// **'Acum {count, plural, =1{1 zi} other{{count} zile}}'**
+  String daysAgo(int count);
+
+  /// No description provided for @catches.
+  ///
+  /// In ro, this message translates to:
+  /// **'Capturi'**
+  String get catches;
+
+  /// No description provided for @reputation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Reputație'**
+  String get reputation;
 }
 
 class _AppLocalizationsDelegate

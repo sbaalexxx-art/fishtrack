@@ -439,4 +439,451 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get youAreHere => 'You are here';
+
+  @override
+  String get mainSection => 'Main';
+
+  @override
+  String get myFishing => 'My Fishing';
+
+  @override
+  String get useful => 'Useful';
+
+  @override
+  String get account => 'Account';
+
+  @override
+  String get support => 'Support';
+
+  @override
+  String get developer => 'Developer';
+
+  @override
+  String get aiFishingInsights => 'AI Fishing Insights';
+
+  @override
+  String get myCatches => 'My Catches';
+
+  @override
+  String get fishingDiary => 'Fishing Diary';
+
+  @override
+  String get fishingPermit => 'Fishing Permit';
+
+  @override
+  String get regulations => 'Regulations';
+
+  @override
+  String get closedSeason => 'Closed Season / Prohibition';
+
+  @override
+  String get minimumLegalSizes => 'Minimum Legal Sizes';
+
+  @override
+  String get protectedSpecies => 'Protected Species';
+
+  @override
+  String get dailyCatchLimits => 'Daily Catch Limits';
+
+  @override
+  String get protectedAreas => 'Protected Areas';
+
+  @override
+  String get reportPoaching => 'Report Poaching';
+
+  @override
+  String get solunar => 'Solunar';
+
+  @override
+  String get fishingCalendar => 'Fishing Calendar';
+
+  @override
+  String get knots => 'Knots';
+
+  @override
+  String get unitConversions => 'Unit Conversions';
+
+  @override
+  String get authorityContacts => 'Authority Contacts';
+
+  @override
+  String get premium => 'Premium';
+
+  @override
+  String get helpFaq => 'Help & FAQ';
+
+  @override
+  String get contactSupport => 'Contact Support';
+
+  @override
+  String get feedback => 'Feedback';
+
+  @override
+  String get privacyPolicy => 'Privacy Policy';
+
+  @override
+  String get terms => 'Terms';
+
+  @override
+  String get aboutApp => 'About AIFishMap';
+
+  @override
+  String get developerMode => 'Developer Mode';
+
+  @override
+  String get featureComingSoon => 'This feature is coming soon.';
+
+  @override
+  String get liveWaterLevels => 'Live Water Levels';
+
+  @override
+  String get monitoredStationsTitle => 'Monitored stations';
+
+  @override
+  String get updateTimeUnavailable => 'Update time unavailable';
+
+  @override
+  String get updatedNow => 'Updated just now';
+
+  @override
+  String updatedMinutesAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes',
+      one: '1 minute',
+    );
+    return 'Updated $_temp0 ago';
+  }
+
+  @override
+  String updatedHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours',
+      one: '1 hour',
+    );
+    return 'Updated $_temp0 ago';
+  }
+
+  @override
+  String updatedDaysAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Updated $_temp0 ago';
+  }
+
+  @override
+  String feelsLike(int temperature) {
+    return 'Feels like $temperature°C';
+  }
+
+  @override
+  String get humidity => 'Humidity';
+
+  @override
+  String get windSpeed => 'Wind speed';
+
+  @override
+  String get windDirection => 'Wind direction';
+
+  @override
+  String get windGusts => 'Wind gusts';
+
+  @override
+  String get precipitationProbability => 'Precipitation probability';
+
+  @override
+  String get cloudCover => 'Cloud cover';
+
+  @override
+  String get pressure => 'Pressure';
+
+  @override
+  String get lastUpdated => 'Last updated';
+
+  @override
+  String get next24Hours => 'Next 24 hours';
+
+  @override
+  String get temperature => 'Temperature';
+
+  @override
+  String get wind => 'Wind';
+
+  @override
+  String get direction => 'Direction';
+
+  @override
+  String get precipitation => 'Precipitation';
+
+  @override
+  String get threeDayForecast => '3-day forecast';
+
+  @override
+  String get sunrise => 'Sunrise';
+
+  @override
+  String get sunset => 'Sunset';
+
+  @override
+  String get illuminated => 'illuminated';
+
+  @override
+  String moonAge(String value) {
+    return 'Moon age: $value days';
+  }
+
+  @override
+  String get locationRequired => 'Location required';
+
+  @override
+  String get notAvailable => 'Not available';
+
+  @override
+  String get or => 'or';
+
+  @override
+  String get mondayShort => 'Mon';
+
+  @override
+  String get tuesdayShort => 'Tue';
+
+  @override
+  String get wednesdayShort => 'Wed';
+
+  @override
+  String get thursdayShort => 'Thu';
+
+  @override
+  String get fridayShort => 'Fri';
+
+  @override
+  String get saturdayShort => 'Sat';
+
+  @override
+  String get sundayShort => 'Sun';
+
+  @override
+  String get savingCatch => 'Saving catch…';
+
+  @override
+  String get saveCatch => 'Save Catch';
+
+  @override
+  String get catchLocationRequired =>
+      'Use GPS or enter a place name for this catch.';
+
+  @override
+  String get noCatchesYet => 'No catches yet.';
+
+  @override
+  String get loadingEllipsis => 'Loading…';
+
+  @override
+  String get waterUnavailable => 'Water unavailable';
+
+  @override
+  String get noStationAvailable => 'No station available';
+
+  @override
+  String get updateFailed => 'Update failed';
+
+  @override
+  String get waitingForData => 'Waiting for data';
+
+  @override
+  String get unknown => 'Unknown';
+
+  @override
+  String get noSource => 'No source';
+
+  @override
+  String get rising => 'Rising';
+
+  @override
+  String get stable => 'Stable';
+
+  @override
+  String get falling => 'Falling';
+
+  @override
+  String get weatherUnavailableShort => 'Weather unavailable';
+
+  @override
+  String get mapLayers => 'Map layers';
+
+  @override
+  String get waterStations => 'Water stations';
+
+  @override
+  String get communityReports => 'Community reports';
+
+  @override
+  String get favoriteStations => 'Favourite stations';
+
+  @override
+  String get signInForFavoriteStations =>
+      'Please sign in to filter favourite stations.';
+
+  @override
+  String get retryLoadingReports => 'Retry loading reports';
+
+  @override
+  String get loadingFishingReports => 'Loading live fishing reports…';
+
+  @override
+  String get fishingFilters => 'Fishing filters';
+
+  @override
+  String get photoCaptureFailed => 'The photo could not be captured.';
+
+  @override
+  String get cameraPhotoRequired => 'Take a photo with the camera.';
+
+  @override
+  String get catchSaved => 'Catch saved successfully.';
+
+  @override
+  String get requiredField => 'Required';
+
+  @override
+  String get positiveValueRequired => 'Enter a value above 0';
+
+  @override
+  String get exactLocation => 'Exact location';
+
+  @override
+  String get approximateLocation => 'Approximate location';
+
+  @override
+  String get hiddenLocation => 'Hidden location';
+
+  @override
+  String get reservoir => 'Reservoir';
+
+  @override
+  String get canal => 'Canal';
+
+  @override
+  String get danube => 'Danube';
+
+  @override
+  String get other => 'Other';
+
+  @override
+  String get checkEmailConfirmation =>
+      'Check your email to confirm your account.';
+
+  @override
+  String get passwordResetSent =>
+      'Password reset instructions were sent by email.';
+
+  @override
+  String get validEmailRequired => 'Enter a valid email address';
+
+  @override
+  String get minimumEightCharacters => 'Use at least 8 characters';
+
+  @override
+  String get createAccountTitle => 'Create account';
+
+  @override
+  String get resetPassword => 'Reset password';
+
+  @override
+  String get welcomeBack => 'Welcome back';
+
+  @override
+  String get recoveryInstructionsHint =>
+      'We will send recovery instructions to your email.';
+
+  @override
+  String get signInToContinue => 'Sign in to continue to AIFishMap.';
+
+  @override
+  String get passwordsDoNotMatch => 'Passwords do not match';
+
+  @override
+  String get register => 'Register';
+
+  @override
+  String get sendResetEmail => 'Send reset email';
+
+  @override
+  String get login => 'Login';
+
+  @override
+  String get signInForFavorites =>
+      'Please sign in to view your favourite stations.';
+
+  @override
+  String get favoritesUnavailable => 'Favourite stations are unavailable.';
+
+  @override
+  String get waterLevelUnavailable => 'Water level unavailable';
+
+  @override
+  String get nameRequired => 'Name is required.';
+
+  @override
+  String get profileUpdated => 'Profile updated.';
+
+  @override
+  String get saving => 'Saving…';
+
+  @override
+  String get saveProfile => 'Save Profile';
+
+  @override
+  String reputationValue(int value) {
+    return 'Reputation $value/100';
+  }
+
+  @override
+  String get justNow => 'Just now';
+
+  @override
+  String minutesAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes',
+      one: '1 minute',
+    );
+    return '$_temp0 ago';
+  }
+
+  @override
+  String hoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours',
+      one: '1 hour',
+    );
+    return '$_temp0 ago';
+  }
+
+  @override
+  String daysAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0 ago';
+  }
+
+  @override
+  String get catches => 'Catches';
+
+  @override
+  String get reputation => 'Reputation';
 }

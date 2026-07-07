@@ -796,7 +796,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                                   fontSize: 13,
                                 ),
                                 cursorColor: const Color(0xFF67D04B),
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   isDense: true,
                                   filled: false,
                                   fillColor: Colors.transparent,
