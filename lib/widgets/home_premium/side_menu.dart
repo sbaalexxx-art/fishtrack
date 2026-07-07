@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/l10n.dart';
 import '../../screens/add_catch_page.dart';
 import '../../screens/developer_mode_page.dart';
 import '../../screens/fishing_insights_page.dart';
@@ -44,152 +45,152 @@ class HomeSideMenu extends StatelessWidget {
                 ),
               ),
             ),
-            _section('Main'),
+            _section(context.l10n.mainSection),
             _item(
               context,
               Icons.home_rounded,
-              'Home',
+              context.l10n.home,
               () => _selectTab(context, 0),
             ),
             _item(
               context,
               Icons.map_rounded,
-              'Map',
+              context.l10n.map,
               () => _selectTab(context, 1),
             ),
             _item(
               context,
               Icons.water_rounded,
-              'Water Levels',
+              context.l10n.waterLevels,
               () => _openPage(context, const WaterLevelPage()),
             ),
             _item(
               context,
               Icons.wb_sunny_rounded,
-              'Weather',
+              context.l10n.weather,
               () => _selectTab(context, 2),
             ),
             _item(
               context,
               Icons.groups_rounded,
-              'Community',
+              context.l10n.community,
               () => _selectTab(context, 3),
             ),
             _item(
               context,
               Icons.history_rounded,
-              'Reports Archive',
+              context.l10n.reportsArchive,
               () => _openPage(context, const ReportsArchivePage()),
             ),
             _item(
               context,
               Icons.auto_awesome_rounded,
-              'AI Fishing Insights',
+              context.l10n.aiFishingInsights,
               () => _openPage(context, const FishingInsightsPage()),
             ),
-            _section('My Fishing'),
+            _section(context.l10n.myFishing),
             _item(
               context,
               Icons.add_circle_outline_rounded,
-              'Add Catch',
+              context.l10n.addCatch,
               () => _openPage(context, const AddCatchPage()),
             ),
-            _placeholderItem(context, Icons.phishing_rounded, 'My Catches'),
+            _placeholderItem(context, Icons.phishing_rounded, context.l10n.myCatches),
             _item(
               context,
               Icons.favorite_rounded,
-              'Favorites',
+              context.l10n.favorites,
               () => _selectTab(context, 4),
             ),
-            _placeholderItem(context, Icons.menu_book_rounded, 'Fishing Diary'),
-            _section('Useful'),
-            _placeholderItem(context, Icons.badge_outlined, 'Fishing Permit'),
-            _placeholderItem(context, Icons.gavel_rounded, 'Regulations'),
+            _placeholderItem(context, Icons.menu_book_rounded, context.l10n.fishingDiary),
+            _section(context.l10n.useful),
+            _placeholderItem(context, Icons.badge_outlined, context.l10n.fishingPermit),
+            _placeholderItem(context, Icons.gavel_rounded, context.l10n.regulations),
             _placeholderItem(
               context,
               Icons.event_busy_rounded,
-              'Closed Season / Prohibition',
+              context.l10n.closedSeason,
             ),
             _placeholderItem(
               context,
               Icons.straighten_rounded,
-              'Minimum Legal Sizes',
+              context.l10n.minimumLegalSizes,
             ),
             _placeholderItem(
               context,
               Icons.shield_outlined,
-              'Protected Species',
+              context.l10n.protectedSpecies,
             ),
             _placeholderItem(
               context,
               Icons.format_list_numbered_rounded,
-              'Daily Catch Limits',
+              context.l10n.dailyCatchLimits,
             ),
             _placeholderItem(
               context,
               Icons.nature_people_outlined,
-              'Protected Areas',
+              context.l10n.protectedAreas,
             ),
-            _placeholderItem(context, Icons.report_outlined, 'Report Poaching'),
-            _placeholderItem(context, Icons.nightlight_round, 'Solunar'),
+            _placeholderItem(context, Icons.report_outlined, context.l10n.reportPoaching),
+            _placeholderItem(context, Icons.nightlight_round, context.l10n.solunar),
             _placeholderItem(
               context,
               Icons.calendar_month_rounded,
-              'Fishing Calendar',
+              context.l10n.fishingCalendar,
             ),
-            _placeholderItem(context, Icons.link_rounded, 'Knots'),
+            _placeholderItem(context, Icons.link_rounded, context.l10n.knots),
             _placeholderItem(
               context,
               Icons.swap_horiz_rounded,
-              'Unit Conversions',
+              context.l10n.unitConversions,
             ),
             _placeholderItem(
               context,
               Icons.contact_phone_outlined,
-              'Authority Contacts',
+              context.l10n.authorityContacts,
             ),
-            _section('Account'),
+            _section(context.l10n.account),
             _item(
               context,
               Icons.person_rounded,
-              'Profile',
+              context.l10n.profile,
               () => _selectTab(context, 5),
             ),
             _item(
               context,
               Icons.notifications_rounded,
-              'Notifications',
+              context.l10n.notifications,
               () => _openPage(context, const NotificationsPage()),
             ),
             _item(
               context,
               Icons.settings_rounded,
-              'Settings',
+              context.l10n.settings,
               () => _openPage(context, const SettingsPage()),
             ),
             _placeholderItem(
               context,
               Icons.workspace_premium_rounded,
-              'Premium',
+              context.l10n.premium,
             ),
-            _section('Support'),
-            _placeholderItem(context, Icons.help_outline_rounded, 'Help & FAQ'),
+            _section(context.l10n.support),
+            _placeholderItem(context, Icons.help_outline_rounded, context.l10n.helpFaq),
             _placeholderItem(
               context,
               Icons.support_agent_rounded,
-              'Contact Support',
+              context.l10n.contactSupport,
             ),
-            _placeholderItem(context, Icons.rate_review_outlined, 'Feedback'),
+            _placeholderItem(context, Icons.rate_review_outlined, context.l10n.feedback),
             _placeholderItem(
               context,
               Icons.privacy_tip_outlined,
-              'Privacy Policy',
+              context.l10n.privacyPolicy,
             ),
-            _placeholderItem(context, Icons.description_outlined, 'Terms'),
+            _placeholderItem(context, Icons.description_outlined, context.l10n.terms),
             _placeholderItem(
               context,
               Icons.info_outline_rounded,
-              'About AIFishMap',
+              context.l10n.aboutApp,
             ),
             if (BuildModeService.isDeveloperVisible) ...[
               const Divider(
@@ -198,11 +199,11 @@ class HomeSideMenu extends StatelessWidget {
                 indent: 16,
                 endIndent: 16,
               ),
-              _section('Developer'),
+              _section(context.l10n.developer),
               _item(
                 context,
                 Icons.developer_mode_rounded,
-                'Developer Mode',
+                context.l10n.developerMode,
                 () => _openPage(context, const DeveloperModePage()),
               ),
             ],
@@ -236,7 +237,12 @@ class HomeSideMenu extends StatelessWidget {
     return ListTile(
       dense: true,
       leading: Icon(icon, color: Colors.white70, size: 22),
-      title: Text(title, style: const TextStyle(color: Colors.white)),
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: Colors.white),
+      ),
       onTap: onTap,
     );
   }
@@ -263,14 +269,14 @@ class ComingSoonPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(title)),
-      body: const SafeArea(
+      body: SafeArea(
         child: Center(
           child: Padding(
-            padding: EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: Text(
-              'This feature is coming soon.',
+              context.l10n.featureComingSoon,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18),
+              style: const TextStyle(fontSize: 18),
             ),
           ),
         ),

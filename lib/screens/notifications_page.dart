@@ -146,7 +146,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       ),
                       subtitle: Text(
                         '${notification.message}\n'
-                        '${_relativeTime(notification.createdAt)}',
+                        '${_relativeTime(context, notification.createdAt)}',
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -187,12 +187,20 @@ class _NotificationsPageState extends State<NotificationsPage> {
     NotificationPriority.critical => Colors.red,
   };
 
-  static String _relativeTime(DateTime value) {
+  static String _relativeTime(BuildContext context, DateTime value) {
     final difference = DateTime.now().difference(value.toLocal());
-    if (difference.isNegative || difference.inMinutes < 1) return 'Just now';
-    if (difference.inHours < 1) return '${difference.inMinutes}m ago';
-    if (difference.inDays < 1) return '${difference.inHours}h ago';
-    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    if (difference.isNegative || difference.inMinutes < 1) {
+      return context.l10n.justNow;
+    }
+    if (difference.inHours < 1) {
+      return context.l10n.minutesAgo(difference.inMinutes);
+    }
+    if (difference.inDays < 1) {
+      return context.l10n.hoursAgo(difference.inHours);
+    }
+    if (difference.inDays < 7) {
+      return context.l10n.daysAgo(difference.inDays);
+    }
     return '${value.toLocal().day}.${value.toLocal().month}.'
         '${value.toLocal().year}';
   }

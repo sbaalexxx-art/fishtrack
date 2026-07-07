@@ -90,10 +90,10 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                             size: 60,
                           ),
                           const SizedBox(height: 16),
-                          const Text(
-                            'Live Water Levels',
+                          Text(
+                            context.l10n.liveWaterLevels,
                             textAlign: TextAlign.center,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.bold,
                             ),
@@ -103,8 +103,8 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                           const SizedBox(height: 12),
                           Text(
                             latestUpdate == null
-                                ? 'Update time unavailable'
-                                : _relativeUpdate(latestUpdate),
+                                ? context.l10n.updateTimeUnavailable
+                                : _relativeUpdate(context, latestUpdate),
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.primary,
                               fontWeight: FontWeight.bold,
@@ -116,7 +116,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'Monitored stations',
+                    context.l10n.monitoredStationsTitle,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -137,16 +137,18 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
     );
   }
 
-  static String _relativeUpdate(DateTime timestamp) {
+  static String _relativeUpdate(BuildContext context, DateTime timestamp) {
     final difference = DateTime.now().difference(timestamp.toLocal());
     if (difference.isNegative || difference.inMinutes < 1) {
-      return 'Updated just now';
+      return context.l10n.updatedNow;
     }
     if (difference.inMinutes < 60) {
-      return 'Updated ${difference.inMinutes} min ago';
+      return context.l10n.updatedMinutesAgo(difference.inMinutes);
     }
-    if (difference.inHours < 24) return 'Updated ${difference.inHours} h ago';
-    return 'Updated ${difference.inDays} d ago';
+    if (difference.inHours < 24) {
+      return context.l10n.updatedHoursAgo(difference.inHours);
+    }
+    return context.l10n.updatedDaysAgo(difference.inDays);
   }
 }
 

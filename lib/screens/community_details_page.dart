@@ -264,9 +264,12 @@ class CommunityProfilePage extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _ProfileStat(label: 'Catches', value: profile.catchCount),
                     _ProfileStat(
-                      label: 'Reputation',
+                      label: context.l10n.catches,
+                      value: profile.catchCount,
+                    ),
+                    _ProfileStat(
+                      label: context.l10n.reputation,
                       value: profile.reputation,
                     ),
                   ],

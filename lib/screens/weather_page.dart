@@ -113,7 +113,7 @@ class _WeatherContent extends StatelessWidget {
                   if (weather.feelsLike != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Feels like ${weather.feelsLike!.round()}°C',
+                      context.l10n.feelsLike(weather.feelsLike!.round()),
                       style: const TextStyle(color: Colors.white70),
                     ),
                   ],
@@ -128,20 +128,21 @@ class _WeatherContent extends StatelessWidget {
               children: [
                 _metric(
                   Icons.water_drop_outlined,
-                  'Humidity',
-                  _value(weather.humidity, suffix: '%'),
+                  context.l10n.humidity,
+                  _value(context, weather.humidity, suffix: '%'),
                 ),
                 const Divider(height: 1),
                 _metric(
                   Icons.air_rounded,
-                  'Wind speed',
-                  _value(weather.windSpeed, suffix: ' km/h', decimals: 1),
+                  context.l10n.windSpeed,
+                  _value(context, weather.windSpeed, suffix: ' km/h', decimals: 1),
                 ),
                 const Divider(height: 1),
                 _metric(
                   Icons.explore_outlined,
-                  'Wind direction',
+                  context.l10n.windDirection,
                   _windDirection(
+                    context,
                     weather.windDirectionDegrees,
                     weather.windDirectionLabel,
                   ),
@@ -149,31 +150,31 @@ class _WeatherContent extends StatelessWidget {
                 const Divider(height: 1),
                 _metric(
                   Icons.air_rounded,
-                  'Wind gusts',
-                  _value(weather.windGusts, suffix: ' km/h', decimals: 1),
+                  context.l10n.windGusts,
+                  _value(context, weather.windGusts, suffix: ' km/h', decimals: 1),
                 ),
                 const Divider(height: 1),
                 _metric(
                   Icons.umbrella_outlined,
-                  'Precipitation probability',
-                  _value(weather.precipitationProbability, suffix: '%'),
+                  context.l10n.precipitationProbability,
+                  _value(context, weather.precipitationProbability, suffix: '%'),
                 ),
                 const Divider(height: 1),
                 _metric(
                   Icons.cloud_outlined,
-                  'Cloud cover',
-                  _value(weather.cloudCover, suffix: '%'),
+                  context.l10n.cloudCover,
+                  _value(context, weather.cloudCover, suffix: '%'),
                 ),
                 const Divider(height: 1),
                 _metric(
                   Icons.speed_rounded,
-                  'Pressure',
-                  _value(weather.pressure, suffix: ' hPa'),
+                  context.l10n.pressure,
+                  _value(context, weather.pressure, suffix: ' hPa'),
                 ),
                 const Divider(height: 1),
                 _metric(
                   Icons.schedule_rounded,
-                  'Last updated',
+                  context.l10n.lastUpdated,
                   _time(context, weather.observedAt),
                 ),
               ],
@@ -181,7 +182,7 @@ class _WeatherContent extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Next 24 hours',
+            context.l10n.next24Hours,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.bold,
@@ -189,10 +190,10 @@ class _WeatherContent extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (weather.hourlyForecast.isEmpty)
-            const Card(
+            Card(
               child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('No data'),
+                padding: const EdgeInsets.all(16),
+                child: Text(context.l10n.noData),
               ),
             )
           else
@@ -221,20 +222,20 @@ class _WeatherContent extends StatelessWidget {
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              'Temperature: '
-                              '${_value(hour.temperature, suffix: '°C')}',
+                              '${context.l10n.temperature}: '
+                              '${_value(context, hour.temperature, suffix: '°C')}',
                             ),
                             Text(
-                              'Wind: '
-                              '${_value(hour.windSpeed, suffix: ' km/h', decimals: 1)}',
+                              '${context.l10n.wind}: '
+                              '${_value(context, hour.windSpeed, suffix: ' km/h', decimals: 1)}',
                             ),
                             Text(
-                              'Direction: '
-                              '${_windDirection(hour.windDirectionDegrees, hour.windDirectionLabel)}',
+                              '${context.l10n.direction}: '
+                              '${_windDirection(context, hour.windDirectionDegrees, hour.windDirectionLabel)}',
                             ),
                             Text(
-                              'Precipitation: '
-                              '${_value(hour.precipitationProbability, suffix: '%')}',
+                              '${context.l10n.precipitation}: '
+                              '${_value(context, hour.precipitationProbability, suffix: '%')}',
                             ),
                           ],
                         ),
@@ -246,7 +247,7 @@ class _WeatherContent extends StatelessWidget {
             ),
           const SizedBox(height: 16),
           Text(
-            '3-day forecast',
+            context.l10n.threeDayForecast,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.bold,
@@ -263,7 +264,7 @@ class _WeatherContent extends StatelessWidget {
                       Icons.calendar_today_rounded,
                       color: Color(0xFF1565C0),
                     ),
-                    title: Text(_dayLabel(day.date)),
+                    title: Text(_dayLabel(context, day.date)),
                     subtitle: Text(day.condition),
                     trailing: Text(
                       '${day.minimumTemperature.round()}° / ${day.maximumTemperature.round()}°',
@@ -282,17 +283,17 @@ class _WeatherContent extends StatelessWidget {
               children: [
                 _metric(
                   Icons.wb_twilight_rounded,
-                  'Sunrise',
+                  context.l10n.sunrise,
                   weather.sunrise == null
-                      ? 'No data'
+                      ? context.l10n.noData
                       : _time(context, weather.sunrise!),
                 ),
                 const Divider(height: 1),
                 _metric(
                   Icons.nights_stay_rounded,
-                  'Sunset',
+                  context.l10n.sunset,
                   weather.sunset == null
-                      ? 'No data'
+                      ? context.l10n.noData
                       : _time(context, weather.sunset!),
                 ),
               ],
@@ -308,11 +309,11 @@ class _WeatherContent extends StatelessWidget {
               ),
               title: Text(
                 '${astronomy.moon.name} • '
-                '${astronomy.moon.illuminationPercent.round()}% illuminated',
+                '${astronomy.moon.illuminationPercent.round()}% ${context.l10n.illuminated}',
                 style: const TextStyle(color: Colors.white),
               ),
               subtitle: Text(
-                'Moon age ${astronomy.moon.ageDays.toStringAsFixed(1)} days',
+                context.l10n.moonAge(astronomy.moon.ageDays.toStringAsFixed(1)),
                 style: const TextStyle(color: Colors.white70),
               ),
             ),
@@ -323,7 +324,7 @@ class _WeatherContent extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.wb_twilight_rounded),
               title: Text(context.l10n.goldenHour),
-              subtitle: Text(_goldenHourLabel(astronomy)),
+              subtitle: Text(_goldenHourLabel(context, astronomy)),
             ),
           ),
         ],
@@ -345,34 +346,52 @@ class _WeatherContent extends StatelessWidget {
       TimeOfDay.fromDateTime(dateTime.toLocal()).format(context);
 
   static String _value(
+    BuildContext context,
     double? value, {
     required String suffix,
     int decimals = 0,
   }) {
-    if (value == null || !value.isFinite) return 'No data';
+    if (value == null || !value.isFinite) return context.l10n.noData;
     return '${value.toStringAsFixed(decimals)}$suffix';
   }
 
-  static String _windDirection(double? degrees, String label) {
-    if (degrees == null || !degrees.isFinite || label.isEmpty) return 'No data';
+  static String _windDirection(
+    BuildContext context,
+    double? degrees,
+    String label,
+  ) {
+    if (degrees == null || !degrees.isFinite || label.isEmpty) {
+      return context.l10n.noData;
+    }
     return '$label (${degrees.round()}°)';
   }
 
-  static String _dayLabel(DateTime date) {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static String _dayLabel(BuildContext context, DateTime date) {
+    final days = [
+      context.l10n.mondayShort,
+      context.l10n.tuesdayShort,
+      context.l10n.wednesdayShort,
+      context.l10n.thursdayShort,
+      context.l10n.fridayShort,
+      context.l10n.saturdayShort,
+      context.l10n.sundayShort,
+    ];
     return days[date.weekday - 1];
   }
 
-  static String _goldenHourLabel(AstronomyContext context) {
+  static String _goldenHourLabel(
+    BuildContext buildContext,
+    AstronomyContext context,
+  ) {
     final golden = context.goldenHour;
     if (context.availability == AstronomyAvailability.locationRequired) {
-      return 'Location required';
+      return buildContext.l10n.locationRequired;
     }
     if (context.availability == AstronomyAvailability.notAvailable ||
         golden == null) {
-      return 'Not available';
+      return buildContext.l10n.notAvailable;
     }
-    return '${_clock(golden.morningStart)}–${_clock(golden.morningEnd)} or '
+    return '${_clock(golden.morningStart)}–${_clock(golden.morningEnd)} ${buildContext.l10n.or} '
         '${_clock(golden.eveningStart)}–${_clock(golden.eveningEnd)}';
   }
 

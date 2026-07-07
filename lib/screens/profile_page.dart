@@ -68,7 +68,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _saveProfile() async {
     if (_nameController.text.trim().isEmpty) {
-      setState(() => _error = 'Name is required.');
+      setState(() => _error = context.l10n.nameRequired);
       return;
     }
     setState(() {
@@ -80,7 +80,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Profile updated.')));
+      ).showSnackBar(SnackBar(content: Text(context.l10n.profileUpdated)));
     } on AuthException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } finally {
@@ -175,7 +175,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.verified_user_outlined),
-                  title: Text('Reputation ${reputation.reputationScore}/100'),
+                  title: Text(
+                    context.l10n.reputationValue(reputation.reputationScore),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   trailing: TrustBadge(level: reputation.trustLevel),
                 );
               },
@@ -196,7 +200,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.save_outlined),
-              label: Text(_saving ? 'Saving…' : 'Save Profile'),
+              label: Text(
+                _saving ? context.l10n.saving : context.l10n.saveProfile,
+              ),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(

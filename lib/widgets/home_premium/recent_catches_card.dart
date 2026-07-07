@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import '../../l10n/l10n.dart';
 import '../../screens/community_details_page.dart';
 import '../../screens/reports_page.dart';
 import '../../services/community_service.dart';
@@ -59,7 +60,7 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
               children: [
                 Expanded(
                   child: Text(
-                    'RECENT CATCHES',
+                    context.l10n.recentCatches.toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.cardTitle.copyWith(
@@ -80,7 +81,7 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  child: const Text('View all'),
+                  child: Text(context.l10n.viewAll),
                 ),
               ],
             ),
@@ -113,16 +114,16 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                       child: TextButton.icon(
                         onPressed: _retry,
                         icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('Retry recent catches'),
+                        label: Text(context.l10n.retryRecentCatches),
                       ),
                     );
                   }
                   final catches = snapshot.data ?? const [];
                   if (catches.isEmpty) {
-                    return const Center(
+                    return Center(
                       child: Text(
-                        'No catches yet',
-                        style: TextStyle(color: Colors.white70),
+                        context.l10n.noCatchesYet,
+                        style: const TextStyle(color: Colors.white70),
                       ),
                     );
                   }

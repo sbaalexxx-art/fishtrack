@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import '../../l10n/l10n.dart';
 import '../../models/station.dart';
 import '../../models/weather.dart';
 import '../../services/weather_service.dart';
@@ -49,8 +50,8 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
             ? '--'
             : weather.temperature.round().toString();
         final condition = snapshot.hasError
-            ? 'Weather unavailable'
-            : weather?.condition ?? 'Loading...';
+            ? context.l10n.weatherUnavailableShort
+            : weather?.condition ?? context.l10n.loadingEllipsis;
         final humidity = weather == null
             ? '--'
             : '${weather.humidity.round()}%';
@@ -84,7 +85,7 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'WEATHER',
+                          context.l10n.weather.toUpperCase(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

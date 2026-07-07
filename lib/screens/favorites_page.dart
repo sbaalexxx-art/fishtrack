@@ -71,9 +71,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
             }
             if (snapshot.hasError) {
               return _FavoriteMessage(
-                message: snapshot.error is FavoriteException
-                    ? (snapshot.error! as FavoriteException).message
-                    : 'Favourite stations are unavailable.',
+                message: !_service.isAuthenticated
+                    ? context.l10n.signInForFavorites
+                    : context.l10n.favoritesUnavailable,
                 onRetry: _refresh,
               );
             }
@@ -99,7 +99,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      subtitle: Text(_stationSubtitle(station)),
+                      subtitle: Text(_stationSubtitle(context, station)),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
@@ -117,11 +117,11 @@ class _FavoritesPageState extends State<FavoritesPage> {
     );
   }
 
-  static String _stationSubtitle(Station station) {
+  static String _stationSubtitle(BuildContext context, Station station) {
     if (!station.hasWaterLevel) {
       return station.river.isEmpty
-          ? 'Water level unavailable'
-          : '${station.river} • Water level unavailable';
+          ? context.l10n.waterLevelUnavailable
+          : '${station.river} • ${context.l10n.waterLevelUnavailable}';
     }
     final level =
         '${station.level.toStringAsFixed(0)} ${station.waterLevelUnit}';

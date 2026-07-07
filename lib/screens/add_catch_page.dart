@@ -100,7 +100,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
     } on Exception {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('The photo could not be captured.')),
+        SnackBar(content: Text(context.l10n.photoCaptureFailed)),
       );
     }
   }
@@ -109,14 +109,14 @@ class _AddCatchPageState extends State<AddCatchPage> {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
     if (_image == null) {
-      setState(() => _submissionError = 'Take a photo with the camera.');
+      setState(() => _submissionError = context.l10n.cameraPhotoRequired);
       return;
     }
     final placeName = _placeNameController.text.trim();
     if (_position == null && placeName.isEmpty) {
       setState(
         () =>
-            _submissionError = 'Use GPS or enter a place name for this catch.',
+            _submissionError = context.l10n.catchLocationRequired,
       );
       return;
     }
@@ -155,7 +155,7 @@ class _AddCatchPageState extends State<AddCatchPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Catch saved successfully.')),
+        SnackBar(content: Text(context.l10n.catchSaved)),
       );
       Navigator.of(context).pop(true);
     } on CatchSubmissionException catch (error) {
@@ -166,12 +166,14 @@ class _AddCatchPageState extends State<AddCatchPage> {
   }
 
   String? _requiredText(String? value) =>
-      value == null || value.trim().isEmpty ? 'Required' : null;
+      value == null || value.trim().isEmpty ? context.l10n.requiredField : null;
 
   String? _optionalPositiveNumber(String? value) {
     if (value == null || value.trim().isEmpty) return null;
     final number = double.tryParse(value.replaceAll(',', '.'));
-    return number == null || number <= 0 ? 'Enter a value above 0' : null;
+    return number == null || number <= 0
+        ? context.l10n.positiveValueRequired
+        : null;
   }
 
   double? _normalizedWeightKg(String value) {
@@ -313,7 +315,14 @@ class _AddCatchPageState extends State<AddCatchPage> {
                       .map(
                         (type) => DropdownMenuItem(
                           value: type,
-                          child: Text(type.label),
+                          child: Text(switch (type) {
+                            _WaterType.river => context.l10n.river,
+                            _WaterType.lake => context.l10n.lake,
+                            _WaterType.reservoir => context.l10n.reservoir,
+                            _WaterType.canal => context.l10n.canal,
+                            _WaterType.danube => context.l10n.danube,
+                            _WaterType.other => context.l10n.other,
+                          }),
                         ),
                       )
                       .toList(),
@@ -332,7 +341,11 @@ class _AddCatchPageState extends State<AddCatchPage> {
                       .map(
                         (privacy) => DropdownMenuItem(
                           value: privacy,
-                          child: Text(privacy.label),
+                          child: Text(switch (privacy) {
+                            _LocationPrivacy.exact => context.l10n.exactLocation,
+                            _LocationPrivacy.approximate => context.l10n.approximateLocation,
+                            _LocationPrivacy.hidden => context.l10n.hiddenLocation,
+                          }),
                         ),
                       )
                       .toList(),
@@ -358,7 +371,9 @@ class _AddCatchPageState extends State<AddCatchPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.cloud_upload_outlined),
-                  label: Text(_isSubmitting ? 'Saving catch…' : 'Save Catch'),
+                  label: Text(
+                    _isSubmitting ? context.l10n.savingCatch : context.l10n.saveCatch,
+                  ),
                 ),
               ],
             ),

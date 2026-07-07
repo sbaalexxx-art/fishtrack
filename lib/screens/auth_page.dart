@@ -68,7 +68,7 @@ class _AuthPageState extends State<AuthPage> {
             setState(() {
               _mode = _AuthMode.login;
               _messageIsError = false;
-              _message = 'Check your email to confirm your account.';
+              _message = context.l10n.checkEmailConfirmation;
             });
           }
         case _AuthMode.forgotPassword:
@@ -77,7 +77,7 @@ class _AuthPageState extends State<AuthPage> {
             setState(() {
               _mode = _AuthMode.login;
               _messageIsError = false;
-              _message = 'Password reset instructions were sent by email.';
+              _message = context.l10n.passwordResetSent;
             });
           }
       }
@@ -94,18 +94,18 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   String? _required(String? value) =>
-      value == null || value.trim().isEmpty ? 'Required' : null;
+      value == null || value.trim().isEmpty ? context.l10n.requiredField : null;
 
   String? _emailValidator(String? value) {
     final email = value?.trim() ?? '';
     if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-      return 'Enter a valid email address';
+      return context.l10n.validEmailRequired;
     }
     return null;
   }
 
   String? _passwordValidator(String? value) {
-    if ((value ?? '').length < 8) return 'Use at least 8 characters';
+    if ((value ?? '').length < 8) return context.l10n.minimumEightCharacters;
     return null;
   }
 
@@ -159,10 +159,10 @@ class _AuthPageState extends State<AuthPage> {
                       const SizedBox(height: 16),
                       Text(
                         isRegister
-                            ? 'Create account'
+                            ? context.l10n.createAccountTitle
                             : isForgot
-                            ? 'Reset password'
-                            : 'Welcome back',
+                            ? context.l10n.resetPassword
+                            : context.l10n.welcomeBack,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineMedium?.copyWith(
                           color: scheme.onSurface,
@@ -171,8 +171,8 @@ class _AuthPageState extends State<AuthPage> {
                       const SizedBox(height: 8),
                       Text(
                         isForgot
-                            ? 'We will send recovery instructions to your email.'
-                            : 'Sign in to continue to AIFishMap.',
+                            ? context.l10n.recoveryInstructionsHint
+                            : context.l10n.signInToContinue,
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 28),
@@ -243,7 +243,7 @@ class _AuthPageState extends State<AuthPage> {
                           ),
                           validator: (value) =>
                               value != _passwordController.text
-                              ? 'Passwords do not match'
+                              ? context.l10n.passwordsDoNotMatch
                               : null,
                           onFieldSubmitted: (_) => _submit(),
                         ),
@@ -272,10 +272,10 @@ class _AuthPageState extends State<AuthPage> {
                               )
                             : Text(
                                 isRegister
-                                    ? 'Register'
+                                    ? context.l10n.register
                                     : isForgot
-                                    ? 'Send reset email'
-                                    : 'Login',
+                                    ? context.l10n.sendResetEmail
+                                    : context.l10n.login,
                               ),
                       ),
                       if (_mode == _AuthMode.login) ...[
@@ -370,7 +370,7 @@ class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
                         prefixIcon: Icon(Icons.lock_outline),
                       ),
                       validator: (value) => (value ?? '').length < 8
-                          ? 'Use at least 8 characters'
+                          ? context.l10n.minimumEightCharacters
                           : null,
                     ),
                     if (_error != null) ...[

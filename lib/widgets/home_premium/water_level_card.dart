@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import '../../l10n/l10n.dart';
 import '../../models/station.dart';
 import '../../services/water_service.dart';
 import 'home_premium_layout.dart';
@@ -62,27 +63,27 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         final stationName =
             station?.name ??
             (snapshot.hasError
-                ? 'Water unavailable'
+                ? context.l10n.waterUnavailable
                 : isLoading
-                ? 'Loading...'
-                : 'No station available');
+                ? context.l10n.loadingEllipsis
+                : context.l10n.noStationAvailable);
         final waterLevel = station == null
             ? '--'
             : station.hasWaterLevel
             ? '${station.level.toStringAsFixed(0)} ${station.waterLevelUnit}'
-            : 'No data';
+            : context.l10n.noData;
         final trend = station?.trend ?? WaterTrend.stable;
         final status = station == null
             ? '--'
             : station.hasWaterLevel
-            ? (station.hasKnownTrend ? _statusFor(trend) : 'Unknown')
-            : 'No data';
+            ? (station.hasKnownTrend ? _statusFor(context, trend) : context.l10n.unknown)
+            : context.l10n.noData;
         final lastUpdate = station == null
-            ? (snapshot.hasError ? 'Update failed' : 'Waiting for data')
-            : _relativeUpdate(station.lastUpdate);
+            ? (snapshot.hasError ? context.l10n.updateFailed : context.l10n.waitingForData)
+            : _relativeUpdate(context, station.lastUpdate);
         final sourceLabel = station?.hasWaterLevel == true
             ? station!.waterLevelSource
-            : 'No source';
+            : context.l10n.noSource;
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -114,7 +115,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'WATER LEVEL',
+                          context.l10n.waterLevel.toUpperCase(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppTextStyles.cardTitle.copyWith(
@@ -234,27 +235,27 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
     WaterTrend.falling => Icons.arrow_downward_rounded,
   };
 
-  static String _statusFor(WaterTrend trend) => switch (trend) {
-    WaterTrend.rising => 'Rising',
-    WaterTrend.stable => 'Stable',
-    WaterTrend.falling => 'Falling',
+  static String _statusFor(BuildContext context, WaterTrend trend) => switch (trend) {
+    WaterTrend.rising => context.l10n.rising,
+    WaterTrend.stable => context.l10n.stable,
+    WaterTrend.falling => context.l10n.falling,
   };
 
-  static String _relativeUpdate(DateTime timestamp) {
+  static String _relativeUpdate(BuildContext context, DateTime timestamp) {
     if (timestamp.millisecondsSinceEpoch == 0) {
-      return 'Update time unknown';
+      return context.l10n.updateTimeUnavailable;
     }
 
     final difference = DateTime.now().difference(timestamp.toLocal());
     if (difference.isNegative || difference.inMinutes < 1) {
-      return 'Updated just now';
+      return context.l10n.updatedNow;
     }
     if (difference.inMinutes < 60) {
-      return 'Updated ${difference.inMinutes} min ago';
+      return context.l10n.updatedMinutesAgo(difference.inMinutes);
     }
     if (difference.inHours < 24) {
-      return 'Updated ${difference.inHours} h ago';
+      return context.l10n.updatedHoursAgo(difference.inHours);
     }
-    return 'Updated ${difference.inDays} d ago';
+    return context.l10n.updatedDaysAgo(difference.inDays);
   }
 }

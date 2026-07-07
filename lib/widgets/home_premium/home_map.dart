@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../l10n/l10n.dart';
 import '../../models/station.dart';
 import '../../services/community_service.dart';
 import '../../services/build_mode_service.dart';
@@ -147,7 +148,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
       if (results.isEmpty) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('No station found.')));
+        ).showSnackBar(SnackBar(content: Text(context.l10n.noStationFound)));
         return;
       }
       final selected = results.length == 1
@@ -179,7 +180,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     } on Exception {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Station search is unavailable.')),
+          SnackBar(content: Text(context.l10n.stationSearchUnavailable)),
         );
       }
     } finally {
@@ -200,9 +201,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Map layers',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Text(
+                  context.l10n.mapLayers,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 RadioGroup<MapBaseLayer>(
                   groupValue: layer,
@@ -213,20 +214,20 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                     children: [
                       RadioListTile(
                         value: MapBaseLayer.standard,
-                        title: const Text('Standard'),
+                        title: Text(context.l10n.standard),
                       ),
                       if (BuildModeService.isDeveloperVisible) ...[
-                        const RadioListTile(
+                        RadioListTile(
                           value: MapBaseLayer.satellite,
                           enabled: false,
-                          title: Text('Satellite'),
-                          subtitle: Text('Coming soon'),
+                          title: Text(context.l10n.satellite),
+                          subtitle: Text(context.l10n.comingSoon),
                         ),
-                        const RadioListTile(
+                        RadioListTile(
                           value: MapBaseLayer.fishingMode,
                           enabled: false,
-                          title: Text('Fishing Mode'),
-                          subtitle: Text('Coming soon'),
+                          title: Text(context.l10n.fishingMode),
+                          subtitle: Text(context.l10n.comingSoon),
                         ),
                       ],
                     ],
@@ -237,19 +238,19 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                   CheckboxListTile(
                     value: overlays.contains(overlay),
                     title: Text(switch (overlay) {
-                      MapOverlay.waterStations => 'Water stations',
-                      MapOverlay.communityReports => 'Community reports',
-                      MapOverlay.recentCatches => 'Recent catches',
-                      MapOverlay.favoriteStations => 'Favourite stations',
+                      MapOverlay.waterStations => context.l10n.waterStations,
+                      MapOverlay.communityReports => context.l10n.communityReports,
+                      MapOverlay.recentCatches => context.l10n.recentCatches,
+                      MapOverlay.favoriteStations => context.l10n.favoriteStations,
                     }),
                     onChanged: (value) {
                       if (overlay == MapOverlay.favoriteStations &&
                           value == true &&
                           !_favoriteStationsService.isAuthenticated) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
+                          SnackBar(
                             content: Text(
-                              'Please sign in to filter favourite stations.',
+                              context.l10n.signInForFavoriteStations,
                             ),
                           ),
                         );
@@ -274,7 +275,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                       });
                       Navigator.pop(context);
                     },
-                    child: const Text('Apply'),
+                    child: Text(context.l10n.apply),
                   ),
                 ),
               ],
@@ -408,7 +409,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 right: 12,
                 bottom: 12,
                 child: IconButton.filledTonal(
-                  tooltip: 'Retry loading reports',
+                  tooltip: context.l10n.retryLoadingReports,
                   onPressed: _retry,
                   icon: const Icon(Icons.refresh_rounded),
                 ),
@@ -422,7 +423,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
             color: const Color(0xFF16212B),
             child: Center(
               child: IconButton(
-                tooltip: 'Retry loading reports',
+                tooltip: context.l10n.retryLoadingReports,
                 onPressed: _retry,
                 icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
               ),
@@ -430,23 +431,23 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
           );
         }
 
-        return const ColoredBox(
-          color: Color(0xFF16212B),
+        return ColoredBox(
+          color: const Color(0xFF16212B),
           child: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox.square(
+                const SizedBox.square(
                   dimension: 28,
                   child: CircularProgressIndicator(
                     strokeWidth: 2.5,
                     color: Color(0xFF67D04B),
                   ),
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 Text(
-                  'Loading live fishing reports…',
-                  style: TextStyle(color: Colors.white70),
+                  context.l10n.loadingFishingReports,
+                  style: const TextStyle(color: Colors.white70),
                 ),
               ],
             ),
@@ -478,22 +479,22 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Fishing filters',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Text(
+                  context.l10n.fishingFilters,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 DropdownButtonFormField<WaterBodyType?>(
                   initialValue: draft.waterBodyType,
-                  decoration: const InputDecoration(labelText: 'Water type'),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('River & lake')),
+                  decoration: InputDecoration(labelText: context.l10n.waterType),
+                  items: [
+                    DropdownMenuItem(value: null, child: Text(context.l10n.riverAndLake)),
                     DropdownMenuItem(
                       value: WaterBodyType.river,
-                      child: Text('River'),
+                      child: Text(context.l10n.river),
                     ),
                     DropdownMenuItem(
                       value: WaterBodyType.lake,
-                      child: Text('Lake'),
+                      child: Text(context.l10n.lake),
                     ),
                   ],
                   onChanged: (value) => setSheetState(
@@ -512,11 +513,11 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 ),
                 DropdownButtonFormField<String?>(
                   initialValue: draft.species,
-                  decoration: const InputDecoration(labelText: 'Species'),
+                  decoration: InputDecoration(labelText: context.l10n.species),
                   items: [
-                    const DropdownMenuItem(
+                    DropdownMenuItem(
                       value: null,
-                      child: Text('All species'),
+                      child: Text(context.l10n.allSpecies),
                     ),
                     ...species.map(
                       (item) =>
@@ -539,9 +540,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 ),
                 DropdownButtonFormField<double?>(
                   initialValue: draft.radiusKm,
-                  decoration: const InputDecoration(labelText: 'GPS radius'),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('Any distance')),
+                  decoration: InputDecoration(labelText: context.l10n.gpsRadius),
+                  items: [
+                    DropdownMenuItem(value: null, child: Text(context.l10n.anyDistance)),
                     DropdownMenuItem(value: 10, child: Text('10 km')),
                     DropdownMenuItem(value: 25, child: Text('25 km')),
                     DropdownMenuItem(value: 50, child: Text('50 km')),
@@ -563,7 +564,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Filter by water level'),
+                  title: Text(context.l10n.filterByWaterLevel),
                   value: filterLevel,
                   onChanged: (value) =>
                       setSheetState(() => filterLevel = value),
@@ -580,7 +581,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                     onChanged: (value) =>
                         setSheetState(() => levelRange = value),
                   ),
-                const Text('Water trend'),
+                Text(context.l10n.waterTrend),
                 Wrap(
                   spacing: 6,
                   children: WaterTrend.values.map((trend) {
@@ -613,23 +614,23 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 ),
                 DropdownButtonFormField<FishingDifficulty?>(
                   initialValue: draft.difficulty,
-                  decoration: const InputDecoration(labelText: 'Difficulty'),
-                  items: const [
+                  decoration: InputDecoration(labelText: context.l10n.difficulty),
+                  items: [
                     DropdownMenuItem(
                       value: null,
-                      child: Text('Any difficulty'),
+                      child: Text(context.l10n.anyDifficulty),
                     ),
                     DropdownMenuItem(
                       value: FishingDifficulty.easy,
-                      child: Text('Easy'),
+                      child: Text(context.l10n.easy),
                     ),
                     DropdownMenuItem(
                       value: FishingDifficulty.moderate,
-                      child: Text('Moderate'),
+                      child: Text(context.l10n.moderate),
                     ),
                     DropdownMenuItem(
                       value: FishingDifficulty.hard,
-                      child: Text('Hard'),
+                      child: Text(context.l10n.hard),
                     ),
                   ],
                   onChanged: (value) => setSheetState(
@@ -648,7 +649,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Favorites only'),
+                  title: Text(context.l10n.favoritesOnly),
                   value: draft.favoritesOnly,
                   onChanged: (value) => setSheetState(
                     () => draft = StationFilters(
@@ -673,7 +674,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                         );
                         Navigator.pop(context);
                       },
-                      child: const Text('Reset'),
+                      child: Text(context.l10n.reset),
                     ),
                     const Spacer(),
                     FilledButton(
@@ -697,7 +698,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                         );
                         Navigator.pop(context);
                       },
-                      child: const Text('Apply'),
+                      child: Text(context.l10n.apply),
                     ),
                   ],
                 ),
@@ -806,7 +807,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                                   errorBorder: InputBorder.none,
                                   focusedErrorBorder: InputBorder.none,
                                   contentPadding: EdgeInsets.zero,
-                                  hintText: 'Search station name...',
+                                  hintText: context.l10n.searchStation,
                                   hintStyle: TextStyle(
                                     color: Colors.white70,
                                     fontSize: 13,
