@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/theme/app_theme.dart';
@@ -8,8 +9,14 @@ import 'screens/auth_page.dart';
 import 'screens/main_navigation.dart';
 import 'services/auth_service.dart';
 
+const _mapboxAccessToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (_mapboxAccessToken.isNotEmpty) {
+    MapboxOptions.setAccessToken(_mapboxAccessToken);
+  }
 
   await Supabase.initialize(
     url: 'https://rbymtavrfreweyfydkjl.supabase.co',
