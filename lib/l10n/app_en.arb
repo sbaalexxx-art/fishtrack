@@ -259,5 +259,6 @@
   "hoursAgo": "{count, plural, =1{1 hour} other{{count} hours}} ago",
   "daysAgo": "{count, plural, =1{1 day} other{{count} days}} ago",
   "catches": "Catches",
-  "reputation": "Reputation"
+  "reputation": "Reputation",
+  "cachedDataFallback": "Showing the latest locally saved data."
 }

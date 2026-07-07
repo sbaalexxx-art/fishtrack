@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../l10n/l10n.dart';
+import '../core/cache/timed_cache.dart';
 import '../services/community_service.dart';
 import '../widgets/loading_list_skeleton.dart';
 import '../widgets/trust_badge.dart';
@@ -18,16 +19,17 @@ class ReportsPage extends StatefulWidget {
 
 class _ReportsPageState extends State<ReportsPage> {
   final _service = const CommunityService();
-  late Future<List<CommunityPost>> _feed;
+  late Future<CacheResult<List<CommunityPost>>> _feed;
+  bool _fallbackMessageShown = false;
 
   @override
   void initState() {
     super.initState();
-    _feed = _service.getFeed();
+    _feed = _service.getFeedResult();
   }
 
   Future<void> _refresh() async {
-    final posts = await _service.getFeed();
+    final posts = await _service.getFeedResult(forceRefresh: true);
     if (mounted) setState(() => _feed = Future.value(posts));
   }
 
@@ -49,7 +51,7 @@ class _ReportsPageState extends State<ReportsPage> {
         label: Text(context.l10n.report),
       ),
       body: SafeArea(
-        child: FutureBuilder<List<CommunityPost>>(
+        child: FutureBuilder<CacheResult<List<CommunityPost>>>(
           future: _feed,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -64,7 +66,18 @@ class _ReportsPageState extends State<ReportsPage> {
                 action: _refresh,
               );
             }
-            final posts = snapshot.data ?? const [];
+            final result = snapshot.data!;
+            if (result.isStaleFallback && !_fallbackMessageShown) {
+              _fallbackMessageShown = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(context.l10n.cachedDataFallback)),
+                  );
+                }
+              });
+            }
+            final posts = result.value;
             if (posts.isEmpty) {
               return _FeedMessage(
                 icon: Icons.groups_outlined,

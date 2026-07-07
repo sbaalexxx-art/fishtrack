@@ -20,7 +20,9 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
     _decision = _service.calculate();
   }
 
-  void _reload() => setState(() => _decision = _service.calculate());
+  void _reload() => setState(
+    () => _decision = _service.calculate(forceRefresh: true),
+  );
 
   @override
   Widget build(BuildContext context) {

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/cache/timed_cache.dart';
 import 'location_service.dart';
 import 'report_spam_service.dart';
 import 'reputation_service.dart';
@@ -200,6 +201,9 @@ class CommunityService {
 
   static final StreamController<CommunityReportEvent> _reportEvents =
       StreamController<CommunityReportEvent>.broadcast();
+  static const cacheDuration = Duration(minutes: 3);
+  static final TimedCache<List<CommunityPost>> _feedCache =
+      TimedCache<List<CommunityPost>>(duration: cacheDuration);
 
   Stream<CommunityReportEvent> get reportEvents => _reportEvents.stream;
 
@@ -236,7 +240,17 @@ class CommunityService {
             .toList(growable: false),
       );
 
-  Future<List<CommunityPost>> getFeed() => _guard(() async {
+  Future<List<CommunityPost>> getFeed({bool forceRefresh = false}) async =>
+      (await getFeedResult(forceRefresh: forceRefresh)).value;
+
+  Future<CacheResult<List<CommunityPost>>> getFeedResult({
+    bool forceRefresh = false,
+  }) => _feedCache.get(
+    () => _fetchFeed(),
+    forceRefresh: forceRefresh,
+  );
+
+  Future<List<CommunityPost>> _fetchFeed() => _guard(() async {
     final responses = await Future.wait([
       _supabase
           .from('catches')

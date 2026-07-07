@@ -274,5 +274,6 @@
   "daysAgo": "Acum {count, plural, =1{1 zi} other{{count} zile}}",
   "@daysAgo": {"placeholders": {"count": {"type": "int"}}},
   "catches": "Capturi",
-  "reputation": "Reputație"
+  "reputation": "Reputație",
+  "cachedDataFallback": "Afișăm ultimele date salvate local."
 }

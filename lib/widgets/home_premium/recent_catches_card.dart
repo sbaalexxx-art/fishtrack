@@ -24,15 +24,15 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
     _catches = _load();
   }
 
-  Future<List<CommunityPost>> _load() =>
-      const CommunityService().getFeed().then(
+  Future<List<CommunityPost>> _load({bool forceRefresh = false}) =>
+      const CommunityService().getFeed(forceRefresh: forceRefresh).then(
         (posts) => posts
             .where((post) => post.type == CommunityPostType.catchPost)
             .take(10)
             .toList(),
       );
 
-  void _retry() => setState(() => _catches = _load());
+  void _retry() => setState(() => _catches = _load(forceRefresh: true));
 
   void _openAll() {
     Navigator.of(

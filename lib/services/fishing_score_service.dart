@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import '../models/station.dart';
 import '../models/water_level.dart';
 import '../models/weather.dart';
+import '../core/cache/timed_cache.dart';
 import 'astronomy_service.dart';
 import 'community_service.dart';
 import 'water_service.dart';
@@ -11,7 +12,10 @@ import 'weather_service.dart';
 enum FishingScoreRating { excellent, good, fair, poor }
 
 abstract interface class FishingDecisionProvider {
-  Future<FishingScoreResult> calculate({Station? fallbackStation});
+  Future<FishingScoreResult> calculate({
+    Station? fallbackStation,
+    bool forceRefresh = false,
+  });
 }
 
 class FishingScoreResult {
@@ -69,9 +73,29 @@ class FishingScoreService implements FishingDecisionProvider {
   final WaterService _waterService;
   final WeatherService _weatherService;
   final CommunityService _communityService;
+  static const cacheDuration = Duration(minutes: 20);
+  static final Map<String, TimedCache<FishingScoreResult>> _cache = {};
 
   @override
-  Future<FishingScoreResult> calculate({Station? fallbackStation}) async {
+  Future<FishingScoreResult> calculate({
+    Station? fallbackStation,
+    bool forceRefresh = false,
+  }) async {
+    final key = fallbackStation?.id ?? 'nearest';
+    final cache = _cache.putIfAbsent(
+      key,
+      () => TimedCache<FishingScoreResult>(duration: cacheDuration),
+    );
+    return (await cache.get(
+      () => _calculateLive(fallbackStation: fallbackStation, forceRefresh: forceRefresh),
+      forceRefresh: forceRefresh,
+    )).value;
+  }
+
+  Future<FishingScoreResult> _calculateLive({
+    Station? fallbackStation,
+    bool forceRefresh = false,
+  }) async {
     Station? station;
     WeatherData? weather;
     List<WaterLevel> history = const [];
@@ -103,13 +127,14 @@ class FishingScoreService implements FishingDecisionProvider {
     try {
       weather = await _weatherService.getCurrentWeather(
         fallbackStation: station,
+        forceRefresh: forceRefresh,
       );
     } on Exception catch (error, stackTrace) {
       weatherAvailable = false;
       _logMissing('weather', error, stackTrace);
     }
     try {
-      posts = await _communityService.getFeed();
+      posts = await _communityService.getFeed(forceRefresh: forceRefresh);
     } on Exception catch (error, stackTrace) {
       communityAvailable = false;
       _logMissing('community reports and catches', error, stackTrace);

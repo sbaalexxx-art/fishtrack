@@ -1,5 +1,6 @@
 import '../models/station.dart';
 import '../models/weather.dart';
+import '../core/cache/timed_cache.dart';
 import '../repositories/weather_repository.dart';
 import 'astronomy_service.dart';
 import 'location_service.dart';
@@ -14,9 +15,9 @@ class WeatherService {
        _locationService = locationService ?? const LocationService(),
        _waterService = waterService ?? WaterService();
 
-  static const cacheDuration = Duration(minutes: 15);
+  static const cacheDuration = Duration(minutes: 30);
   static const _defaultRomaniaCoordinates = _Coordinates(43.90, 25.97);
-  static final Map<String, _WeatherCacheEntry> _cache = {};
+  static final Map<String, TimedCache<WeatherData>> _cache = {};
 
   final WeatherRepository _repository;
   final LocationService _locationService;
@@ -51,31 +52,30 @@ class WeatherService {
     }
   }
 
-  Future<WeatherData> getCurrentWeather({Station? fallbackStation}) async {
+  Future<WeatherData> getCurrentWeather({
+    Station? fallbackStation,
+    bool forceRefresh = false,
+  }) async => (await getCurrentWeatherResult(
+    fallbackStation: fallbackStation,
+    forceRefresh: forceRefresh,
+  )).value;
+
+  Future<CacheResult<WeatherData>> getCurrentWeatherResult({
+    Station? fallbackStation,
+    bool forceRefresh = false,
+  }) async {
     final coordinates = await _resolveCoordinates(fallbackStation);
     final key =
         '${coordinates.latitude.toStringAsFixed(3)}:'
         '${coordinates.longitude.toStringAsFixed(3)}';
-    final cached = _cache[key];
-
-    if (cached != null &&
-        DateTime.now().difference(cached.savedAt) < cacheDuration) {
-      return cached.data;
-    }
-
-    try {
-      final weather = await _repository.getCurrentWeather(
+    final cache = _cache.putIfAbsent(
+      key,
+      () => TimedCache<WeatherData>(duration: cacheDuration),
+    );
+    return cache.get(() => _repository.getCurrentWeather(
         latitude: coordinates.latitude,
         longitude: coordinates.longitude,
-      );
-      _cache[key] = _WeatherCacheEntry(weather, DateTime.now());
-      return weather;
-    } on Exception {
-      if (cached != null) {
-        return cached.data;
-      }
-      rethrow;
-    }
+      ), forceRefresh: forceRefresh);
   }
 
   Future<_Coordinates> _resolveCoordinates(Station? fallbackStation) async {
@@ -111,11 +111,4 @@ class _Coordinates {
 
   final double latitude;
   final double longitude;
-}
-
-class _WeatherCacheEntry {
-  const _WeatherCacheEntry(this.data, this.savedAt);
-
-  final WeatherData data;
-  final DateTime savedAt;
 }

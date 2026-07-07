@@ -1657,6 +1657,12 @@ abstract class AppLocalizations {
   /// In ro, this message translates to:
   /// **'Reputație'**
   String get reputation;
+
+  /// No description provided for @cachedDataFallback.
+  ///
+  /// In ro, this message translates to:
+  /// **'Afișăm ultimele date salvate local.'**
+  String get cachedDataFallback;
 }
 
 class _AppLocalizationsDelegate

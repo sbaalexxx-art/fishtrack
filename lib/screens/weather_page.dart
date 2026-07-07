@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/l10n.dart';
 
+import '../core/cache/timed_cache.dart';
 import '../models/weather.dart';
 import '../services/astronomy_service.dart';
 import '../services/weather_service.dart';
@@ -16,6 +17,7 @@ class WeatherPage extends StatefulWidget {
 class _WeatherPageState extends State<WeatherPage> {
   final _service = WeatherService();
   late Future<_WeatherViewData> _weather;
+  bool _fallbackMessageShown = false;
 
   @override
   void initState() {
@@ -23,19 +25,21 @@ class _WeatherPageState extends State<WeatherPage> {
     _weather = _load();
   }
 
-  Future<_WeatherViewData> _load() async {
-    final values = await Future.wait([
-      _service.getCurrentWeather(),
+  Future<_WeatherViewData> _load({bool forceRefresh = false}) async {
+    final values = await Future.wait<Object>([
+      _service.getCurrentWeatherResult(forceRefresh: forceRefresh),
       _service.getAstronomyContext(),
     ]);
+    final weather = values[0] as CacheResult<WeatherData>;
     return _WeatherViewData(
-      weather: values[0] as WeatherData,
+      weather: weather.value,
       astronomy: values[1] as AstronomyContext,
+      isStaleFallback: weather.isStaleFallback,
     );
   }
 
   Future<void> _refresh() async {
-    final weather = _load();
+    final weather = _load(forceRefresh: true);
     setState(() => _weather = weather);
     await weather;
   }
@@ -54,6 +58,16 @@ class _WeatherPageState extends State<WeatherPage> {
             }
             if (snapshot.hasError || snapshot.data == null) {
               return _WeatherMessage(onRetry: _refresh);
+            }
+            if (snapshot.data!.isStaleFallback && !_fallbackMessageShown) {
+              _fallbackMessageShown = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(context.l10n.cachedDataFallback)),
+                  );
+                }
+              });
             }
             return _WeatherContent(
               weather: snapshot.data!.weather,
@@ -401,9 +415,14 @@ class _WeatherContent extends StatelessWidget {
 }
 
 class _WeatherViewData {
-  const _WeatherViewData({required this.weather, required this.astronomy});
+  const _WeatherViewData({
+    required this.weather,
+    required this.astronomy,
+    required this.isStaleFallback,
+  });
   final WeatherData weather;
   final AstronomyContext astronomy;
+  final bool isStaleFallback;
 }
 
 class _WeatherMessage extends StatelessWidget {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/l10n.dart';
 
+import '../core/cache/timed_cache.dart';
 import '../models/station.dart';
 import '../services/water_service.dart';
 import '../widgets/loading_list_skeleton.dart';
@@ -17,10 +18,11 @@ class WaterLevelPage extends StatefulWidget {
 
 class _WaterLevelPageState extends State<WaterLevelPage> {
   final WaterService _waterService = WaterService();
-  late Future<List<Station>> _stations = _load();
+  late Future<CacheResult<List<Station>>> _stations = _load();
+  bool _fallbackMessageShown = false;
 
-  Future<List<Station>> _load({bool forceRefresh = false}) =>
-      _waterService.getStations(forceRefresh: forceRefresh);
+  Future<CacheResult<List<Station>>> _load({bool forceRefresh = false}) =>
+      _waterService.getStationsResult(forceRefresh: forceRefresh);
 
   Future<void> _refresh() async {
     final stations = _load(forceRefresh: true);
@@ -42,7 +44,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
     return Scaffold(
       appBar: AppBar(title: Text(context.l10n.waterLevels), centerTitle: true),
       body: SafeArea(
-        child: FutureBuilder<List<Station>>(
+        child: FutureBuilder<CacheResult<List<Station>>>(
           future: _stations,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -55,7 +57,18 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                 onRefresh: _refresh,
               );
             }
-            final stations = snapshot.data ?? const [];
+            final result = snapshot.data!;
+            if (result.isStaleFallback && !_fallbackMessageShown) {
+              _fallbackMessageShown = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(context.l10n.cachedDataFallback)),
+                  );
+                }
+              });
+            }
+            final stations = result.value;
             if (stations.isEmpty) {
               return _WaterMessage(
                 icon: Icons.water_drop_outlined,

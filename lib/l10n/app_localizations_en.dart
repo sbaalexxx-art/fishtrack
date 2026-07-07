@@ -886,4 +886,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reputation => 'Reputation';
+
+  @override
+  String get cachedDataFallback => 'Showing the latest locally saved data.';
 }

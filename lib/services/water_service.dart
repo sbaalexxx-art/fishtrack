@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/station.dart';
+import '../core/cache/timed_cache.dart';
 import '../models/water_level.dart';
 import '../repositories/water_repository.dart';
 import 'location_service.dart';
@@ -12,12 +13,11 @@ class WaterService {
     : _repository = repository ?? const WaterRepository(),
       _locationService = locationService ?? const LocationService();
 
-  static const cacheDuration = Duration(minutes: 5);
+  static const cacheDuration = Duration(minutes: 30);
   static final StreamController<Station> _stationSelectionController =
       StreamController<Station>.broadcast(sync: true);
-  static List<Station>? _cachedStations;
-  static DateTime? _cachedAt;
-  static Future<List<Station>>? _activeRequest;
+  static final TimedCache<List<Station>> _stationsCache =
+      TimedCache<List<Station>>(duration: cacheDuration);
   static Station? _selectedStation;
 
   final WaterRepository _repository;
@@ -34,9 +34,7 @@ class WaterService {
   WaterLevelSource get activeSource => _repository.source;
 
   static void clearCache() {
-    _cachedStations = null;
-    _cachedAt = null;
-    _activeRequest = null;
+    _stationsCache.clear();
   }
 
   Stream<Station> get stationSelections => _stationSelectionController.stream;
@@ -54,38 +52,15 @@ class WaterService {
   }) =>
       _repository.getHistory(stationId, stationName: stationName, limit: limit);
 
-  Future<List<Station>> getStations({bool forceRefresh = false}) async {
-    final cachedStations = _cachedStations;
-    final cachedAt = _cachedAt;
-    if (!forceRefresh &&
-        cachedStations != null &&
-        cachedAt != null &&
-        DateTime.now().difference(cachedAt) < cacheDuration) {
-      return cachedStations;
-    }
+  Future<List<Station>> getStations({bool forceRefresh = false}) async =>
+      (await getStationsResult(forceRefresh: forceRefresh)).value;
 
-    final activeRequest = _activeRequest;
-    if (activeRequest != null) {
-      return activeRequest;
-    }
-
-    final request = _repository.getStations();
-    _activeRequest = request;
-
-    try {
-      final stations = List<Station>.unmodifiable(await request);
-      _cachedStations = stations;
-      _cachedAt = DateTime.now();
-      return stations;
-    } on Exception {
-      if (cachedStations != null) {
-        return cachedStations;
-      }
-      rethrow;
-    } finally {
-      _activeRequest = null;
-    }
-  }
+  Future<CacheResult<List<Station>>> getStationsResult({
+    bool forceRefresh = false,
+  }) => _stationsCache.get(
+    () async => List<Station>.unmodifiable(await _repository.getStations()),
+    forceRefresh: forceRefresh,
+  );
 
   Future<Station?> getNearestStation({Station? fallbackStation}) async {
     final stations = await getStations();

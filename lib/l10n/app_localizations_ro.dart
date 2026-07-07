@@ -891,4 +891,7 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get reputation => 'Reputație';
+
+  @override
+  String get cachedDataFallback => 'Afișăm ultimele date salvate local.';
 }
