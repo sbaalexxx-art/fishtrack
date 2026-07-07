@@ -72,10 +72,17 @@ class WeatherService {
       key,
       () => TimedCache<WeatherData>(duration: cacheDuration),
     );
-    return cache.get(() => _repository.getCurrentWeather(
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-      ), forceRefresh: forceRefresh);
+    try {
+      return await cache.get(
+        () => _repository.getCurrentWeather(
+          latitude: coordinates.latitude,
+          longitude: coordinates.longitude,
+        ),
+        forceRefresh: forceRefresh,
+      );
+    } on Exception {
+      throw const WeatherServiceException('Weather data is unavailable.');
+    }
   }
 
   Future<_Coordinates> _resolveCoordinates(Station? fallbackStation) async {

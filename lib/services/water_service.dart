@@ -57,10 +57,18 @@ class WaterService {
 
   Future<CacheResult<List<Station>>> getStationsResult({
     bool forceRefresh = false,
-  }) => _stationsCache.get(
-    () async => List<Station>.unmodifiable(await _repository.getStations()),
-    forceRefresh: forceRefresh,
-  );
+  }) async {
+    try {
+      return await _stationsCache.get(
+        () async => List<Station>.unmodifiable(
+          await _repository.getStations(),
+        ),
+        forceRefresh: forceRefresh,
+      );
+    } on Exception {
+      return const CacheResult<List<Station>>(<Station>[]);
+    }
+  }
 
   Future<Station?> getNearestStation({Station? fallbackStation}) async {
     final stations = await getStations();

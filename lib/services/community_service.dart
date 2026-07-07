@@ -245,10 +245,16 @@ class CommunityService {
 
   Future<CacheResult<List<CommunityPost>>> getFeedResult({
     bool forceRefresh = false,
-  }) => _feedCache.get(
-    () => _fetchFeed(),
-    forceRefresh: forceRefresh,
-  );
+  }) async {
+    try {
+      return await _feedCache.get(
+        () => _fetchFeed(),
+        forceRefresh: forceRefresh,
+      );
+    } on Exception {
+      return const CacheResult<List<CommunityPost>>(<CommunityPost>[]);
+    }
+  }
 
   Future<List<CommunityPost>> _fetchFeed() => _guard(() async {
     final responses = await Future.wait([

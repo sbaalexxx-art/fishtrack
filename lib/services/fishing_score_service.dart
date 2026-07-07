@@ -86,10 +86,17 @@ class FishingScoreService implements FishingDecisionProvider {
       key,
       () => TimedCache<FishingScoreResult>(duration: cacheDuration),
     );
-    return (await cache.get(
-      () => _calculateLive(fallbackStation: fallbackStation, forceRefresh: forceRefresh),
-      forceRefresh: forceRefresh,
-    )).value;
+    try {
+      return (await cache.get(
+        () => _calculateLive(
+          fallbackStation: fallbackStation,
+          forceRefresh: forceRefresh,
+        ),
+        forceRefresh: forceRefresh,
+      )).value;
+    } on Exception {
+      return const FishingScoreResult.notEnough();
+    }
   }
 
   Future<FishingScoreResult> _calculateLive({
