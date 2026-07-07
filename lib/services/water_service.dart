@@ -49,8 +49,17 @@ class WaterService {
     String stationId, {
     String? stationName,
     int limit = 14,
-  }) =>
-      _repository.getHistory(stationId, stationName: stationName, limit: limit);
+  }) async {
+    try {
+      return await _repository.getHistory(
+        stationId,
+        stationName: stationName,
+        limit: limit,
+      );
+    } on Exception {
+      return const <WaterLevel>[];
+    }
+  }
 
   Future<List<Station>> getStations({bool forceRefresh = false}) async =>
       (await getStationsResult(forceRefresh: forceRefresh)).value;

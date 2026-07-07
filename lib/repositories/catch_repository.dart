@@ -134,39 +134,44 @@ class CatchRepository {
   }
 
   Future<List<Catch>> getCatchesForStation(String stationId) async {
-    final response = await _supabase
-        .from('catches')
-        .select('id, station_id, species, weight, length, timestamp')
-        .eq('station_id', stationId)
-        .order('timestamp', ascending: false)
-        .limit(20)
-        .timeout(const Duration(seconds: 12));
+    try {
+      final response = await _supabase
+          .from('catches')
+          .select('id, station_id, species, weight, length, timestamp')
+          .eq('station_id', stationId)
+          .order('timestamp', ascending: false)
+          .limit(20)
+          .timeout(const Duration(seconds: 12));
 
-    return response
-        .map((row) {
-          final id = row['id']?.toString();
-          final species = row['species']?.toString().trim();
-          final weight = _number(row['weight']);
-          final length = _number(row['length']);
-          final date = DateTime.tryParse(row['timestamp']?.toString() ?? '');
-          if (id == null ||
-              id.isEmpty ||
-              species == null ||
-              species.isEmpty ||
-              date == null) {
-            return null;
-          }
-          return Catch(
-            id: id,
-            stationId: row['station_id']?.toString() ?? stationId,
-            species: species,
-            weight: weight,
-            length: length,
-            date: date.toLocal(),
-          );
-        })
-        .whereType<Catch>()
-        .toList(growable: false);
+      return response
+          .map((row) {
+            final id = row['id']?.toString();
+            final species = row['species']?.toString().trim();
+            final weight = _number(row['weight']);
+            final length = _number(row['length']);
+            final date = DateTime.tryParse(row['timestamp']?.toString() ?? '');
+            if (id == null ||
+                id.isEmpty ||
+                species == null ||
+                species.isEmpty ||
+                date == null) {
+              return null;
+            }
+            return Catch(
+              id: id,
+              stationId: row['station_id']?.toString() ?? stationId,
+              species: species,
+              weight: weight,
+              length: length,
+              date: date.toLocal(),
+            );
+          })
+          .whereType<Catch>()
+          .toList(growable: false);
+    } on Exception catch (error, stackTrace) {
+      _logFailure('load station catches', error, stackTrace);
+      return const <Catch>[];
+    }
   }
 
   static double? _number(Object? value) => value is num

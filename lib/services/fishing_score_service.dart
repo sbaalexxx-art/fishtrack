@@ -147,6 +147,10 @@ class FishingScoreService implements FishingDecisionProvider {
       _logMissing('community reports and catches', error, stackTrace);
     }
 
+    if (weather == null && station == null && posts.isEmpty) {
+      return const FishingScoreResult.notEnough();
+    }
+
     return _calculate(
       weather: weather,
       station: station,
