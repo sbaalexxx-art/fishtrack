@@ -29,7 +29,7 @@ class AIFishMapApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       locale: const Locale('ro'),
-      supportedLocales: AppLocalizations.supportedLocales,
+      supportedLocales: const [Locale('ro'), Locale('en')],
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
