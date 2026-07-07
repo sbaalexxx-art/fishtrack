@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 
 import '../../models/station.dart';
 import '../../services/community_service.dart';
@@ -37,228 +40,38 @@ class HomeMapRenderer extends StatelessWidget {
     this.recentCatches = const [],
   });
 
+  static const _satelliteStreetsStyle =
+      'mapbox://styles/mapbox/satellite-streets-v12';
+
+  /// Build gesture recognizers to prevent parent ScrollView from intercepting map gestures.
+  /// EagerGestureRecognizer claims gestures immediately so they don't bubble up.
+  Set<Factory<OneSequenceGestureRecognizer>> _buildGestureRecognizers() {
+    return {
+      Factory<EagerGestureRecognizer>(() => EagerGestureRecognizer()),
+      Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: FlutterMap(
-        mapController: mapController,
-        options: MapOptions(
-          initialCenter: const LatLng(45.3, 28.0),
-          initialZoom: 6.8,
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.all,
-          ),
-          onMapReady: onMapReady,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF101820),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: mapbox.MapWidget(
+        key: const ValueKey('aifishmap-home-mapbox'),
+        textureView: false,
+        styleUri: _satelliteStreetsStyle,
+        cameraOptions: mapbox.CameraOptions(
+          center: mapbox.Point(coordinates: mapbox.Position(21.3895, 44.8148)),
+          zoom: 12.5,
         ),
-        children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.aifishmap.app',
-            tileProvider: NetworkTileProvider(),
-            panBuffer: 2,
-          ),
-          MarkerLayer(
-            markers: [
-              ...stations
-                  .where((station) {
-                    final showWater = overlays.contains(
-                      MapOverlay.waterStations,
-                    );
-                    final showFavorite =
-                        overlays.contains(MapOverlay.favoriteStations) &&
-                        favoriteStationIds.contains(station.id);
-                    return showWater || showFavorite;
-                  })
-                  .map(
-                    (station) => Marker(
-                      point: LatLng(station.latitude, station.longitude),
-                      width: 28,
-                      height: 28,
-                      child: Tooltip(
-                        message: station.name,
-                        child: GestureDetector(
-                          onTap: () => onStationTap?.call(station),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF087F8C),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 1.5,
-                              ),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black26,
-                                  blurRadius: 4,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.water_drop_rounded,
-                              color: Colors.white,
-                              size: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              if (overlays.contains(MapOverlay.communityReports))
-                ..._clusters(reports).map((cluster) {
-                  final report = cluster.reports.first;
-                  return Marker(
-                    point: cluster.center,
-                    width: 30,
-                    height: 30,
-                    child: GestureDetector(
-                      onTap: cluster.reports.length == 1
-                          ? () => onReportTap?.call(report)
-                          : null,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE65100),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 5,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: cluster.reports.length == 1
-                            ? const Icon(
-                                Icons.campaign_rounded,
-                                color: Colors.white,
-                                size: 15,
-                              )
-                            : Center(
-                                child: Text(
-                                  '${cluster.reports.length}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ),
-                  );
-                }),
-              if (overlays.contains(MapOverlay.recentCatches))
-                ...recentCatches
-                    .where(
-                      (post) => post.latitude != null && post.longitude != null,
-                    )
-                    .map(
-                      (post) => Marker(
-                        point: LatLng(post.latitude!, post.longitude!),
-                        width: 30,
-                        height: 30,
-                        child: Tooltip(
-                          message: post.title,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2E7D32),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 1.5,
-                              ),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black26,
-                                  blurRadius: 5,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.set_meal_rounded,
-                              color: Colors.white,
-                              size: 15,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-              if (currentLocation case final location?)
-                Marker(
-                  point: location,
-                  width: 30,
-                  height: 30,
-                  child: Tooltip(
-                    message: 'You are here',
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF147BFF),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xFF147BFF,
-                            ).withValues(alpha: .45),
-                            blurRadius: 12,
-                            spreadRadius: 3,
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.person_pin_circle_rounded,
-                        color: Colors.white,
-                        size: 17,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
+        gestureRecognizers: _buildGestureRecognizers(),
+        onMapCreated: (_) {
+          onMapReady?.call();
+        },
       ),
     );
   }
-
-  static List<_ReportCluster> _clusters(List<CommunityPost> reports) {
-    const cellSize = .06;
-    final cells = <String, List<CommunityPost>>{};
-
-    for (final report in reports) {
-      if (!report.isActiveReport ||
-          report.latitude == null ||
-          report.longitude == null) {
-        continue;
-      }
-
-      final key =
-          '${(report.latitude! / cellSize).floor()}:'
-          '${(report.longitude! / cellSize).floor()}';
-
-      cells.putIfAbsent(key, () => []).add(report);
-    }
-
-    return cells.values
-        .map((items) {
-          final latitude =
-              items.fold<double>(0, (sum, item) => sum + item.latitude!) /
-              items.length;
-          final longitude =
-              items.fold<double>(0, (sum, item) => sum + item.longitude!) /
-              items.length;
-
-          return _ReportCluster(LatLng(latitude, longitude), items);
-        })
-        .toList(growable: false);
-  }
-}
-
-class _ReportCluster {
-  const _ReportCluster(this.center, this.reports);
-
-  final LatLng center;
-  final List<CommunityPost> reports;
 }

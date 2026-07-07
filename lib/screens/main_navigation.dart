@@ -39,26 +39,16 @@ class _MainNavigationState extends State<MainNavigation> {
 
   void _selectPage(int index) {
     setState(() {
-      if (index == 0 && _selectedIndex != 0) {
-        _pages[0] = HomePremiumPage(key: UniqueKey(), onNavigate: _selectPage);
-      }
-      if (index == 3) {
-        _pages[3] = ReportsPage(key: UniqueKey());
-      }
       _selectedIndex = index;
     });
   }
 
   Future<void> _openAddCatchPage() async {
-    final added = await Navigator.of(
+    await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const AddCatchPage()));
-    if (added == true && mounted) {
-      setState(() {
-        _pages[0] = HomePremiumPage(key: UniqueKey(), onNavigate: _selectPage);
-        _pages[3] = ReportsPage(key: UniqueKey());
-      });
-    }
+    // Data updates are handled by stream listeners in HomePremiumMap and ReportsPage
+    // No need to recreate widgets
   }
 
   @override
@@ -101,11 +91,21 @@ class _MainNavigationState extends State<MainNavigation> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: _item(Icons.home_rounded, context.l10n.home, 0, layout),
+                          child: _item(
+                            Icons.home_rounded,
+                            context.l10n.home,
+                            0,
+                            layout,
+                          ),
                         ),
 
                         Expanded(
-                          child: _item(Icons.map_rounded, context.l10n.map, 1, layout),
+                          child: _item(
+                            Icons.map_rounded,
+                            context.l10n.map,
+                            1,
+                            layout,
+                          ),
                         ),
 
                         Expanded(

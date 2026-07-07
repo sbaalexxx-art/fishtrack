@@ -12,24 +12,30 @@ import 'developer_mode_page.dart';
 import 'fishing_insights_page.dart';
 import 'notifications_page.dart';
 
-class HomePremiumPage extends StatelessWidget {
+class HomePremiumPage extends StatefulWidget {
   const HomePremiumPage({super.key, required this.onNavigate});
 
   final ValueChanged<int> onNavigate;
 
   @override
+  State<HomePremiumPage> createState() => _HomePremiumPageState();
+}
+
+class _HomePremiumPageState extends State<HomePremiumPage> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  void _openPage(Widget page) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+  }
+
+  @override
   Widget build(BuildContext context) {
     final layout = HomePremiumLayout.of(context);
-    final scaffoldKey = GlobalKey<ScaffoldState>();
-
-    void openPage(Widget page) {
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
-    }
 
     return Scaffold(
-      key: scaffoldKey,
+      key: _scaffoldKey,
       backgroundColor: const Color(0xFF0F1115),
-      drawer: HomeSideMenu(onNavigate: onNavigate),
+      drawer: HomeSideMenu(onNavigate: widget.onNavigate),
       body: SafeArea(
         bottom: false,
         child: LayoutBuilder(
@@ -53,11 +59,11 @@ class HomePremiumPage extends StatelessWidget {
                       HomePremiumHeader(
                         notificationCount: 0,
                         onMenuPressed: () =>
-                            scaffoldKey.currentState?.openDrawer(),
+                            _scaffoldKey.currentState?.openDrawer(),
                         onNotificationPressed: () =>
-                            openPage(const NotificationsPage()),
+                            _openPage(const NotificationsPage()),
                         onLogoLongPress: BuildModeService.isDeveloperVisible
-                            ? () => openPage(const DeveloperModePage())
+                            ? () => _openPage(const DeveloperModePage())
                             : null,
                       ),
                       SizedBox(height: layout.sectionGap * .5),
@@ -68,11 +74,11 @@ class HomePremiumPage extends StatelessWidget {
                       SizedBox(height: layout.sectionGap),
                       PremiumDashboard(
                         onWaterLevelPressed: () =>
-                            openPage(const WaterLevelPage()),
-                        onWeatherPressed: () => openPage(const WeatherPage()),
-                        onCommunityPressed: () => onNavigate(3),
+                            _openPage(const WaterLevelPage()),
+                        onWeatherPressed: () => _openPage(const WeatherPage()),
+                        onCommunityPressed: () => widget.onNavigate(3),
                         onAiPressed: () =>
-                            openPage(const FishingInsightsPage()),
+                            _openPage(const FishingInsightsPage()),
                       ),
                       SizedBox(height: layout.bottomSafeClearance),
                     ],

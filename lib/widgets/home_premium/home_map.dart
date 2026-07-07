@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -203,7 +201,10 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
               children: [
                 Text(
                   context.l10n.mapLayers,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 RadioGroup<MapBaseLayer>(
                   groupValue: layer,
@@ -239,9 +240,11 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                     value: overlays.contains(overlay),
                     title: Text(switch (overlay) {
                       MapOverlay.waterStations => context.l10n.waterStations,
-                      MapOverlay.communityReports => context.l10n.communityReports,
+                      MapOverlay.communityReports =>
+                        context.l10n.communityReports,
                       MapOverlay.recentCatches => context.l10n.recentCatches,
-                      MapOverlay.favoriteStations => context.l10n.favoriteStations,
+                      MapOverlay.favoriteStations =>
+                        context.l10n.favoriteStations,
                     }),
                     onChanged: (value) {
                       if (overlay == MapOverlay.favoriteStations &&
@@ -481,13 +484,21 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
               children: [
                 Text(
                   context.l10n.fishingFilters,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 DropdownButtonFormField<WaterBodyType?>(
                   initialValue: draft.waterBodyType,
-                  decoration: InputDecoration(labelText: context.l10n.waterType),
+                  decoration: InputDecoration(
+                    labelText: context.l10n.waterType,
+                  ),
                   items: [
-                    DropdownMenuItem(value: null, child: Text(context.l10n.riverAndLake)),
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(context.l10n.riverAndLake),
+                    ),
                     DropdownMenuItem(
                       value: WaterBodyType.river,
                       child: Text(context.l10n.river),
@@ -540,9 +551,14 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 ),
                 DropdownButtonFormField<double?>(
                   initialValue: draft.radiusKm,
-                  decoration: InputDecoration(labelText: context.l10n.gpsRadius),
+                  decoration: InputDecoration(
+                    labelText: context.l10n.gpsRadius,
+                  ),
                   items: [
-                    DropdownMenuItem(value: null, child: Text(context.l10n.anyDistance)),
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(context.l10n.anyDistance),
+                    ),
                     DropdownMenuItem(value: 10, child: Text('10 km')),
                     DropdownMenuItem(value: 25, child: Text('25 km')),
                     DropdownMenuItem(value: 50, child: Text('50 km')),
@@ -614,7 +630,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 ),
                 DropdownButtonFormField<FishingDifficulty?>(
                   initialValue: draft.difficulty,
-                  decoration: InputDecoration(labelText: context.l10n.difficulty),
+                  decoration: InputDecoration(
+                    labelText: context.l10n.difficulty,
+                  ),
                   items: [
                     DropdownMenuItem(
                       value: null,
@@ -714,256 +732,272 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   Widget build(BuildContext context) {
     const borderRadius = 28.0;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .42),
-            blurRadius: 30,
-            spreadRadius: -8,
-            offset: const Offset(0, 16),
+    return Stack(
+      children: [
+        // Map content - unclipped to prevent Android SurfaceView issues
+        DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(borderRadius),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .42),
+                blurRadius: 30,
+                spreadRadius: -8,
+                offset: const Offset(0, 16),
+              ),
+              BoxShadow(
+                color: const Color(0xFF2B7FFF).withValues(alpha: .08),
+                blurRadius: 22,
+                spreadRadius: -10,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          BoxShadow(
-            color: const Color(0xFF2B7FFF).withValues(alpha: .08),
-            blurRadius: 22,
-            spreadRadius: -10,
-            offset: const Offset(0, 8),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return MapPreview(onTap: widget.onTap, child: _buildMapContent());
+            },
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final searchWidth = (constraints.maxWidth - 58).clamp(210.0, 560.0);
+        ),
+        // Decorative overlay - clipped
+        Positioned.fill(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(borderRadius),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final searchWidth = (constraints.maxWidth - 58).clamp(
+                  210.0,
+                  560.0,
+                );
 
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                MapPreview(onTap: widget.onTap, child: _buildMapContent()),
-
-                IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: .09),
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .09),
+                          ),
+                          borderRadius: BorderRadius.circular(borderRadius),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: const [0, .38, 1],
+                            colors: [
+                              Colors.black.withValues(alpha: .10),
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: .38),
+                            ],
+                          ),
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(borderRadius),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        stops: const [0, .38, 1],
-                        colors: [
-                          Colors.black.withValues(alpha: .10),
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: .38),
+                    ),
+
+                    // SEARCH
+                    Positioned(
+                      left: 8,
+                      top: 14,
+                      child: _GlassSurface(
+                        borderRadius: 22,
+                        blur: 22,
+                        child: SizedBox(
+                          width: searchWidth,
+                          height: 36,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 15),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.search_rounded,
+                                  size: 19,
+                                  color: Colors.white70,
+                                ),
+                                const SizedBox(width: 9),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _searchController,
+                                    onChanged: _filterService.updateQuery,
+                                    onSubmitted: _submitSearch,
+                                    textInputAction: TextInputAction.search,
+                                    maxLines: 1,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                    ),
+                                    cursorColor: const Color(0xFF67D04B),
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      filled: false,
+                                      fillColor: Colors.transparent,
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      disabledBorder: InputBorder.none,
+                                      errorBorder: InputBorder.none,
+                                      focusedErrorBorder: InputBorder.none,
+                                      contentPadding: EdgeInsets.zero,
+                                      hintText: context.l10n.searchStation,
+                                      hintStyle: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                if (_isSearching)
+                                  const SizedBox.square(
+                                    dimension: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFF67D04B),
+                                    ),
+                                  )
+                                else
+                                  GestureDetector(
+                                    onTap: _openMapOptions,
+                                    child: const Icon(
+                                      Icons.tune_rounded,
+                                      size: 18,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // FLOATING BUTTONS
+                    Positioned(
+                      right: 14,
+                      top: 76,
+                      child: Column(
+                        children: [
+                          _FloatingButton(
+                            Icons.my_location_rounded,
+                            onTap: _handleLocationAction,
+                            isLoading: _isLocating,
+                          ),
+                          const SizedBox(height: 10),
+                          _FloatingButton(
+                            Icons.layers_rounded,
+                            onTap: _openMapOptions,
+                          ),
+                          const SizedBox(height: 10),
+                          _FloatingButton(
+                            Icons.filter_alt_rounded,
+                            onTap: _openMapOptions,
+                          ),
                         ],
                       ),
                     ),
-                  ),
-                ),
 
-                // SEARCH
-                Positioned(
-                  left: 8,
-                  top: 14,
-                  child: _GlassSurface(
-                    borderRadius: 22,
-                    blur: 22,
-                    child: SizedBox(
-                      width: searchWidth,
-                      height: 36,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 15),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.search_rounded,
-                              size: 19,
-                              color: Colors.white70,
+                    // LOCATION
+                    Positioned(
+                      left: 14,
+                      bottom: 14,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _handleLocationAction,
+                        child: _GlassSurface(
+                          borderRadius: 18,
+                          blur: 20,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 9,
                             ),
-                            const SizedBox(width: 9),
-                            Expanded(
-                              child: TextField(
-                                controller: _searchController,
-                                onChanged: _filterService.updateQuery,
-                                onSubmitted: _submitSearch,
-                                textInputAction: TextInputAction.search,
-                                maxLines: 1,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                ),
-                                cursorColor: const Color(0xFF67D04B),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  filled: false,
-                                  fillColor: Colors.transparent,
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  disabledBorder: InputBorder.none,
-                                  errorBorder: InputBorder.none,
-                                  focusedErrorBorder: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                  hintText: context.l10n.searchStation,
-                                  hintStyle: TextStyle(
-                                    color: Colors.white70,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_isLocating)
+                                  const SizedBox.square(
+                                    dimension: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFF67D04B),
+                                    ),
+                                  )
+                                else
+                                  const Icon(
+                                    Icons.location_on_rounded,
+                                    color: Color(0xFF67D04B),
+                                    size: 17,
+                                  ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _locationLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
                                     fontSize: 13,
+                                    letterSpacing: .1,
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            if (_isSearching)
-                              const SizedBox.square(
-                                dimension: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Color(0xFF67D04B),
-                                ),
-                              )
-                            else
-                              GestureDetector(
-                                onTap: _openMapOptions,
-                                child: const Icon(
-                                  Icons.tune_rounded,
-                                  size: 18,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // FLOATING BUTTONS
-                Positioned(
-                  right: 14,
-                  top: 76,
-                  child: Column(
-                    children: [
-                      _FloatingButton(
-                        Icons.my_location_rounded,
-                        onTap: _handleLocationAction,
-                        isLoading: _isLocating,
-                      ),
-                      const SizedBox(height: 10),
-                      _FloatingButton(
-                        Icons.layers_rounded,
-                        onTap: _openMapOptions,
-                      ),
-                      const SizedBox(height: 10),
-                      _FloatingButton(
-                        Icons.filter_alt_rounded,
-                        onTap: _openMapOptions,
-                      ),
-                    ],
-                  ),
-                ),
-
-                // LOCATION
-                Positioned(
-                  left: 14,
-                  bottom: 14,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _handleLocationAction,
-                    child: _GlassSurface(
-                      borderRadius: 18,
-                      blur: 20,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 13,
-                          vertical: 9,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_isLocating)
-                              const SizedBox.square(
-                                dimension: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Color(0xFF67D04B),
-                                ),
-                              )
-                            else
-                              const Icon(
-                                Icons.location_on_rounded,
-                                color: Color(0xFF67D04B),
-                                size: 17,
-                              ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _locationLabel,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                letterSpacing: .1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // LIVE
-                Positioned(
-                  right: 14,
-                  bottom: 14,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF67D04B),
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF67D04B).withValues(alpha: .30),
-                          blurRadius: 14,
-                          spreadRadius: -3,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.sensors_rounded,
-                          size: 14,
-                          color: Colors.black,
-                        ),
-                        SizedBox(width: 5),
-                        Text(
-                          "LIVE",
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 11,
-                            letterSpacing: .5,
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              ],
-            );
-          },
+
+                    // LIVE
+                    Positioned(
+                      right: 14,
+                      bottom: 14,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF67D04B),
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(
+                                0xFF67D04B,
+                              ).withValues(alpha: .30),
+                              blurRadius: 14,
+                              spreadRadius: -3,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.sensors_rounded,
+                              size: 14,
+                              color: Colors.black,
+                            ),
+                            SizedBox(width: 5),
+                            Text(
+                              "LIVE",
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                                letterSpacing: .5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -983,23 +1017,20 @@ class _GlassSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFF101720).withValues(alpha: .58),
-            borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(color: Colors.white.withValues(alpha: .13)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: .18),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: child,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFF101720).withValues(alpha: .58),
+          borderRadius: BorderRadius.circular(borderRadius),
+          border: Border.all(color: Colors.white.withValues(alpha: .13)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .18),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
+        child: child,
       ),
     );
   }
