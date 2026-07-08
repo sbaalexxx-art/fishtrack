@@ -60,7 +60,10 @@ class _MainNavigationState extends State<MainNavigation> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F1115),
-      body: _pages[_selectedIndex],
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages,
+      ),
 
       bottomNavigationBar: showBottomNavigation
           ? SafeArea(
