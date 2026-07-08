@@ -101,7 +101,7 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In ro, this message translates to:
-  /// **'AIFishMap'**
+  /// **'FluviAI'**
   String get appTitle;
 
   /// No description provided for @home.
@@ -1055,7 +1055,7 @@ abstract class AppLocalizations {
   /// No description provided for @aboutApp.
   ///
   /// In ro, this message translates to:
-  /// **'Despre AIFishMap'**
+  /// **'Despre FluviAI'**
   String get aboutApp;
 
   /// No description provided for @developerMode.
@@ -1547,7 +1547,7 @@ abstract class AppLocalizations {
   /// No description provided for @signInToContinue.
   ///
   /// In ro, this message translates to:
-  /// **'Autentifică-te pentru a continua în AIFishMap.'**
+  /// **'Autentifică-te pentru a continua în FluviAI.'**
   String get signInToContinue;
 
   /// No description provided for @passwordsDoNotMatch.

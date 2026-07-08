@@ -37,7 +37,7 @@ class HomeSideMenu extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 20, 20, 12),
               child: Text(
-                'AIFishMap',
+                'FluviAI',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 22,

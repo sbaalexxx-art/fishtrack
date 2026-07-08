@@ -9,7 +9,7 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'AIFishMap';
+  String get appTitle => 'FluviAI';
 
   @override
   String get home => 'Home';
@@ -525,7 +525,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terms => 'Terms';
 
   @override
-  String get aboutApp => 'About AIFishMap';
+  String get aboutApp => 'About FluviAI';
 
   @override
   String get developerMode => 'Developer Mode';
@@ -804,7 +804,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'We will send recovery instructions to your email.';
 
   @override
-  String get signInToContinue => 'Sign in to continue to AIFishMap.';
+  String get signInToContinue => 'Sign in to continue to FluviAI.';
 
   @override
   String get passwordsDoNotMatch => 'Passwords do not match';

@@ -9,7 +9,7 @@ class AppLocalizationsRo extends AppLocalizations {
   AppLocalizationsRo([String locale = 'ro']) : super(locale);
 
   @override
-  String get appTitle => 'AIFishMap';
+  String get appTitle => 'FluviAI';
 
   @override
   String get home => 'Acasă';
@@ -528,7 +528,7 @@ class AppLocalizationsRo extends AppLocalizations {
   String get terms => 'Termeni și condiții';
 
   @override
-  String get aboutApp => 'Despre AIFishMap';
+  String get aboutApp => 'Despre FluviAI';
 
   @override
   String get developerMode => 'Mod dezvoltator';
@@ -808,8 +808,7 @@ class AppLocalizationsRo extends AppLocalizations {
       'Vom trimite instrucțiunile de recuperare la adresa ta de e-mail.';
 
   @override
-  String get signInToContinue =>
-      'Autentifică-te pentru a continua în AIFishMap.';
+  String get signInToContinue => 'Autentifică-te pentru a continua în FluviAI.';
 
   @override
   String get passwordsDoNotMatch => 'Parolele nu coincid';

@@ -44,19 +44,19 @@ class HomePremiumHeader extends StatelessWidget {
                       ),
                       children: const [
                         TextSpan(
-                          text: 'AI ',
-                          style: TextStyle(color: Color(0xFF12D8D6)),
+                          text: 'Fluvi',
+                          style: TextStyle(color: Colors.white),
                         ),
                         TextSpan(
-                          text: 'FishMap',
-                          style: TextStyle(color: Colors.white),
+                          text: 'AI',
+                          style: TextStyle(color: Color(0xFF12D8D6)),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 1),
                   Text(
-                    'Designed by anglers. Built for anglers.',
+                    'Date live • Comunitate • AI',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

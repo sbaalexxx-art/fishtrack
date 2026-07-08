@@ -17,7 +17,7 @@ class ScoreCard extends StatelessWidget {
             SizedBox(height: 15),
 
             Text(
-              "AIFishMap Score",
+              "FluviAI Score",
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
 

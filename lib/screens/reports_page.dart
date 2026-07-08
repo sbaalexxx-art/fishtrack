@@ -439,7 +439,7 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Comunitatea AIFishMap se bazează pe încredere.\n'
+              'Comunitatea FluviAI se bazează pe încredere.\n'
               'Publică doar informații reale și actuale pentru a-i ajuta pe '
               'ceilalți pescari să ia cele mai bune decizii pe apă.',
             ),
