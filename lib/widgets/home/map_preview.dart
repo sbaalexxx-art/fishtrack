@@ -54,37 +54,6 @@ class MapPreview extends StatelessWidget {
                   ),
                 ),
 
-              Positioned(
-                top: 12,
-                right: 12,
-                child: IgnorePointer(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.public, size: 14, color: Colors.white),
-                        SizedBox(width: 6),
-                        Text(
-                          'OpenStreetMap',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ),

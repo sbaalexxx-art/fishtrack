@@ -137,6 +137,24 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     await _loadFavoriteIds();
   }
 
+  Future<void> _openCompactSearch() async {
+    final query = _searchController.text.trim();
+    if (query.isNotEmpty) {
+      await _submitSearch(query);
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Căutarea rapidă pe hartă va fi conectată într-un sprint separat.',
+        ),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   Future<void> _submitSearch(String query) async {
     if (_isSearching || query.trim().isEmpty) return;
     setState(() => _isSearching = true);
@@ -765,11 +783,6 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
             borderRadius: BorderRadius.circular(borderRadius),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final searchWidth = (constraints.maxWidth - 58).clamp(
-                  210.0,
-                  560.0,
-                );
-
                 return Stack(
                   fit: StackFit.expand,
                   children: [
@@ -794,76 +807,32 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                       ),
                     ),
 
-                    // SEARCH
+                    // SEARCH - compact icon only, keeps the map visually clean.
                     Positioned(
-                      left: 8,
-                      top: 14,
-                      child: _GlassSurface(
-                        borderRadius: 22,
-                        blur: 22,
-                        child: SizedBox(
-                          width: searchWidth,
-                          height: 36,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 15),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.search_rounded,
-                                  size: 19,
-                                  color: Colors.white70,
-                                ),
-                                const SizedBox(width: 9),
-                                Expanded(
-                                  child: TextField(
-                                    controller: _searchController,
-                                    onChanged: _filterService.updateQuery,
-                                    onSubmitted: _submitSearch,
-                                    textInputAction: TextInputAction.search,
-                                    maxLines: 1,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                    ),
-                                    cursorColor: const Color(0xFF67D04B),
-                                    decoration: InputDecoration(
-                                      isDense: true,
-                                      filled: false,
-                                      fillColor: Colors.transparent,
-                                      border: InputBorder.none,
-                                      enabledBorder: InputBorder.none,
-                                      focusedBorder: InputBorder.none,
-                                      disabledBorder: InputBorder.none,
-                                      errorBorder: InputBorder.none,
-                                      focusedErrorBorder: InputBorder.none,
-                                      contentPadding: EdgeInsets.zero,
-                                      hintText: context.l10n.searchStation,
-                                      hintStyle: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 13,
+                      left: 10,
+                      top: 12,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _openCompactSearch,
+                        child: _GlassSurface(
+                          borderRadius: 16,
+                          blur: 16,
+                          child: SizedBox.square(
+                            dimension: 42,
+                            child: Center(
+                              child: _isSearching
+                                  ? const SizedBox.square(
+                                      dimension: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Color(0xFF67D04B),
                                       ),
+                                    )
+                                  : const Icon(
+                                      Icons.search_rounded,
+                                      size: 24,
+                                      color: Colors.white,
                                     ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                if (_isSearching)
-                                  const SizedBox.square(
-                                    dimension: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Color(0xFF67D04B),
-                                    ),
-                                  )
-                                else
-                                  GestureDetector(
-                                    onTap: _openMapOptions,
-                                    child: const Icon(
-                                      Icons.tune_rounded,
-                                      size: 18,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                              ],
                             ),
                           ),
                         ),
@@ -895,29 +864,29 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                       ),
                     ),
 
-                    // LOCATION
+                    // LOCATION - compact premium chip, kept useful but visually lighter.
                     Positioned(
-                      left: 14,
-                      bottom: 14,
+                      left: 10,
+                      bottom: 10,
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: _handleLocationAction,
                         child: _GlassSurface(
-                          borderRadius: 18,
-                          blur: 20,
+                          borderRadius: 14,
+                          blur: 18,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 13,
-                              vertical: 9,
+                              horizontal: 9,
+                              vertical: 6,
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 if (_isLocating)
                                   const SizedBox.square(
-                                    dimension: 16,
+                                    dimension: 13,
                                     child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                                      strokeWidth: 1.8,
                                       color: Color(0xFF67D04B),
                                     ),
                                   )
@@ -925,18 +894,23 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                                   const Icon(
                                     Icons.location_on_rounded,
                                     color: Color(0xFF67D04B),
-                                    size: 17,
+                                    size: 14,
                                   ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _locationLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
-                                    letterSpacing: .1,
+                                const SizedBox(width: 4),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 118,
+                                  ),
+                                  child: Text(
+                                    _locationLabel,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 10.5,
+                                      letterSpacing: .05,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -948,24 +922,24 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
                     // LIVE
                     Positioned(
-                      right: 14,
-                      bottom: 14,
+                      right: 10,
+                      bottom: 10,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                          horizontal: 8,
+                          vertical: 5,
                         ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF67D04B),
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(12),
                           boxShadow: [
                             BoxShadow(
                               color: const Color(
                                 0xFF67D04B,
-                              ).withValues(alpha: .30),
-                              blurRadius: 14,
+                              ).withValues(alpha: .24),
+                              blurRadius: 8,
                               spreadRadius: -3,
-                              offset: const Offset(0, 5),
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
@@ -974,17 +948,17 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                           children: [
                             Icon(
                               Icons.sensors_rounded,
-                              size: 14,
+                              size: 10,
                               color: Colors.black,
                             ),
-                            SizedBox(width: 5),
+                            SizedBox(width: 4),
                             Text(
                               "LIVE",
                               style: TextStyle(
                                 color: Colors.black,
                                 fontWeight: FontWeight.w800,
-                                fontSize: 11,
-                                letterSpacing: .5,
+                                fontSize: 8.5,
+                                letterSpacing: .45,
                               ),
                             ),
                           ],
