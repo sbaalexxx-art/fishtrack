@@ -9,19 +9,7 @@ import '../../models/station.dart';
 import '../../services/community_service.dart';
 import 'home_map.dart';
 
-class HomeMapRenderer extends StatelessWidget {
-  final List<CommunityPost> reports;
-  final List<Station> stations;
-  final ValueChanged<CommunityPost>? onReportTap;
-  final ValueChanged<Station>? onStationTap;
-  final MapController? mapController;
-  final LatLng? currentLocation;
-  final VoidCallback? onMapReady;
-  final MapBaseLayer baseLayer;
-  final Set<MapOverlay> overlays;
-  final Set<String> favoriteStationIds;
-  final List<CommunityPost> recentCatches;
-
+class HomeMapRenderer extends StatefulWidget {
   const HomeMapRenderer({
     super.key,
     required this.reports,
@@ -40,8 +28,28 @@ class HomeMapRenderer extends StatelessWidget {
     this.recentCatches = const [],
   });
 
+  final List<CommunityPost> reports;
+  final List<Station> stations;
+  final ValueChanged<CommunityPost>? onReportTap;
+  final ValueChanged<Station>? onStationTap;
+  final MapController? mapController;
+  final LatLng? currentLocation;
+  final VoidCallback? onMapReady;
+  final MapBaseLayer baseLayer;
+  final Set<MapOverlay> overlays;
+  final Set<String> favoriteStationIds;
+  final List<CommunityPost> recentCatches;
+
+  @override
+  State<HomeMapRenderer> createState() => _HomeMapRendererState();
+}
+
+class _HomeMapRendererState extends State<HomeMapRenderer>
+    with AutomaticKeepAliveClientMixin<HomeMapRenderer> {
   static const _satelliteStreetsStyle =
       'mapbox://styles/mapbox/satellite-streets-v12';
+
+  late final Widget _mapWidget;
 
   /// Build gesture recognizers to prevent parent ScrollView from intercepting map gestures.
   /// EagerGestureRecognizer claims gestures immediately so they don't bubble up.
@@ -53,25 +61,35 @@ class HomeMapRenderer extends StatelessWidget {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _mapWidget = mapbox.MapWidget(
+      key: const ValueKey('aifishmap-home-mapbox'),
+      textureView: false,
+      styleUri: _satelliteStreetsStyle,
+      cameraOptions: mapbox.CameraOptions(
+        center: mapbox.Point(coordinates: mapbox.Position(21.3895, 44.8148)),
+        zoom: 12.5,
+      ),
+      gestureRecognizers: _buildGestureRecognizers(),
+      onMapCreated: (_) {
+        widget.onMapReady?.call();
+      },
+    );
+  }
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFF101820),
         borderRadius: BorderRadius.circular(18),
       ),
-      child: mapbox.MapWidget(
-        key: const ValueKey('aifishmap-home-mapbox'),
-        textureView: false,
-        styleUri: _satelliteStreetsStyle,
-        cameraOptions: mapbox.CameraOptions(
-          center: mapbox.Point(coordinates: mapbox.Position(21.3895, 44.8148)),
-          zoom: 12.5,
-        ),
-        gestureRecognizers: _buildGestureRecognizers(),
-        onMapCreated: (_) {
-          onMapReady?.call();
-        },
-      ),
+      child: _mapWidget,
     );
   }
 }
