@@ -12,8 +12,9 @@ import '../../services/map_search_service.dart';
 import '../../services/station_filter_service.dart';
 import '../../services/water_service.dart';
 import '../../screens/station_details_page.dart';
+import '../../core/theme/app_dimensions.dart';
+import 'home_premium_layout.dart';
 import '../home/home_map.dart';
-import '../home/map_preview.dart';
 
 class HomePremiumMap extends StatefulWidget {
   const HomePremiumMap({
@@ -407,72 +408,81 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     return StreamBuilder<List<CommunityPost>>(
       stream: _reportsStream,
       builder: (context, snapshot) {
-        if (snapshot.hasData || widget.showWaterStations) {
-          final map = HomeMap(
-            reports: (snapshot.data ?? const <CommunityPost>[])
-                .where((report) => report.isActiveReport)
-                .toList(growable: false),
-            stations: _filterService.apply(_stations),
-            recentCatches: _recentCatches,
-            favoriteStationIds: _favoriteStationIds,
-            onStationTap: _openStation,
-            mapController: _mapController,
-            currentLocation: _currentLocation,
-            onMapReady: _onMapReady,
-            baseLayer: _baseLayer,
-            overlays: _overlays,
-          );
-          if (!snapshot.hasError) return map;
-          return Stack(
-            children: [
-              Positioned.fill(child: map),
+        final reports = (snapshot.data ?? const <CommunityPost>[])
+            .where((report) => report.isActiveReport)
+            .toList(growable: false);
+
+        final map = HomeMap(
+          reports: reports,
+          stations: _filterService.apply(_stations),
+          recentCatches: _recentCatches,
+          favoriteStationIds: _favoriteStationIds,
+          onStationTap: _openStation,
+          mapController: _mapController,
+          currentLocation: _currentLocation,
+          onMapReady: _onMapReady,
+          baseLayer: _baseLayer,
+          overlays: _overlays,
+        );
+
+        final isLoading = !snapshot.hasData &&
+            snapshot.connectionState == ConnectionState.waiting;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned.fill(child: map),
+            if (isLoading)
               Positioned(
-                right: 12,
-                bottom: 12,
-                child: IconButton.filledTonal(
-                  tooltip: context.l10n.retryLoadingReports,
-                  onPressed: _retry,
-                  icon: const Icon(Icons.refresh_rounded),
-                ),
-              ),
-            ],
-          );
-        }
-
-        if (snapshot.hasError) {
-          return ColoredBox(
-            color: const Color(0xFF16212B),
-            child: Center(
-              child: IconButton(
-                tooltip: context.l10n.retryLoadingReports,
-                onPressed: _retry,
-                icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
-              ),
-            ),
-          );
-        }
-
-        return ColoredBox(
-          color: const Color(0xFF16212B),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox.square(
-                  dimension: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: Color(0xFF67D04B),
+                left: 62,
+                top: 12,
+                child: _GlassSurface(
+                  borderRadius: 14,
+                  blur: 14,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox.square(
+                          dimension: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.8,
+                            color: Color(0xFF67D04B),
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Live data',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  context.l10n.loadingFishingReports,
-                  style: const TextStyle(color: Colors.white70),
+              ),
+            if (snapshot.hasError)
+              Positioned(
+                right: 12,
+                bottom: 54,
+                child: _GlassSurface(
+                  borderRadius: 16,
+                  blur: 16,
+                  child: IconButton(
+                    tooltip: context.l10n.retryLoadingReports,
+                    onPressed: _retry,
+                    icon: const Icon(
+                      Icons.refresh_rounded,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
-              ],
-            ),
-          ),
+              ),
+          ],
         );
       },
     );
@@ -749,233 +759,235 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   @override
   Widget build(BuildContext context) {
     const borderRadius = 28.0;
+    final layout = HomePremiumLayout.of(context);
+    final mapHeight = layout.heroMapHeight.clamp(315.0, 390.0).toDouble();
 
-    return Stack(
-      children: [
-        // Map content - unclipped to prevent Android SurfaceView issues
-        DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(borderRadius),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: .42),
-                blurRadius: 30,
-                spreadRadius: -8,
-                offset: const Offset(0, 16),
-              ),
-              BoxShadow(
-                color: const Color(0xFF2B7FFF).withValues(alpha: .08),
-                blurRadius: 22,
-                spreadRadius: -10,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return MapPreview(onTap: widget.onTap, child: _buildMapContent());
-            },
-          ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppDimensions.sectionSpacing,
+        8,
+        AppDimensions.sectionSpacing,
+        10,
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(borderRadius),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .42),
+              blurRadius: 30,
+              spreadRadius: -8,
+              offset: const Offset(0, 16),
+            ),
+            BoxShadow(
+              color: const Color(0xFF2B7FFF).withValues(alpha: .08),
+              blurRadius: 22,
+              spreadRadius: -10,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
-        // Decorative overlay - clipped
-        Positioned.fill(
+        child: SizedBox(
+          height: mapHeight,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(borderRadius),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return Stack(
-                  fit: StackFit.expand,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+              const DecoratedBox(
+                decoration: BoxDecoration(color: Color(0xFF16212B)),
+              ),
+
+              // Map content fills the whole allocated card while the outer
+              // frame keeps the premium rounded shape.
+              Positioned.fill(child: _buildMapContent()),
+
+              // Decorative frame above the map.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(borderRadius),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: .09),
+                        ),
+                        borderRadius: BorderRadius.circular(borderRadius),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          stops: const [0, .38, 1],
+                          colors: [
+                            Colors.black.withValues(alpha: .10),
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: .38),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // SEARCH - icon only, small and premium.
+              Positioned(
+                left: 10,
+                top: 10,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _openCompactSearch,
+                  child: _GlassSurface(
+                    borderRadius: 15,
+                    blur: 16,
+                    child: SizedBox.square(
+                      dimension: 40,
+                      child: Center(
+                        child: _isSearching
+                            ? const SizedBox.square(
+                                dimension: 15,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFF67D04B),
+                                ),
+                              )
+                            : const Icon(
+                                Icons.search_rounded,
+                                size: 23,
+                                color: Colors.white,
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Floating tools stay compact and do not reduce map height.
+              Positioned(
+                right: 10,
+                top: 58,
+                child: Column(
                   children: [
-                    IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: .09),
-                          ),
-                          borderRadius: BorderRadius.circular(borderRadius),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            stops: const [0, .38, 1],
-                            colors: [
-                              Colors.black.withValues(alpha: .10),
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: .38),
-                            ],
-                          ),
-                        ),
-                      ),
+                    _FloatingButton(
+                      Icons.my_location_rounded,
+                      onTap: _handleLocationAction,
+                      isLoading: _isLocating,
                     ),
-
-                    // SEARCH - compact icon only, keeps the map visually clean.
-                    Positioned(
-                      left: 10,
-                      top: 12,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _openCompactSearch,
-                        child: _GlassSurface(
-                          borderRadius: 16,
-                          blur: 16,
-                          child: SizedBox.square(
-                            dimension: 42,
-                            child: Center(
-                              child: _isSearching
-                                  ? const SizedBox.square(
-                                      dimension: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Color(0xFF67D04B),
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.search_rounded,
-                                      size: 24,
-                                      color: Colors.white,
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ),
+                    const SizedBox(height: 8),
+                    _FloatingButton(Icons.layers_rounded, onTap: _openMapOptions),
+                    const SizedBox(height: 8),
+                    _FloatingButton(
+                      Icons.filter_alt_rounded,
+                      onTap: _openMapOptions,
                     ),
+                  ],
+                ),
+              ),
 
-                    // FLOATING BUTTONS
-                    Positioned(
-                      right: 14,
-                      top: 76,
-                      child: Column(
+              // LOCATION - compact overlay over the map, not separate layout space.
+              Positioned(
+                left: 10,
+                bottom: 10,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _handleLocationAction,
+                  child: _GlassSurface(
+                    borderRadius: 14,
+                    blur: 18,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 6,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          _FloatingButton(
-                            Icons.my_location_rounded,
-                            onTap: _handleLocationAction,
-                            isLoading: _isLocating,
-                          ),
-                          const SizedBox(height: 10),
-                          _FloatingButton(
-                            Icons.layers_rounded,
-                            onTap: _openMapOptions,
-                          ),
-                          const SizedBox(height: 10),
-                          _FloatingButton(
-                            Icons.filter_alt_rounded,
-                            onTap: _openMapOptions,
+                          if (_isLocating)
+                            const SizedBox.square(
+                              dimension: 13,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.8,
+                                color: Color(0xFF67D04B),
+                              ),
+                            )
+                          else
+                            const Icon(
+                              Icons.location_on_rounded,
+                              color: Color(0xFF67D04B),
+                              size: 14,
+                            ),
+                          const SizedBox(width: 4),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 118),
+                            child: Text(
+                              _locationLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 10.5,
+                                letterSpacing: .05,
+                              ),
+                            ),
                           ),
                         ],
                       ),
                     ),
+                  ),
+                ),
+              ),
 
-                    // LOCATION - compact premium chip, kept useful but visually lighter.
-                    Positioned(
-                      left: 10,
-                      bottom: 10,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _handleLocationAction,
-                        child: _GlassSurface(
-                          borderRadius: 14,
-                          blur: 18,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 6,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_isLocating)
-                                  const SizedBox.square(
-                                    dimension: 13,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 1.8,
-                                      color: Color(0xFF67D04B),
-                                    ),
-                                  )
-                                else
-                                  const Icon(
-                                    Icons.location_on_rounded,
-                                    color: Color(0xFF67D04B),
-                                    size: 14,
-                                  ),
-                                const SizedBox(width: 4),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 118,
-                                  ),
-                                  child: Text(
-                                    _locationLabel,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 10.5,
-                                      letterSpacing: .05,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+              // LIVE - small premium badge over the map.
+              Positioned(
+                right: 10,
+                bottom: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF67D04B),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF67D04B).withValues(alpha: .24),
+                        blurRadius: 8,
+                        spreadRadius: -3,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.sensors_rounded,
+                        size: 10,
+                        color: Colors.black,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'LIVE',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 8.5,
+                          letterSpacing: .45,
                         ),
                       ),
-                    ),
-
-                    // LIVE
-                    Positioned(
-                      right: 10,
-                      bottom: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF67D04B),
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                0xFF67D04B,
-                              ).withValues(alpha: .24),
-                              blurRadius: 8,
-                              spreadRadius: -3,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.sensors_rounded,
-                              size: 10,
-                              color: Colors.black,
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              "LIVE",
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 8.5,
-                                letterSpacing: .45,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  ),
+                ),
+              ),
+              ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
-
 class _GlassSurface extends StatelessWidget {
   const _GlassSurface({
     required this.child,

@@ -65,7 +65,10 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     super.initState();
     _mapWidget = mapbox.MapWidget(
       key: const ValueKey('aifishmap-home-mapbox'),
-      textureView: false,
+      // TextureView is more stable for the small Home map because it is
+      // embedded inside a rounded, scrollable premium card. SurfaceView can
+      // briefly detach/recreate and cause black frames or camera resets.
+      textureView: true,
       styleUri: _satelliteStreetsStyle,
       cameraOptions: mapbox.CameraOptions(
         center: mapbox.Point(coordinates: mapbox.Position(21.3895, 44.8148)),
