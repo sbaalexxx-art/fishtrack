@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 
 import '../../models/station.dart';
 import '../../services/community_service.dart';
@@ -16,27 +16,15 @@ enum MapOverlay {
 }
 
 class HomeMap extends StatelessWidget {
-  final List<CommunityPost> reports;
-  final List<Station> stations;
-  final ValueChanged<CommunityPost>? onReportTap;
-  final ValueChanged<Station>? onStationTap;
-  final MapController? mapController;
-  final LatLng? currentLocation;
-  final VoidCallback? onMapReady;
-  final MapBaseLayer baseLayer;
-  final Set<MapOverlay> overlays;
-  final Set<String> favoriteStationIds;
-  final List<CommunityPost> recentCatches;
-
   const HomeMap({
     super.key,
     required this.reports,
     this.stations = const [],
     this.onReportTap,
     this.onStationTap,
-    this.mapController,
     this.currentLocation,
     this.onMapReady,
+    this.onMapboxMapCreated,
     this.baseLayer = MapBaseLayer.standard,
     this.overlays = const {
       MapOverlay.waterStations,
@@ -46,6 +34,18 @@ class HomeMap extends StatelessWidget {
     this.recentCatches = const [],
   });
 
+  final List<CommunityPost> reports;
+  final List<Station> stations;
+  final ValueChanged<CommunityPost>? onReportTap;
+  final ValueChanged<Station>? onStationTap;
+  final LatLng? currentLocation;
+  final VoidCallback? onMapReady;
+  final ValueChanged<mapbox.MapboxMap>? onMapboxMapCreated;
+  final MapBaseLayer baseLayer;
+  final Set<MapOverlay> overlays;
+  final Set<String> favoriteStationIds;
+  final List<CommunityPost> recentCatches;
+
   @override
   Widget build(BuildContext context) {
     return HomeMapRenderer(
@@ -53,9 +53,9 @@ class HomeMap extends StatelessWidget {
       stations: stations,
       onReportTap: onReportTap,
       onStationTap: onStationTap,
-      mapController: mapController,
       currentLocation: currentLocation,
       onMapReady: onMapReady,
+      onMapboxMapCreated: onMapboxMapCreated,
       baseLayer: baseLayer,
       overlays: overlays,
       favoriteStationIds: favoriteStationIds,

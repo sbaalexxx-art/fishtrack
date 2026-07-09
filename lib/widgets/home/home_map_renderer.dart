@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 
@@ -16,9 +15,9 @@ class HomeMapRenderer extends StatefulWidget {
     this.stations = const [],
     this.onReportTap,
     this.onStationTap,
-    this.mapController,
     this.currentLocation,
     this.onMapReady,
+    this.onMapboxMapCreated,
     this.baseLayer = MapBaseLayer.standard,
     this.overlays = const {
       MapOverlay.waterStations,
@@ -32,9 +31,9 @@ class HomeMapRenderer extends StatefulWidget {
   final List<Station> stations;
   final ValueChanged<CommunityPost>? onReportTap;
   final ValueChanged<Station>? onStationTap;
-  final MapController? mapController;
   final LatLng? currentLocation;
   final VoidCallback? onMapReady;
+  final ValueChanged<mapbox.MapboxMap>? onMapboxMapCreated;
   final MapBaseLayer baseLayer;
   final Set<MapOverlay> overlays;
   final Set<String> favoriteStationIds;
@@ -48,11 +47,12 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     with AutomaticKeepAliveClientMixin<HomeMapRenderer> {
   static const _satelliteStreetsStyle =
       'mapbox://styles/mapbox/satellite-streets-v12';
+  static const _fallbackCamera = LatLng(44.8148, 21.3895);
 
+  mapbox.MapboxMap? _mapboxMap;
   late final Widget _mapWidget;
+  bool _didApplyLocationCamera = false;
 
-  /// Build gesture recognizers to prevent parent ScrollView from intercepting map gestures.
-  /// EagerGestureRecognizer claims gestures immediately so they don't bubble up.
   Set<Factory<OneSequenceGestureRecognizer>> _buildGestureRecognizers() {
     return {
       Factory<EagerGestureRecognizer>(() => EagerGestureRecognizer()),
@@ -63,22 +63,50 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
   @override
   void initState() {
     super.initState();
+    final initialCenter = widget.currentLocation ?? _fallbackCamera;
+    _didApplyLocationCamera = widget.currentLocation != null;
     _mapWidget = mapbox.MapWidget(
       key: const ValueKey('aifishmap-home-mapbox'),
-      // TextureView is more stable for the small Home map because it is
-      // embedded inside a rounded, scrollable premium card. SurfaceView can
-      // briefly detach/recreate and cause black frames or camera resets.
       textureView: true,
       styleUri: _satelliteStreetsStyle,
-      cameraOptions: mapbox.CameraOptions(
-        center: mapbox.Point(coordinates: mapbox.Position(21.3895, 44.8148)),
-        zoom: 12.5,
-      ),
+      cameraOptions: _cameraFor(initialCenter, zoom: 12.5),
       gestureRecognizers: _buildGestureRecognizers(),
-      onMapCreated: (_) {
-        widget.onMapReady?.call();
-      },
+      onMapCreated: _handleMapCreated,
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeMapRenderer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final location = widget.currentLocation;
+    if (location == null || _didApplyLocationCamera) return;
+    _didApplyLocationCamera = true;
+    _setCamera(location, zoom: 12.5);
+  }
+
+  void _handleMapCreated(mapbox.MapboxMap mapboxMap) {
+    _mapboxMap = mapboxMap;
+    widget.onMapboxMapCreated?.call(mapboxMap);
+    widget.onMapReady?.call();
+
+    final location = widget.currentLocation;
+    if (location != null && !_didApplyLocationCamera) {
+      _didApplyLocationCamera = true;
+      _setCamera(location, zoom: 12.5);
+    }
+  }
+
+  mapbox.CameraOptions _cameraFor(LatLng target, {required double zoom}) {
+    return mapbox.CameraOptions(
+      center: mapbox.Point(
+        coordinates: mapbox.Position(target.longitude, target.latitude),
+      ),
+      zoom: zoom,
+    );
+  }
+
+  void _setCamera(LatLng target, {required double zoom}) {
+    _mapboxMap?.setCamera(_cameraFor(target, zoom: zoom));
   }
 
   @override

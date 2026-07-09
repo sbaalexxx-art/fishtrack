@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:latlong2/latlong.dart';
 
 import '../../l10n/l10n.dart';
@@ -39,9 +39,8 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   final WaterService _waterService = WaterService();
   final FavoriteStationsService _favoriteStationsService =
       const FavoriteStationsService();
-  final MapController _mapController = MapController();
+  mapbox.MapboxMap? _mapboxMap;
   final StationFilterService _filterService = StationFilterService.instance;
-  final TextEditingController _searchController = TextEditingController();
   late Stream<List<CommunityPost>> _reportsStream;
   List<Station> _stations = const [];
   List<CommunityPost> _recentCatches = const [];
@@ -51,6 +50,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   bool _isLocating = false;
   bool _isMapReady = false;
   bool _pendingRecenter = false;
+  bool _didApplyInitialUserCamera = false;
+  LatLng? _pendingCameraTarget;
+  double _pendingCameraZoom = 13.5;
   bool _isSearching = false;
   MapBaseLayer _baseLayer = MapBaseLayer.standard;
   Set<MapOverlay> _overlays = const {
@@ -76,8 +78,6 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   void dispose() {
     _filterService.filters.removeListener(_onFiltersChanged);
     FavoriteStationsService.revision.removeListener(_loadFavoriteIds);
-    _searchController.dispose();
-    _mapController.dispose();
     super.dispose();
   }
 
@@ -139,67 +139,26 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   }
 
   Future<void> _openCompactSearch() async {
-    final query = _searchController.text.trim();
-    if (query.isNotEmpty) {
-      await _submitSearch(query);
-      return;
-    }
+    if (_isSearching) return;
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Căutarea rapidă pe hartă va fi conectată într-un sprint separat.',
-        ),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  Future<void> _submitSearch(String query) async {
-    if (_isSearching || query.trim().isEmpty) return;
     setState(() => _isSearching = true);
     try {
-      final results = _searchService.searchStations(query, _stations);
-      if (!mounted) return;
-      if (results.isEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(context.l10n.noStationFound)));
-        return;
-      }
-      final selected = results.length == 1
-          ? results.first
-          : await showModalBottomSheet<MapSearchResult>(
-              context: context,
-              builder: (context) => SafeArea(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final result in results)
-                      ListTile(
-                        leading: const Icon(Icons.place_outlined),
-                        title: Text(result.name),
-                        subtitle: result.description == null
-                            ? null
-                            : Text(result.description!),
-                        onTap: () => Navigator.pop(context, result),
-                      ),
-                  ],
-                ),
-              ),
-            );
-      if (selected != null && _isMapReady) {
-        _filterService.updateQuery(selected.name);
-        _searchController.text = selected.name;
-        _mapController.move(LatLng(selected.latitude, selected.longitude), 13);
-      }
-    } on Exception {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.stationSearchUnavailable)),
-        );
-      }
+      final selected = await showSearch<MapSearchResult?>(
+        context: context,
+        delegate: _MapSearchDelegate(
+          searchService: _searchService,
+          stations: _stations,
+          hintText: context.l10n.searchStation,
+          noResultsText: context.l10n.noStationFound,
+        ),
+      );
+
+      if (selected == null || !mounted) return;
+      _filterService.updateQuery(selected.name);
+      _moveCamera(
+        LatLng(selected.latitude, selected.longitude),
+        zoom: 13.5,
+      );
     } finally {
       if (mounted) setState(() => _isSearching = false);
     }
@@ -338,8 +297,12 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
       });
       _filterService.setCurrentLocation(position.latitude, position.longitude);
 
-      if (_pendingRecenter) {
-        _recenter(location);
+      if (_pendingRecenter || recenter || !_didApplyInitialUserCamera) {
+        _didApplyInitialUserCamera = true;
+        _moveCamera(
+          location,
+          zoom: recenter || _pendingRecenter ? 13.5 : 12.5,
+        );
       }
     } on LocationFailure catch (failure) {
       if (mounted) {
@@ -358,17 +321,39 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   }
 
   void _recenter(LatLng location) {
-    if (!_isMapReady) {
+    _moveCamera(location, zoom: 13.5);
+  }
+
+  void _moveCamera(LatLng target, {required double zoom}) {
+    final mapboxMap = _mapboxMap;
+    if (!_isMapReady || mapboxMap == null) {
+      _pendingCameraTarget = target;
+      _pendingCameraZoom = zoom;
       _pendingRecenter = true;
       return;
     }
 
-    _mapController.move(location, 13.5);
+    mapboxMap.setCamera(
+      mapbox.CameraOptions(
+        center: mapbox.Point(
+          coordinates: mapbox.Position(target.longitude, target.latitude),
+        ),
+        zoom: zoom,
+      ),
+    );
+    _pendingCameraTarget = null;
     _pendingRecenter = false;
   }
 
-  void _onMapReady() {
+  void _onMapReady(mapbox.MapboxMap mapboxMap) {
+    _mapboxMap = mapboxMap;
     _isMapReady = true;
+    final pendingTarget = _pendingCameraTarget;
+    if (pendingTarget != null) {
+      _moveCamera(pendingTarget, zoom: _pendingCameraZoom);
+      return;
+    }
+
     final location = _currentLocation;
     if (_pendingRecenter && location != null) {
       _recenter(location);
@@ -418,9 +403,8 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
           recentCatches: _recentCatches,
           favoriteStationIds: _favoriteStationIds,
           onStationTap: _openStation,
-          mapController: _mapController,
           currentLocation: _currentLocation,
-          onMapReady: _onMapReady,
+          onMapboxMapCreated: _onMapReady,
           baseLayer: _baseLayer,
           overlays: _overlays,
         );
@@ -988,6 +972,110 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     );
   }
 }
+
+class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
+  _MapSearchDelegate({
+    required this.searchService,
+    required this.stations,
+    required String hintText,
+    required this.noResultsText,
+  }) : super(searchFieldLabel: hintText);
+
+  final MapSearchService searchService;
+  final List<Station> stations;
+  final String noResultsText;
+
+  @override
+  List<Widget>? buildActions(BuildContext context) {
+    return [
+      if (query.isNotEmpty)
+        IconButton(
+          tooltip: MaterialLocalizations.of(context).deleteButtonTooltip,
+          onPressed: () => query = '',
+          icon: const Icon(Icons.clear_rounded),
+        ),
+    ];
+  }
+
+  @override
+  Widget? buildLeading(BuildContext context) {
+    return IconButton(
+      tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+      onPressed: () => close(context, null),
+      icon: const Icon(Icons.arrow_back_rounded),
+    );
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    final stationResults = searchService.searchStations(query, stations);
+    if (query.trim().isEmpty) {
+      return _buildStationSuggestions(stations.take(12).map(_stationResult));
+    }
+    return _buildStationSuggestions(stationResults.take(12));
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return buildSuggestions(context);
+
+    return FutureBuilder<List<MapSearchResult>>(
+      future: _combinedResults(trimmed),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final results = snapshot.data ?? const <MapSearchResult>[];
+        if (results.isEmpty) {
+          return Center(child: Text(noResultsText));
+        }
+        return _buildStationSuggestions(results);
+      },
+    );
+  }
+
+  Widget _buildStationSuggestions(Iterable<MapSearchResult> results) {
+    final items = results.toList(growable: false);
+    if (items.isEmpty) return Center(child: Text(noResultsText));
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final result = items[index];
+        return ListTile(
+          leading: const Icon(Icons.place_outlined),
+          title: Text(result.name),
+          subtitle: result.description == null ? null : Text(result.description!),
+          onTap: () => close(context, result),
+        );
+      },
+    );
+  }
+
+  Future<List<MapSearchResult>> _combinedResults(String value) async {
+    final stationResults = searchService.searchStations(value, stations);
+    final remoteResults = await searchService.search(value);
+    final seen = <String>{};
+    final merged = <MapSearchResult>[];
+    for (final result in [...stationResults, ...remoteResults]) {
+      final key = '${result.name.toLowerCase()}|${result.latitude.toStringAsFixed(4)}|${result.longitude.toStringAsFixed(4)}';
+      if (seen.add(key)) merged.add(result);
+    }
+    return merged;
+  }
+
+  static MapSearchResult _stationResult(Station station) {
+    return MapSearchResult(
+      name: station.name,
+      description: station.river.isEmpty ? null : station.river,
+      latitude: station.latitude,
+      longitude: station.longitude,
+    );
+  }
+}
+
 class _GlassSurface extends StatelessWidget {
   const _GlassSurface({
     required this.child,
