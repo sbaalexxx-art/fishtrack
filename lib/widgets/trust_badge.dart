@@ -7,6 +7,25 @@ class TrustBadge extends StatelessWidget {
 
   final TrustLevel level;
 
+  String _labelFor(BuildContext context) {
+    final languageCode = Localizations.localeOf(context).languageCode;
+
+    if (languageCode != 'ro') {
+      return level.label;
+    }
+
+    switch (level) {
+      case TrustLevel.newUser:
+        return 'Nou';
+      case TrustLevel.trusted:
+        return 'De încredere';
+      case TrustLevel.reliable:
+        return 'Fiabil';
+      case TrustLevel.expert:
+        return 'Expert';
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -14,6 +33,9 @@ class TrustBadge extends StatelessWidget {
       color: Theme.of(context).colorScheme.primaryContainer,
       borderRadius: BorderRadius.circular(10),
     ),
-    child: Text(level.label, style: Theme.of(context).textTheme.labelSmall),
+    child: Text(
+      _labelFor(context),
+      style: Theme.of(context).textTheme.labelSmall,
+    ),
   );
 }
