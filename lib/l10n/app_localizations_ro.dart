@@ -33,7 +33,7 @@ class AppLocalizationsRo extends AppLocalizations {
   String get weather => 'Vreme';
 
   @override
-  String get fishingInsights => 'Informații pentru pescuit';
+  String get fishingInsights => 'FluviAI Radar';
 
   @override
   String get reports => 'Rapoarte';
@@ -441,7 +441,170 @@ class AppLocalizationsRo extends AppLocalizations {
   String get retryRecentCatches => 'Reîncearcă încărcarea capturilor recente';
 
   @override
-  String get youAreHere => 'Ești aici';
+  String get youAreHere => 'Locația ta';
+
+  @override
+  String get fluviAiRadar => 'FluviAI Radar';
+
+  @override
+  String get askFluviAI => 'Întreabă FluviAI';
+
+  @override
+  String get areaCheck => 'Verificare zonă';
+
+  @override
+  String get verifyArea => 'Verifică zona';
+
+  @override
+  String get trusted => 'De încredere';
+
+  @override
+  String get clearSky => 'Cer senin';
+
+  @override
+  String get lowWater => 'Nivel scăzut';
+
+  @override
+  String get notAccurate => 'Nu este corect';
+
+  @override
+  String get currentLocation => 'Locația curentă';
+
+  @override
+  String get liveActivity => 'Activitate live';
+
+  @override
+  String get goodFishing => 'Activitate bună';
+
+  @override
+  String get poorFishing => 'Activitate slabă';
+
+  @override
+  String get scoreExcellent => 'Excelent';
+
+  @override
+  String get scoreGood => 'Bun';
+
+  @override
+  String get scoreFair => 'Acceptabil';
+
+  @override
+  String get scorePoor => 'Slab';
+
+  @override
+  String get low => 'Scăzut';
+
+  @override
+  String get high => 'Ridicat';
+
+  @override
+  String reportsToday(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count rapoarte astăzi',
+      one: '1 raport astăzi',
+      zero: '0 rapoarte astăzi',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get noCommunityUpdate => 'Nicio actualizare din comunitate.';
+
+  @override
+  String get confirm => 'Confirmă';
+
+  @override
+  String get underReview => 'În verificare';
+
+  @override
+  String get takeLivePhoto => 'Fă poză live';
+
+  @override
+  String get retakeLivePhoto => 'Refă poza live';
+
+  @override
+  String get communityTrustTitle => '🤝 Respectă pescarii. Respectă natura.';
+
+  @override
+  String get communityTrustBody =>
+      'Comunitatea FluviAI se bazează pe încredere.\nPublică doar informații reale și actuale pentru a-i ajuta pe ceilalți pescari să ia cele mai bune decizii pe apă.';
+
+  @override
+  String get reportTruthConfirmation =>
+      'Confirm că acest raport este real și reflectă condițiile din acest moment.';
+
+  @override
+  String get misleadingReportsWarning =>
+      'Rapoartele false sau înșelătoare pot fi eliminate și îți pot afecta reputația în comunitate.';
+
+  @override
+  String get publishing => 'Se publică…';
+
+  @override
+  String get publish => 'Publică';
+
+  @override
+  String get reportCategoryFishActivity => 'Activitate pești';
+
+  @override
+  String get reportCategoryWaterClarity => 'Claritatea apei';
+
+  @override
+  String get reportCategoryFloatingGrass => 'Iarbă pe apă';
+
+  @override
+  String get reportCategoryHighWater => 'Nivel ridicat';
+
+  @override
+  String get reportCategoryLowWater => 'Nivel scăzut';
+
+  @override
+  String get reportCategoryStrongCurrent => 'Curent puternic';
+
+  @override
+  String get reportCategoryNoCurrent => 'Fără curent';
+
+  @override
+  String get reportCategoryBoats => 'Bărci';
+
+  @override
+  String get reportCategoryPoaching => 'Braconaj';
+
+  @override
+  String get reportCategoryTheftWarning => 'Avertizare furt';
+
+  @override
+  String get reportCategoryAccessBlocked => 'Acces blocat';
+
+  @override
+  String get reportCategoryParkingAvailable => 'Parcare disponibilă';
+
+  @override
+  String get reportCategoryGoodFishing => 'Activitate bună';
+
+  @override
+  String get reportCategoryPoorFishing => 'Activitate slabă';
+
+  @override
+  String get reportCategoryOther => 'Altul';
+
+  @override
+  String get abuseReasonSpam => 'Spam';
+
+  @override
+  String get abuseReasonFakeInformation => 'Informație falsă';
+
+  @override
+  String get abuseReasonOffensiveContent => 'Conținut ofensator';
+
+  @override
+  String get abuseReasonDangerousIllegalActivity =>
+      'Activitate periculoasă/ilegală';
+
+  @override
+  String get abuseReasonOther => 'Altul';
 
   @override
   String get mainSection => 'Principal';
@@ -462,7 +625,7 @@ class AppLocalizationsRo extends AppLocalizations {
   String get developer => 'Dezvoltator';
 
   @override
-  String get aiFishingInsights => 'Informații AI pentru pescuit';
+  String get aiFishingInsights => 'FluviAI Radar';
 
   @override
   String get myCatches => 'Capturile mele';

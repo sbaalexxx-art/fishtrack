@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/station.dart';
 import '../../services/fishing_score_service.dart';
@@ -130,7 +131,7 @@ class _AIConditionsCardView extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'FISHING AI',
+                      AppLocalizations.of(context).fluviAiRadar,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.cardTitle.copyWith(
@@ -316,3 +317,4 @@ class _PremiumLoadingShimmerState extends State<PremiumLoadingShimmer>
     );
   }
 }
+

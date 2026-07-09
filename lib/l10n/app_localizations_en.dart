@@ -33,7 +33,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get weather => 'Weather';
 
   @override
-  String get fishingInsights => 'Fishing Insights';
+  String get fishingInsights => 'FluviAI Radar';
 
   @override
   String get reports => 'Reports';
@@ -441,6 +441,169 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youAreHere => 'You are here';
 
   @override
+  String get fluviAiRadar => 'FluviAI Radar';
+
+  @override
+  String get askFluviAI => 'Ask FluviAI';
+
+  @override
+  String get areaCheck => 'Area Check';
+
+  @override
+  String get verifyArea => 'Check area';
+
+  @override
+  String get trusted => 'Trusted';
+
+  @override
+  String get clearSky => 'Clear sky';
+
+  @override
+  String get lowWater => 'Low water';
+
+  @override
+  String get notAccurate => 'Not accurate';
+
+  @override
+  String get currentLocation => 'Current Location';
+
+  @override
+  String get liveActivity => 'Live activity';
+
+  @override
+  String get goodFishing => 'Good fishing';
+
+  @override
+  String get poorFishing => 'Poor fishing';
+
+  @override
+  String get scoreExcellent => 'Excellent';
+
+  @override
+  String get scoreGood => 'Good';
+
+  @override
+  String get scoreFair => 'Fair';
+
+  @override
+  String get scorePoor => 'Poor';
+
+  @override
+  String get low => 'Low';
+
+  @override
+  String get high => 'High';
+
+  @override
+  String reportsToday(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count reports today',
+      one: '1 report today',
+      zero: '0 reports today',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get noCommunityUpdate => 'No community update yet.';
+
+  @override
+  String get confirm => 'Confirm';
+
+  @override
+  String get underReview => 'Under review';
+
+  @override
+  String get takeLivePhoto => 'Take live photo';
+
+  @override
+  String get retakeLivePhoto => 'Retake live photo';
+
+  @override
+  String get communityTrustTitle => '🤝 Respect anglers. Respect nature.';
+
+  @override
+  String get communityTrustBody =>
+      'The FluviAI community is based on trust.\nOnly publish real, current information to help other anglers make better decisions on the water.';
+
+  @override
+  String get reportTruthConfirmation =>
+      'I confirm this report is real and reflects the current conditions.';
+
+  @override
+  String get misleadingReportsWarning =>
+      'False or misleading reports may be removed and can affect your Community Reputation.';
+
+  @override
+  String get publishing => 'Publishing…';
+
+  @override
+  String get publish => 'Publish';
+
+  @override
+  String get reportCategoryFishActivity => 'Fish activity';
+
+  @override
+  String get reportCategoryWaterClarity => 'Water clarity';
+
+  @override
+  String get reportCategoryFloatingGrass => 'Floating grass';
+
+  @override
+  String get reportCategoryHighWater => 'High water';
+
+  @override
+  String get reportCategoryLowWater => 'Low water';
+
+  @override
+  String get reportCategoryStrongCurrent => 'Strong current';
+
+  @override
+  String get reportCategoryNoCurrent => 'No current';
+
+  @override
+  String get reportCategoryBoats => 'Boats';
+
+  @override
+  String get reportCategoryPoaching => 'Poaching';
+
+  @override
+  String get reportCategoryTheftWarning => 'Theft warning';
+
+  @override
+  String get reportCategoryAccessBlocked => 'Access blocked';
+
+  @override
+  String get reportCategoryParkingAvailable => 'Parking available';
+
+  @override
+  String get reportCategoryGoodFishing => 'Good fishing';
+
+  @override
+  String get reportCategoryPoorFishing => 'Poor fishing';
+
+  @override
+  String get reportCategoryOther => 'Other';
+
+  @override
+  String get abuseReasonSpam => 'Spam';
+
+  @override
+  String get abuseReasonFakeInformation => 'Fake information';
+
+  @override
+  String get abuseReasonOffensiveContent => 'Offensive content';
+
+  @override
+  String get abuseReasonDangerousIllegalActivity =>
+      'Dangerous/illegal activity';
+
+  @override
+  String get abuseReasonOther => 'Other';
+
+  @override
   String get mainSection => 'Main';
 
   @override
@@ -459,7 +622,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get developer => 'Developer';
 
   @override
-  String get aiFishingInsights => 'AI Fishing Insights';
+  String get aiFishingInsights => 'FluviAI Radar';
 
   @override
   String get myCatches => 'My Catches';

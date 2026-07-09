@@ -125,7 +125,7 @@ class _CommunityPostCard extends StatelessWidget {
           for (final reason in ReportAbuseReason.values)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, reason),
-              child: Text(reason.label),
+              child: Text(_abuseReasonLabel(context, reason)),
             ),
         ],
       ),
@@ -198,7 +198,7 @@ class _CommunityPostCard extends StatelessWidget {
                 spacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(_relativeTime(post.createdAt)),
+                  Text(_relativeTime(context, post.createdAt)),
                   if (post.isSuspicious) const _UnderReviewBadge(),
                 ],
               ),
@@ -271,7 +271,7 @@ class _CommunityPostCard extends StatelessWidget {
                             icon: const Icon(
                               Icons.check_circle_outline_rounded,
                             ),
-                            label: Text('Confirm ${post.stillValidCount}'),
+                            label: Text('${context.l10n.confirm} ${post.stillValidCount}'),
                           ),
                           TextButton.icon(
                             onPressed: () => _verify(
@@ -280,7 +280,7 @@ class _CommunityPostCard extends StatelessWidget {
                             ),
                             icon: const Icon(Icons.warning_amber_rounded),
                             label: Text(
-                              'Not accurate ${post.noLongerValidCount}',
+                              '${context.l10n.notAccurate} ${post.noLongerValidCount}',
                             ),
                           ),
                           TextButton.icon(
@@ -300,12 +300,16 @@ class _CommunityPostCard extends StatelessWidget {
     );
   }
 
-  static String _relativeTime(DateTime date) {
+  static String _relativeTime(BuildContext context, DateTime date) {
     final difference = DateTime.now().difference(date);
-    if (difference.inMinutes < 1) return 'Just now';
-    if (difference.inHours < 1) return '${difference.inMinutes}m ago';
-    if (difference.inDays < 1) return '${difference.inHours}h ago';
-    return '${difference.inDays}d ago';
+    if (difference.inMinutes < 1) return context.l10n.justNow;
+    if (difference.inHours < 1) {
+      return context.l10n.minutesAgo(difference.inMinutes);
+    }
+    if (difference.inDays < 1) {
+      return context.l10n.hoursAgo(difference.inHours);
+    }
+    return context.l10n.daysAgo(difference.inDays);
   }
 }
 
@@ -319,7 +323,7 @@ class _UnderReviewBadge extends StatelessWidget {
       color: Theme.of(context).colorScheme.secondaryContainer,
       borderRadius: BorderRadius.circular(10),
     ),
-    child: Text('Under review', style: Theme.of(context).textTheme.labelSmall),
+    child: Text(context.l10n.underReview, style: Theme.of(context).textTheme.labelSmall),
   );
 }
 
@@ -394,7 +398,7 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
                   .map(
                     (category) => DropdownMenuItem(
                       value: category,
-                      child: Text(category.label),
+                      child: Text(_reportCategoryLabel(context, category)),
                     ),
                   )
                   .toList(),
@@ -417,7 +421,9 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
               onPressed: _saving ? null : _takePhoto,
               icon: const Icon(Icons.camera_alt_outlined),
               label: Text(
-                _cameraPhoto == null ? 'Take live photo' : 'Retake live photo',
+                _cameraPhoto == null
+                    ? context.l10n.takeLivePhoto
+                    : context.l10n.retakeLivePhoto,
               ),
             ),
             SwitchListTile(
@@ -430,35 +436,27 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
                   : (value) => setState(() => _useExactLocation = value),
             ),
             const Divider(height: 24),
-            const Align(
+            Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                '🤝 Respectă pescarii. Respectă natura.',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                context.l10n.communityTrustTitle,
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Comunitatea FluviAI se bazează pe încredere.\n'
-              'Publică doar informații reale și actuale pentru a-i ajuta pe '
-              'ceilalți pescari să ia cele mai bune decizii pe apă.',
-            ),
+            Text(context.l10n.communityTrustBody),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
               value: _trustConfirmed,
-              title: const Text(
-                'Confirm că acest raport este real și reflectă condițiile '
-                'din acest moment.',
-              ),
+              title: Text(context.l10n.reportTruthConfirmation),
               onChanged: _saving
                   ? null
                   : (value) => setState(() => _trustConfirmed = value ?? false),
             ),
-            const Text(
-              'False or misleading reports may be removed and can affect '
-              'your Community Reputation.',
-              style: TextStyle(fontSize: 12),
+            Text(
+              context.l10n.misleadingReportsWarning,
+              style: const TextStyle(fontSize: 12),
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),
@@ -477,12 +475,45 @@ class _CreateReportDialogState extends State<_CreateReportDialog> {
         ),
         FilledButton(
           onPressed: _saving || !_trustConfirmed ? null : _save,
-          child: Text(_saving ? 'Publishing…' : 'Publish'),
+          child: Text(_saving ? context.l10n.publishing : context.l10n.publish),
         ),
       ],
     );
   }
 }
+
+
+String _reportCategoryLabel(BuildContext context, ReportCategory category) =>
+    switch (category) {
+      ReportCategory.fishActivity => context.l10n.reportCategoryFishActivity,
+      ReportCategory.waterClarity => context.l10n.reportCategoryWaterClarity,
+      ReportCategory.floatingGrass => context.l10n.reportCategoryFloatingGrass,
+      ReportCategory.highWater => context.l10n.reportCategoryHighWater,
+      ReportCategory.lowWater => context.l10n.reportCategoryLowWater,
+      ReportCategory.strongCurrent => context.l10n.reportCategoryStrongCurrent,
+      ReportCategory.noCurrent => context.l10n.reportCategoryNoCurrent,
+      ReportCategory.boats => context.l10n.reportCategoryBoats,
+      ReportCategory.poaching => context.l10n.reportCategoryPoaching,
+      ReportCategory.theftWarning => context.l10n.reportCategoryTheftWarning,
+      ReportCategory.accessBlocked => context.l10n.reportCategoryAccessBlocked,
+      ReportCategory.parkingAvailable =>
+        context.l10n.reportCategoryParkingAvailable,
+      ReportCategory.goodFishing => context.l10n.reportCategoryGoodFishing,
+      ReportCategory.poorFishing => context.l10n.reportCategoryPoorFishing,
+      ReportCategory.other => context.l10n.reportCategoryOther,
+    };
+
+String _abuseReasonLabel(BuildContext context, ReportAbuseReason reason) =>
+    switch (reason) {
+      ReportAbuseReason.spam => context.l10n.abuseReasonSpam,
+      ReportAbuseReason.fakeInformation =>
+        context.l10n.abuseReasonFakeInformation,
+      ReportAbuseReason.offensiveContent =>
+        context.l10n.abuseReasonOffensiveContent,
+      ReportAbuseReason.dangerousIllegalActivity =>
+        context.l10n.abuseReasonDangerousIllegalActivity,
+      ReportAbuseReason.other => context.l10n.abuseReasonOther,
+    };
 
 class _FeedMessage extends StatelessWidget {
   const _FeedMessage({

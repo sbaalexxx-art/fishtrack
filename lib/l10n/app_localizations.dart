@@ -149,7 +149,7 @@ abstract class AppLocalizations {
   /// No description provided for @fishingInsights.
   ///
   /// In ro, this message translates to:
-  /// **'Informații pentru pescuit'**
+  /// **'FluviAI Radar'**
   String get fishingInsights;
 
   /// No description provided for @reports.
@@ -881,8 +881,308 @@ abstract class AppLocalizations {
   /// No description provided for @youAreHere.
   ///
   /// In ro, this message translates to:
-  /// **'Ești aici'**
+  /// **'Locația ta'**
   String get youAreHere;
+
+  /// No description provided for @fluviAiRadar.
+  ///
+  /// In ro, this message translates to:
+  /// **'FluviAI Radar'**
+  String get fluviAiRadar;
+
+  /// No description provided for @askFluviAI.
+  ///
+  /// In ro, this message translates to:
+  /// **'Întreabă FluviAI'**
+  String get askFluviAI;
+
+  /// No description provided for @areaCheck.
+  ///
+  /// In ro, this message translates to:
+  /// **'Verificare zonă'**
+  String get areaCheck;
+
+  /// No description provided for @verifyArea.
+  ///
+  /// In ro, this message translates to:
+  /// **'Verifică zona'**
+  String get verifyArea;
+
+  /// No description provided for @trusted.
+  ///
+  /// In ro, this message translates to:
+  /// **'De încredere'**
+  String get trusted;
+
+  /// No description provided for @clearSky.
+  ///
+  /// In ro, this message translates to:
+  /// **'Cer senin'**
+  String get clearSky;
+
+  /// No description provided for @lowWater.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nivel scăzut'**
+  String get lowWater;
+
+  /// No description provided for @notAccurate.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu este corect'**
+  String get notAccurate;
+
+  /// No description provided for @currentLocation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Locația curentă'**
+  String get currentLocation;
+
+  /// No description provided for @liveActivity.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activitate live'**
+  String get liveActivity;
+
+  /// No description provided for @goodFishing.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activitate bună'**
+  String get goodFishing;
+
+  /// No description provided for @poorFishing.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activitate slabă'**
+  String get poorFishing;
+
+  /// No description provided for @scoreExcellent.
+  ///
+  /// In ro, this message translates to:
+  /// **'Excelent'**
+  String get scoreExcellent;
+
+  /// No description provided for @scoreGood.
+  ///
+  /// In ro, this message translates to:
+  /// **'Bun'**
+  String get scoreGood;
+
+  /// No description provided for @scoreFair.
+  ///
+  /// In ro, this message translates to:
+  /// **'Acceptabil'**
+  String get scoreFair;
+
+  /// No description provided for @scorePoor.
+  ///
+  /// In ro, this message translates to:
+  /// **'Slab'**
+  String get scorePoor;
+
+  /// No description provided for @low.
+  ///
+  /// In ro, this message translates to:
+  /// **'Scăzut'**
+  String get low;
+
+  /// No description provided for @high.
+  ///
+  /// In ro, this message translates to:
+  /// **'Ridicat'**
+  String get high;
+
+  /// No description provided for @reportsToday.
+  ///
+  /// In ro, this message translates to:
+  /// **'{count, plural, =0{0 rapoarte astăzi} =1{1 raport astăzi} other{{count} rapoarte astăzi}}'**
+  String reportsToday(int count);
+
+  /// No description provided for @noCommunityUpdate.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nicio actualizare din comunitate.'**
+  String get noCommunityUpdate;
+
+  /// No description provided for @confirm.
+  ///
+  /// In ro, this message translates to:
+  /// **'Confirmă'**
+  String get confirm;
+
+  /// No description provided for @underReview.
+  ///
+  /// In ro, this message translates to:
+  /// **'În verificare'**
+  String get underReview;
+
+  /// No description provided for @takeLivePhoto.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fă poză live'**
+  String get takeLivePhoto;
+
+  /// No description provided for @retakeLivePhoto.
+  ///
+  /// In ro, this message translates to:
+  /// **'Refă poza live'**
+  String get retakeLivePhoto;
+
+  /// No description provided for @communityTrustTitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'🤝 Respectă pescarii. Respectă natura.'**
+  String get communityTrustTitle;
+
+  /// No description provided for @communityTrustBody.
+  ///
+  /// In ro, this message translates to:
+  /// **'Comunitatea FluviAI se bazează pe încredere.\nPublică doar informații reale și actuale pentru a-i ajuta pe ceilalți pescari să ia cele mai bune decizii pe apă.'**
+  String get communityTrustBody;
+
+  /// No description provided for @reportTruthConfirmation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Confirm că acest raport este real și reflectă condițiile din acest moment.'**
+  String get reportTruthConfirmation;
+
+  /// No description provided for @misleadingReportsWarning.
+  ///
+  /// In ro, this message translates to:
+  /// **'Rapoartele false sau înșelătoare pot fi eliminate și îți pot afecta reputația în comunitate.'**
+  String get misleadingReportsWarning;
+
+  /// No description provided for @publishing.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se publică…'**
+  String get publishing;
+
+  /// No description provided for @publish.
+  ///
+  /// In ro, this message translates to:
+  /// **'Publică'**
+  String get publish;
+
+  /// No description provided for @reportCategoryFishActivity.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activitate pești'**
+  String get reportCategoryFishActivity;
+
+  /// No description provided for @reportCategoryWaterClarity.
+  ///
+  /// In ro, this message translates to:
+  /// **'Claritatea apei'**
+  String get reportCategoryWaterClarity;
+
+  /// No description provided for @reportCategoryFloatingGrass.
+  ///
+  /// In ro, this message translates to:
+  /// **'Iarbă pe apă'**
+  String get reportCategoryFloatingGrass;
+
+  /// No description provided for @reportCategoryHighWater.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nivel ridicat'**
+  String get reportCategoryHighWater;
+
+  /// No description provided for @reportCategoryLowWater.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nivel scăzut'**
+  String get reportCategoryLowWater;
+
+  /// No description provided for @reportCategoryStrongCurrent.
+  ///
+  /// In ro, this message translates to:
+  /// **'Curent puternic'**
+  String get reportCategoryStrongCurrent;
+
+  /// No description provided for @reportCategoryNoCurrent.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fără curent'**
+  String get reportCategoryNoCurrent;
+
+  /// No description provided for @reportCategoryBoats.
+  ///
+  /// In ro, this message translates to:
+  /// **'Bărci'**
+  String get reportCategoryBoats;
+
+  /// No description provided for @reportCategoryPoaching.
+  ///
+  /// In ro, this message translates to:
+  /// **'Braconaj'**
+  String get reportCategoryPoaching;
+
+  /// No description provided for @reportCategoryTheftWarning.
+  ///
+  /// In ro, this message translates to:
+  /// **'Avertizare furt'**
+  String get reportCategoryTheftWarning;
+
+  /// No description provided for @reportCategoryAccessBlocked.
+  ///
+  /// In ro, this message translates to:
+  /// **'Acces blocat'**
+  String get reportCategoryAccessBlocked;
+
+  /// No description provided for @reportCategoryParkingAvailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Parcare disponibilă'**
+  String get reportCategoryParkingAvailable;
+
+  /// No description provided for @reportCategoryGoodFishing.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activitate bună'**
+  String get reportCategoryGoodFishing;
+
+  /// No description provided for @reportCategoryPoorFishing.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activitate slabă'**
+  String get reportCategoryPoorFishing;
+
+  /// No description provided for @reportCategoryOther.
+  ///
+  /// In ro, this message translates to:
+  /// **'Altul'**
+  String get reportCategoryOther;
+
+  /// No description provided for @abuseReasonSpam.
+  ///
+  /// In ro, this message translates to:
+  /// **'Spam'**
+  String get abuseReasonSpam;
+
+  /// No description provided for @abuseReasonFakeInformation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Informație falsă'**
+  String get abuseReasonFakeInformation;
+
+  /// No description provided for @abuseReasonOffensiveContent.
+  ///
+  /// In ro, this message translates to:
+  /// **'Conținut ofensator'**
+  String get abuseReasonOffensiveContent;
+
+  /// No description provided for @abuseReasonDangerousIllegalActivity.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activitate periculoasă/ilegală'**
+  String get abuseReasonDangerousIllegalActivity;
+
+  /// No description provided for @abuseReasonOther.
+  ///
+  /// In ro, this message translates to:
+  /// **'Altul'**
+  String get abuseReasonOther;
 
   /// No description provided for @mainSection.
   ///
@@ -923,7 +1223,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiFishingInsights.
   ///
   /// In ro, this message translates to:
-  /// **'Informații AI pentru pescuit'**
+  /// **'FluviAI Radar'**
   String get aiFishingInsights;
 
   /// No description provided for @myCatches.

@@ -3,7 +3,7 @@ enum NotificationCategory {
   favoriteStations('Favourite Stations'),
   communityReports('Community Reports'),
   dangerousReports('Dangerous Reports'),
-  aiFishingInsights('AI Fishing Insights'),
+  aiFishingInsights('FluviAI Radar'),
   reputationTrust('Reputation & Trust'),
   achievements('Achievements'),
   catchActivity('Catch Activity');

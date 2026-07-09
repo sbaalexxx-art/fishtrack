@@ -8,7 +8,7 @@
   "waterLevels": "Nivelurile apei",
   "stationDetails": "Detalii stație",
   "weather": "Vreme",
-  "fishingInsights": "Informații pentru pescuit",
+  "fishingInsights": "FluviAI Radar",
   "reports": "Rapoarte",
   "reportsArchive": "Arhiva rapoartelor",
   "recentCatches": "Capturi recente",
@@ -55,21 +55,57 @@
   "noSignificantFactors": "Nu există factori semnificativi.",
   "notEnoughData": "Nu există încă suficiente date",
   "confidence": "Încredere: {value}%",
-  "@confidence": {"placeholders": {"value": {"type": "int"}}},
+  "@confidence": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
   "goldenHour": "Ora de aur",
   "goldenHourValue": "Ora de aur: {value}",
-  "@goldenHourValue": {"placeholders": {"value": {"type": "String"}}},
+  "@goldenHourValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "coordinates": "Coordonate",
   "waterLevelHistory": "Istoricul nivelului apei",
   "aiWaterInsight": "Analiză AI a apei",
   "monitoredStations": "{count, plural, =1{1 stație monitorizată} other{{count} stații monitorizate}}",
-  "@monitoredStations": {"placeholders": {"count": {"type": "int"}}},
+  "@monitoredStations": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "days": "{count, plural, =1{1 zi} other{{count} zile}}",
-  "@days": {"placeholders": {"count": {"type": "int"}}},
+  "@days": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "reportCount": "{count, plural, =1{1 raport} other{{count} rapoarte}}",
-  "@reportCount": {"placeholders": {"count": {"type": "int"}}},
+  "@reportCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "likes": "{count, plural, =1{1 apreciere} other{{count} aprecieri}}",
-  "@likes": {"placeholders": {"count": {"type": "int"}}},
+  "@likes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "comments": "Comentarii",
   "addComment": "Adaugă un comentariu",
   "catchDetails": "Detalii captură",
@@ -136,14 +172,71 @@
   "stationSearchUnavailable": "Căutarea stațiilor este indisponibilă.",
   "viewAll": "Vezi toate",
   "retryRecentCatches": "Reîncearcă încărcarea capturilor recente",
-  "youAreHere": "Ești aici",
+  "youAreHere": "Locația ta",
+  "fluviAiRadar": "FluviAI Radar",
+  "askFluviAI": "Întreabă FluviAI",
+  "areaCheck": "Verificare zonă",
+  "verifyArea": "Verifică zona",
+  "trusted": "De încredere",
+  "clearSky": "Cer senin",
+  "lowWater": "Nivel scăzut",
+  "notAccurate": "Nu este corect",
+  "currentLocation": "Locația curentă",
+  "liveActivity": "Activitate live",
+  "goodFishing": "Activitate bună",
+  "poorFishing": "Activitate slabă",
+  "scoreExcellent": "Excelent",
+  "scoreGood": "Bun",
+  "scoreFair": "Acceptabil",
+  "scorePoor": "Slab",
+  "low": "Scăzut",
+  "high": "Ridicat",
+  "reportsToday": "{count, plural, =0{0 rapoarte astăzi} =1{1 raport astăzi} other{{count} rapoarte astăzi}}",
+  "@reportsToday": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noCommunityUpdate": "Nicio actualizare din comunitate.",
+  "confirm": "Confirmă",
+  "underReview": "În verificare",
+  "takeLivePhoto": "Fă poză live",
+  "retakeLivePhoto": "Refă poza live",
+  "communityTrustTitle": "🤝 Respectă pescarii. Respectă natura.",
+  "communityTrustBody": "Comunitatea FluviAI se bazează pe încredere.\nPublică doar informații reale și actuale pentru a-i ajuta pe ceilalți pescari să ia cele mai bune decizii pe apă.",
+  "reportTruthConfirmation": "Confirm că acest raport este real și reflectă condițiile din acest moment.",
+  "misleadingReportsWarning": "Rapoartele false sau înșelătoare pot fi eliminate și îți pot afecta reputația în comunitate.",
+  "publishing": "Se publică…",
+  "publish": "Publică",
+  "reportCategoryFishActivity": "Activitate pești",
+  "reportCategoryWaterClarity": "Claritatea apei",
+  "reportCategoryFloatingGrass": "Iarbă pe apă",
+  "reportCategoryHighWater": "Nivel ridicat",
+  "reportCategoryLowWater": "Nivel scăzut",
+  "reportCategoryStrongCurrent": "Curent puternic",
+  "reportCategoryNoCurrent": "Fără curent",
+  "reportCategoryBoats": "Bărci",
+  "reportCategoryPoaching": "Braconaj",
+  "reportCategoryTheftWarning": "Avertizare furt",
+  "reportCategoryAccessBlocked": "Acces blocat",
+  "reportCategoryParkingAvailable": "Parcare disponibilă",
+  "reportCategoryGoodFishing": "Activitate bună",
+  "reportCategoryPoorFishing": "Activitate slabă",
+  "reportCategoryOther": "Altul",
+  "abuseReasonSpam": "Spam",
+  "abuseReasonFakeInformation": "Informație falsă",
+  "abuseReasonOffensiveContent": "Conținut ofensator",
+  "abuseReasonDangerousIllegalActivity": "Activitate periculoasă/ilegală",
+  "abuseReasonOther": "Altul",
   "mainSection": "Principal",
   "myFishing": "Pescuitul meu",
   "useful": "Utile",
   "account": "Cont",
   "support": "Asistență",
   "developer": "Dezvoltator",
-  "aiFishingInsights": "Informații AI pentru pescuit",
+  "aiFishingInsights": "FluviAI Radar",
   "myCatches": "Capturile mele",
   "fishingDiary": "Jurnal de pescuit",
   "fishingPermit": "Permis de pescuit",
@@ -173,13 +266,37 @@
   "updateTimeUnavailable": "Ora actualizării nu este disponibilă",
   "updatedNow": "Actualizat chiar acum",
   "updatedMinutesAgo": "Actualizat acum {count, plural, =1{1 minut} other{{count} minute}}",
-  "@updatedMinutesAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@updatedMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "updatedHoursAgo": "Actualizat acum {count, plural, =1{1 oră} other{{count} ore}}",
-  "@updatedHoursAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@updatedHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "updatedDaysAgo": "Actualizat acum {count, plural, =1{1 zi} other{{count} zile}}",
-  "@updatedDaysAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@updatedDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "feelsLike": "Se simte ca {temperature}°C",
-  "@feelsLike": {"placeholders": {"temperature": {"type": "int"}}},
+  "@feelsLike": {
+    "placeholders": {
+      "temperature": {
+        "type": "int"
+      }
+    }
+  },
   "humidity": "Umiditate",
   "windSpeed": "Viteza vântului",
   "windDirection": "Direcția vântului",
@@ -198,7 +315,13 @@
   "sunset": "Apus",
   "illuminated": "iluminată",
   "moonAge": "Vârsta Lunii: {value} zile",
-  "@moonAge": {"placeholders": {"value": {"type": "String"}}},
+  "@moonAge": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "locationRequired": "Locația este necesară",
   "notAvailable": "Nu este disponibil",
   "or": "sau",
@@ -265,14 +388,38 @@
   "saving": "Se salvează…",
   "saveProfile": "Salvează profilul",
   "reputationValue": "Reputație {value}/100",
-  "@reputationValue": {"placeholders": {"value": {"type": "int"}}},
+  "@reputationValue": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
   "justNow": "Chiar acum",
   "minutesAgo": "Acum {count, plural, =1{1 minut} other{{count} minute}}",
-  "@minutesAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "hoursAgo": "Acum {count, plural, =1{1 oră} other{{count} ore}}",
-  "@hoursAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "daysAgo": "Acum {count, plural, =1{1 zi} other{{count} zile}}",
-  "@daysAgo": {"placeholders": {"count": {"type": "int"}}},
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "catches": "Capturi",
   "reputation": "Reputație",
   "cachedDataFallback": "Afișăm ultimele date salvate local."
