@@ -168,6 +168,8 @@
   "hard": "Dificil",
   "favoritesOnly": "Doar favorite",
   "searchStation": "Caută numele stației…",
+  "mapSearchHint": "Caută stație sau locație…",
+  "noMapSearchResult": "Nu a fost găsită nicio stație sau locație.",
   "noStationFound": "Nu a fost găsită nicio stație.",
   "stationSearchUnavailable": "Căutarea stațiilor este indisponibilă.",
   "viewAll": "Vezi toate",

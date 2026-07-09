@@ -126,6 +126,8 @@
   "hard": "Hard",
   "favoritesOnly": "Favorites only",
   "searchStation": "Search station name…",
+  "mapSearchHint": "Search station or location…",
+  "noMapSearchResult": "No station or location found.",
   "noStationFound": "No station found.",
   "stationSearchUnavailable": "Station search is unavailable.",
   "viewAll": "View all",

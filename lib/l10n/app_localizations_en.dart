@@ -426,6 +426,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchStation => 'Search station name…';
 
   @override
+  String get mapSearchHint => 'Search station or location…';
+
+  @override
+  String get noMapSearchResult => 'No station or location found.';
+
+  @override
   String get noStationFound => 'No station found.';
 
   @override

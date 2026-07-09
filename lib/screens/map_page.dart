@@ -237,8 +237,8 @@ class _MapPageState extends State<MapPage> {
       delegate: _MapSearchDelegate(
         searchService: _searchService,
         stations: _stations,
-        hintText: context.l10n.searchStation,
-        noResultsText: context.l10n.noStationFound,
+        hintText: context.l10n.mapSearchHint,
+        noResultsText: context.l10n.noMapSearchResult,
       ),
     );
 
@@ -393,7 +393,20 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
     if (trimmed.isEmpty) {
       return _buildResults(stations.take(16).map(_stationResult));
     }
-    return _buildResults(searchService.searchStations(trimmed, stations));
+
+    return FutureBuilder<List<MapSearchResult>>(
+      future: _combinedResults(trimmed),
+      builder: (context, snapshot) {
+        final stationFallback = searchService.searchStations(trimmed, stations);
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildResults(stationFallback.take(16));
+        }
+
+        final results = snapshot.data ?? stationFallback;
+        if (results.isEmpty) return Center(child: Text(noResultsText));
+        return _buildResults(results.take(16));
+      },
+    );
   }
 
   @override
@@ -442,7 +455,8 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
     final seen = <String>{};
     final merged = <MapSearchResult>[];
     for (final result in [...stationResults, ...remoteResults]) {
-      final key = '${result.name.toLowerCase()}|${result.latitude.toStringAsFixed(4)}|${result.longitude.toStringAsFixed(4)}';
+      final key =
+          '${result.name.toLowerCase()}|${result.latitude.toStringAsFixed(4)}|${result.longitude.toStringAsFixed(4)}';
       if (seen.add(key)) merged.add(result);
     }
     return merged;

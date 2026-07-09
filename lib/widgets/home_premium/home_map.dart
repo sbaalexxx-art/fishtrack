@@ -69,7 +69,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     if (widget.child == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _locateUser());
     }
-    if (widget.showWaterStations) {
+    if (widget.child == null || widget.showWaterStations) {
       _loadStations();
     }
   }
@@ -100,6 +100,18 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     }
     await Future.wait([_loadFavoriteIds(), _loadRecentCatches()]);
   }
+  Future<List<Station>> _ensureStationsLoaded() async {
+    if (_stations.isNotEmpty) return _stations;
+
+    try {
+      final stations = await _waterService.getStations();
+      if (mounted) setState(() => _stations = stations);
+      return stations;
+    } on Exception {
+      return _stations;
+    }
+  }
+
 
   Future<void> _loadFavoriteIds() async {
     if (!_favoriteStationsService.isAuthenticated) {
@@ -143,13 +155,16 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
     setState(() => _isSearching = true);
     try {
+      final stations = await _ensureStationsLoaded();
+      if (!mounted) return;
+
       final selected = await showSearch<MapSearchResult?>(
         context: context,
         delegate: _MapSearchDelegate(
           searchService: _searchService,
-          stations: _stations,
-          hintText: context.l10n.searchStation,
-          noResultsText: context.l10n.noStationFound,
+          stations: stations,
+          hintText: context.l10n.mapSearchHint,
+          noResultsText: context.l10n.noMapSearchResult,
         ),
       );
 
@@ -1008,11 +1023,25 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
 
   @override
   Widget buildSuggestions(BuildContext context) {
-    final stationResults = searchService.searchStations(query, stations);
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
       return _buildStationSuggestions(stations.take(12).map(_stationResult));
     }
-    return _buildStationSuggestions(stationResults.take(12));
+
+    return FutureBuilder<List<MapSearchResult>>(
+      future: _combinedResults(trimmed),
+      builder: (context, snapshot) {
+        final stationFallback =
+            searchService.searchStations(trimmed, stations).take(12);
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildStationSuggestions(stationFallback);
+        }
+
+        final results = snapshot.data ?? stationFallback.toList(growable: false);
+        if (results.isEmpty) return Center(child: Text(noResultsText));
+        return _buildStationSuggestions(results.take(12));
+      },
+    );
   }
 
   @override
@@ -1060,7 +1089,8 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
     final seen = <String>{};
     final merged = <MapSearchResult>[];
     for (final result in [...stationResults, ...remoteResults]) {
-      final key = '${result.name.toLowerCase()}|${result.latitude.toStringAsFixed(4)}|${result.longitude.toStringAsFixed(4)}';
+      final key =
+          '${result.name.toLowerCase()}|${result.latitude.toStringAsFixed(4)}|${result.longitude.toStringAsFixed(4)}';
       if (seen.add(key)) merged.add(result);
     }
     return merged;

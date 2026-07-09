@@ -428,6 +428,12 @@ class AppLocalizationsRo extends AppLocalizations {
   String get searchStation => 'Caută numele stației…';
 
   @override
+  String get mapSearchHint => 'Caută stație sau locație…';
+
+  @override
+  String get noMapSearchResult => 'Nu a fost găsită nicio stație sau locație.';
+
+  @override
   String get noStationFound => 'Nu a fost găsită nicio stație.';
 
   @override

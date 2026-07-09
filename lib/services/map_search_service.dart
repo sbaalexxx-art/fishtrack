@@ -18,6 +18,10 @@ class MapSearchResult {
 class MapSearchService {
   const MapSearchService({this.apiClient = const ApiClient()});
 
+  static const _mapboxAccessToken = String.fromEnvironment(
+    'MAPBOX_ACCESS_TOKEN',
+  );
+
   final ApiClient apiClient;
 
   List<MapSearchResult> searchStations(
@@ -26,8 +30,16 @@ class MapSearchService {
   ) {
     final normalized = normalize(query);
     if (normalized.isEmpty) return const [];
+
     return stations
-        .where((station) => normalize(station.name).contains(normalized))
+        .where((station) {
+          final name = normalize(station.name);
+          final river = normalize(station.river);
+          final id = normalize(station.id);
+          return name.contains(normalized) ||
+              river.contains(normalized) ||
+              id.contains(normalized);
+        })
         .map(
           (station) => MapSearchResult(
             name: station.name,
@@ -37,6 +49,172 @@ class MapSearchService {
           ),
         )
         .toList(growable: false);
+  }
+
+  Future<List<MapSearchResult>> search(String query) async {
+    final normalized = query.trim();
+    if (normalized.length < 2) return const [];
+
+    if (_mapboxAccessToken.isNotEmpty) {
+      final mapboxResults = await _searchMapbox(normalized);
+      if (mapboxResults.isNotEmpty) return mapboxResults;
+    }
+
+    return _searchPhoton(normalized);
+  }
+
+  Future<List<MapSearchResult>> _searchMapbox(String query) async {
+    final v6Results = await _searchMapboxV6(query);
+    if (v6Results.isNotEmpty) return v6Results;
+    return _searchMapboxV5(query);
+  }
+
+  Future<List<MapSearchResult>> _searchMapboxV6(String query) async {
+    final uri = Uri.https('api.mapbox.com', '/search/geocode/v6/forward', {
+      'q': query,
+      'limit': '8',
+      'language': 'ro,en',
+      'autocomplete': 'true',
+      'access_token': _mapboxAccessToken,
+    });
+
+    try {
+      final payload = await apiClient
+          .get(uri.toString())
+          .timeout(const Duration(seconds: 10));
+      if (payload is! Map || payload['features'] is! List) return const [];
+
+      return (payload['features'] as List)
+          .whereType<Map>()
+          .map(_mapboxFeatureResult)
+          .whereType<MapSearchResult>()
+          .toList(growable: false);
+    } on Exception {
+      return const [];
+    }
+  }
+
+  Future<List<MapSearchResult>> _searchMapboxV5(String query) async {
+    final uri = Uri(
+      scheme: 'https',
+      host: 'api.mapbox.com',
+      pathSegments: ['geocoding', 'v5', 'mapbox.places', '$query.json'],
+      queryParameters: {
+        'access_token': _mapboxAccessToken,
+        'limit': '8',
+        'language': 'ro,en',
+        'autocomplete': 'true',
+      },
+    );
+
+    try {
+      final payload = await apiClient
+          .get(uri.toString())
+          .timeout(const Duration(seconds: 10));
+      if (payload is! Map || payload['features'] is! List) return const [];
+
+      return (payload['features'] as List)
+          .whereType<Map>()
+          .map(_mapboxFeatureResult)
+          .whereType<MapSearchResult>()
+          .toList(growable: false);
+    } on Exception {
+      return const [];
+    }
+  }
+
+  Future<List<MapSearchResult>> _searchPhoton(String query) async {
+    final uri = Uri.https('photon.komoot.io', '/api/', {
+      'q': query,
+      'limit': '8',
+      'lang': 'en',
+    });
+
+    try {
+      final payload = await apiClient
+          .get(uri.toString())
+          .timeout(const Duration(seconds: 10));
+      if (payload is! Map || payload['features'] is! List) return const [];
+
+      return (payload['features'] as List)
+          .whereType<Map>()
+          .map(_photonFeatureResult)
+          .whereType<MapSearchResult>()
+          .toList(growable: false);
+    } on Exception {
+      return const [];
+    }
+  }
+
+  static MapSearchResult? _mapboxFeatureResult(Map feature) {
+    final geometry = feature['geometry'];
+    final properties = feature['properties'];
+    if (geometry is! Map || geometry['coordinates'] is! List) return null;
+
+    final coordinates = geometry['coordinates'] as List;
+    if (coordinates.length < 2) return null;
+
+    final longitude = _number(coordinates[0]);
+    final latitude = _number(coordinates[1]);
+    if (latitude == null || longitude == null) return null;
+
+    final nameCandidates = <Object?>[
+      if (properties is Map) properties['name'],
+      if (properties is Map) properties['full_address'],
+      if (properties is Map) properties['place_formatted'],
+      feature['place_name'],
+      feature['text'],
+    ];
+    final name = _firstText(nameCandidates);
+    if (name == null) return null;
+
+    final descriptionCandidates = <Object?>[
+      if (properties is Map) properties['full_address'],
+      if (properties is Map) properties['place_formatted'],
+      feature['place_name'],
+    ];
+    final description = _firstText(
+      descriptionCandidates.where((value) => value?.toString() != name),
+    );
+
+    return MapSearchResult(
+      name: name,
+      description: description,
+      latitude: latitude,
+      longitude: longitude,
+    );
+  }
+
+  static MapSearchResult? _photonFeatureResult(Map feature) {
+    final geometry = feature['geometry'];
+    final properties = feature['properties'];
+    if (geometry is! Map ||
+        properties is! Map ||
+        geometry['coordinates'] is! List) {
+      return null;
+    }
+
+    final coordinates = geometry['coordinates'] as List;
+    if (coordinates.length < 2) return null;
+
+    final longitude = _number(coordinates[0]);
+    final latitude = _number(coordinates[1]);
+    final name = _firstText([properties['name']]);
+    if (latitude == null || longitude == null || name == null) return null;
+
+    final place = _firstText([
+      properties['city'],
+      properties['county'],
+      properties['state'],
+      properties['country'],
+    ]);
+
+    return MapSearchResult(
+      name: name,
+      description: place,
+      latitude: latitude,
+      longitude: longitude,
+    );
   }
 
   static String normalize(String value) => value
@@ -51,52 +229,12 @@ class MapSearchService {
       .replaceAll(RegExp(r'[úùü]'), 'u')
       .replaceAll(RegExp(r'\s+'), ' ');
 
-  Future<List<MapSearchResult>> search(String query) async {
-    final normalized = query.trim();
-    if (normalized.length < 2) return const [];
-
-    final uri = Uri.https('photon.komoot.io', '/api/', {
-      'q': normalized,
-      'limit': '8',
-      'lang': 'en',
-    });
-    final payload = await apiClient
-        .get(uri.toString())
-        .timeout(const Duration(seconds: 12));
-    if (payload is! Map || payload['features'] is! List) return const [];
-
-    return (payload['features'] as List)
-        .whereType<Map>()
-        .map((feature) {
-          final geometry = feature['geometry'];
-          final properties = feature['properties'];
-          if (geometry is! Map ||
-              properties is! Map ||
-              geometry['coordinates'] is! List) {
-            return null;
-          }
-          final coordinates = geometry['coordinates'] as List;
-          if (coordinates.length < 2) return null;
-          final longitude = _number(coordinates[0]);
-          final latitude = _number(coordinates[1]);
-          final name = properties['name']?.toString().trim();
-          if (latitude == null ||
-              longitude == null ||
-              name == null ||
-              name.isEmpty) {
-            return null;
-          }
-          final place =
-              properties['city'] ?? properties['county'] ?? properties['state'];
-          return MapSearchResult(
-            name: name,
-            description: place?.toString(),
-            latitude: latitude,
-            longitude: longitude,
-          );
-        })
-        .whereType<MapSearchResult>()
-        .toList(growable: false);
+  static String? _firstText(Iterable<Object?> values) {
+    for (final value in values) {
+      final text = value?.toString().trim();
+      if (text != null && text.isNotEmpty) return text;
+    }
+    return null;
   }
 
   static double? _number(Object? value) => value is num

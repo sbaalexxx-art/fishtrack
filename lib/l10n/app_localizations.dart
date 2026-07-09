@@ -854,6 +854,18 @@ abstract class AppLocalizations {
   /// **'Caută numele stației…'**
   String get searchStation;
 
+  /// No description provided for @mapSearchHint.
+  ///
+  /// In ro, this message translates to:
+  /// **'Caută stație sau locație…'**
+  String get mapSearchHint;
+
+  /// No description provided for @noMapSearchResult.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu a fost găsită nicio stație sau locație.'**
+  String get noMapSearchResult;
+
   /// No description provided for @noStationFound.
   ///
   /// In ro, this message translates to:
