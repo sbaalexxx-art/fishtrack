@@ -41,6 +41,56 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
     );
   }
 
+  String _localizedCondition(
+    BuildContext context, {
+    required bool hasError,
+    required String? condition,
+  }) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+
+    if (hasError) {
+      return isRo
+          ? 'Nu se pot actualiza datele acum'
+          : 'Unable to update data right now';
+    }
+
+    final value = condition?.trim();
+    if (value == null || value.isEmpty) {
+      return context.l10n.loadingEllipsis;
+    }
+
+    if (!isRo) {
+      return value;
+    }
+
+    switch (value.toLowerCase()) {
+      case 'clear sky':
+        return 'Cer senin';
+      case 'partly cloudy':
+        return 'Parțial înnorat';
+      case 'overcast':
+        return 'Cer acoperit';
+      case 'fog':
+        return 'Ceață';
+      case 'drizzle':
+        return 'Burniță';
+      case 'rain':
+        return 'Ploaie';
+      case 'snow':
+        return 'Ninsoare';
+      case 'rain showers':
+        return 'Averse de ploaie';
+      case 'snow showers':
+        return 'Averse de ninsoare';
+      case 'thunderstorm':
+        return 'Furtună';
+      case 'unknown':
+        return 'Necunoscut';
+      default:
+        return value;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<WeatherData>(
@@ -51,9 +101,11 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
         final temperature = weather == null
             ? '--'
             : weather.temperature.round().toString();
-        final condition = snapshot.hasError
-            ? 'Unable to update data right now'
-            : weather?.condition ?? context.l10n.loadingEllipsis;
+        final condition = _localizedCondition(
+          context,
+          hasError: snapshot.hasError,
+          condition: weather?.condition,
+        );
         final humidity = weather == null
             ? '--'
             : '${weather.humidity.round()}%';
