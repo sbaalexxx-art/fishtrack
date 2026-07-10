@@ -51,11 +51,18 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
             builder: (context, constraints) {
               final layout = HomePremiumLayout.of(context);
               final compact = constraints.maxWidth < 180;
+              final isRo = Localizations.localeOf(context).languageCode == 'ro';
               final status = isLoading
-                  ? 'Loading community...'
+                  ? (isRo
+                        ? 'Se încarcă activitatea...'
+                        : 'Loading community...')
                   : snapshot.hasError
-                  ? 'No community updates available yet'
-                  : '$activeReports active reports';
+                  ? (isRo
+                        ? 'Nu există încă actualizări din comunitate'
+                        : 'No community updates available yet')
+                  : (isRo
+                        ? '$activeReports rapoarte active'
+                        : '$activeReports active reports');
 
               return Container(
                 padding: EdgeInsets.all(
@@ -78,7 +85,7 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'COMMUNITY',
+                            isRo ? 'COMUNITATE' : 'COMMUNITY',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: AppTextStyles.cardTitle.copyWith(
@@ -122,7 +129,9 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '$reportsToday reports today',
+                      isRo
+                          ? '$reportsToday rapoarte astăzi'
+                          : '$reportsToday reports today',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.caption.copyWith(
@@ -130,16 +139,20 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                       ),
                     ),
                     const Spacer(),
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.circle, size: 9, color: Color(0xFF4CAF50)),
-                        SizedBox(width: 6),
+                        const Icon(
+                          Icons.circle,
+                          size: 9,
+                          color: Color(0xFF4CAF50),
+                        ),
+                        const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Live activity',
+                            isRo ? 'Activitate live' : 'Live activity',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Color(0xFF4CAF50),
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
