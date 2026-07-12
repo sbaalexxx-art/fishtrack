@@ -27,6 +27,7 @@ dependencies:
   geolocator: ^14.0.2
   image_picker: ^1.2.3
   mapbox_maps_flutter: ^2.25.1
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
