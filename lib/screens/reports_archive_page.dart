@@ -63,7 +63,10 @@ class _ReportsArchivePageState extends State<ReportsArchivePage> {
               child: SegmentedButton<_ArchivePeriod>(
                 segments: [
                   for (final period in _ArchivePeriod.values)
-                    ButtonSegment(value: period, label: Text(period.label)),
+                    ButtonSegment(
+                      value: period,
+                      label: Text(_localizedArchiveLabel(context, period.label)),
+                    ),
                 ],
                 selected: {_period},
                 onSelectionChanged: (selection) =>
@@ -86,8 +89,11 @@ class _ReportsArchivePageState extends State<ReportsArchivePage> {
                           children: [
                             const Icon(Icons.cloud_off_outlined, size: 48),
                             const SizedBox(height: 12),
-                            const Text(
-                              'Reports archive is currently unavailable.',
+                            Text(
+                              _localizedArchiveLabel(
+                                context,
+                                'Reports archive is currently unavailable.',
+                              ),
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 12),
@@ -148,8 +154,8 @@ class _SummaryCard extends StatelessWidget {
     final categories = _categoryCounts(comparison.current).entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final mostActive = categories.isEmpty
-        ? 'No data'
-        : categories.first.key.label;
+        ? _localizedArchiveLabel(context, 'No data')
+        : _localizedCategoryLabel(context, categories.first.key.label);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -160,20 +166,36 @@ class _SummaryCard extends StatelessWidget {
               spacing: 20,
               runSpacing: 12,
               children: [
-                _summary('Total reports', '${comparison.current.length}'),
-                _summary('Most active category', mostActive),
-                _summary('Risk reports', '${groupCounts[_ReportGroup.risk]}'),
-                _summary('Water reports', '${groupCounts[_ReportGroup.water]}'),
+                _summary(
+                  _localizedArchiveLabel(context, 'Total reports'),
+                  '${comparison.current.length}',
+                ),
+                _summary(
+                  _localizedArchiveLabel(context, 'Most active category'),
+                  mostActive,
+                ),
+                _summary(
+                  _localizedArchiveLabel(context, 'Risk reports'),
+                  '${groupCounts[_ReportGroup.risk]}',
+                ),
+                _summary(
+                  _localizedArchiveLabel(context, 'Water reports'),
+                  '${groupCounts[_ReportGroup.water]}',
+                ),
               ],
             ),
             const Divider(height: 24),
             Text(
-              'Trend: ${comparison.trendLabel}',
+              '${_localizedArchiveLabel(context, 'Trend:')} '
+              '${_localizedArchiveLabel(context, comparison.trendLabel)}',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             Text(
-              '${comparison.current.length} in selected period vs '
-              '${comparison.previous.length} in previous period',
+              _localizedComparisonLabel(
+                context,
+                comparison.current.length,
+                comparison.previous.length,
+              ),
             ),
           ],
         ),
@@ -208,7 +230,7 @@ class _CategoryCountsCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Reports by category',
+              _localizedArchiveLabel(context, 'Reports by category'),
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
@@ -220,7 +242,10 @@ class _CategoryCountsCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [Text(entry.key.label), Text('${entry.value}')],
+                    children: [
+                      Text(_localizedCategoryLabel(context, entry.key.label)),
+                      Text('${entry.value}'),
+                    ],
                   ),
                 ),
           ],
@@ -243,7 +268,7 @@ class _ReportTile extends StatelessWidget {
           for (final reason in ReportAbuseReason.values)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, reason),
-              child: Text(reason.label),
+              child: Text(_localizedAbuseReason(context, reason.label)),
             ),
         ],
       ),
@@ -269,7 +294,14 @@ class _ReportTile extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     child: ListTile(
       leading: const Icon(Icons.report_outlined),
-      title: Text(report.reportCategory?.label ?? report.title),
+      title: Text(
+        report.reportCategory == null
+            ? report.title
+            : _localizedCategoryLabel(
+                context,
+                report.reportCategory!.label,
+              ),
+      ),
       trailing: IconButton(
         tooltip: context.l10n.reportAbuse,
         onPressed: () => _reportAbuse(context),
@@ -286,7 +318,7 @@ class _ReportTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                'Under review',
+                _localizedArchiveLabel(context, 'Under review'),
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ),
@@ -299,7 +331,8 @@ class _ReportTile extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                '${_dateLabel(report.createdAt)} • Community • '
+                '${_dateLabel(report.createdAt)} • '
+                '${_localizedArchiveLabel(context, 'Community')} • '
                 '${report.authorName}',
               ),
               TrustBadge(level: report.authorTrustLevel),
@@ -329,6 +362,77 @@ class _ArchiveComparison {
     if (current.length < previous.length) return 'Decreasing';
     return 'Stable';
   }
+}
+
+String _localizedArchiveLabel(BuildContext context, String value) {
+  if (Localizations.localeOf(context).languageCode != 'ro') return value;
+  return switch (value.trim().toLowerCase()) {
+    'last 24h' => 'Ultimele 24 h',
+    'last 3 days' => 'Ultimele 3 zile',
+    'last 7 days' => 'Ultimele 7 zile',
+    'reports archive is currently unavailable.' =>
+      'Arhiva raportărilor este momentan indisponibilă.',
+    'no data' => 'Nu există date',
+    'total reports' => 'Total raportări',
+    'most active category' => 'Cea mai activă categorie',
+    'risk reports' => 'Raportări de risc',
+    'water reports' => 'Raportări despre apă',
+    'trend:' => 'Tendință:',
+    'reports by category' => 'Raportări pe categorii',
+    'under review' => 'În curs de verificare',
+    'community' => 'Comunitate',
+    'not enough data' => 'Date insuficiente',
+    'increasing' => 'În creștere',
+    'decreasing' => 'În scădere',
+    'stable' => 'Stabil',
+    _ => value,
+  };
+}
+
+String _localizedComparisonLabel(
+  BuildContext context,
+  int current,
+  int previous,
+) {
+  if (Localizations.localeOf(context).languageCode != 'ro') {
+    return '$current in selected period vs $previous in previous period';
+  }
+  return '$current în perioada selectată față de $previous în perioada precedentă';
+}
+
+String _localizedCategoryLabel(BuildContext context, String value) {
+  if (Localizations.localeOf(context).languageCode != 'ro') return value;
+  return switch (value.trim().toLowerCase()) {
+    'fish activity' => 'Activitate a peștilor',
+    'water clarity' => 'Claritatea apei',
+    'floating grass' => 'Vegetație plutitoare',
+    'high water' => 'Nivel ridicat al apei',
+    'low water' => 'Nivel scăzut al apei',
+    'strong current' => 'Curent puternic',
+    'no current' => 'Fără curent',
+    'boats' => 'Ambarcațiuni',
+    'poaching' => 'Braconaj',
+    'theft warning' => 'Avertizare de furt',
+    'access blocked' => 'Acces blocat',
+    'parking available' => 'Parcare disponibilă',
+    'good fishing' => 'Pescuit bun',
+    'poor fishing' => 'Pescuit slab',
+    'other' => 'Altele',
+    _ => value,
+  };
+}
+
+String _localizedAbuseReason(BuildContext context, String value) {
+  if (Localizations.localeOf(context).languageCode != 'ro') return value;
+  return switch (value.trim().toLowerCase()) {
+    'spam' => 'Spam',
+    'fake information' => 'Informații false',
+    'offensive content' => 'Conținut ofensator',
+    'dangerous/illegal activity' =>
+      'Activitate periculoasă sau ilegală',
+    'other' => 'Alt motiv',
+    _ => value,
+  };
 }
 
 Map<ReportCategory, int> _categoryCounts(List<CommunityPost> reports) {
