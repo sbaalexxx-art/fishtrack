@@ -119,7 +119,7 @@ class _WeatherContent extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    weather.condition,
+                    _localizedWeatherCondition(context, weather.condition),
                     style: Theme.of(
                       context,
                     ).textTheme.titleLarge?.copyWith(color: Colors.white),
@@ -158,7 +158,10 @@ class _WeatherContent extends StatelessWidget {
                   _windDirection(
                     context,
                     weather.windDirectionDegrees,
-                    weather.windDirectionLabel,
+                    _localizedWindDirectionLabel(
+                      context,
+                      weather.windDirectionLabel,
+                    ),
                   ),
                 ),
                 const Divider(height: 1),
@@ -245,7 +248,7 @@ class _WeatherContent extends StatelessWidget {
                             ),
                             Text(
                               '${context.l10n.direction}: '
-                              '${_windDirection(context, hour.windDirectionDegrees, hour.windDirectionLabel)}',
+                              '${_windDirection(context, hour.windDirectionDegrees, _localizedWindDirectionLabel(context, hour.windDirectionLabel))}',
                             ),
                             Text(
                               '${context.l10n.precipitation}: '
@@ -279,7 +282,9 @@ class _WeatherContent extends StatelessWidget {
                       color: Color(0xFF1565C0),
                     ),
                     title: Text(_dayLabel(context, day.date)),
-                    subtitle: Text(day.condition),
+                    subtitle: Text(
+                      _localizedWeatherCondition(context, day.condition),
+                    ),
                     trailing: Text(
                       '${day.minimumTemperature.round()}° / ${day.maximumTemperature.round()}°',
                       style: TextStyle(
@@ -322,7 +327,7 @@ class _WeatherContent extends StatelessWidget {
                 color: Color(0xFFE0E7FF),
               ),
               title: Text(
-                '${astronomy.moon.name} • '
+                '${_localizedMoonPhase(context, astronomy.moon.name)} • '
                 '${astronomy.moon.illuminationPercent.round()}% ${context.l10n.illuminated}',
                 style: const TextStyle(color: Colors.white),
               ),
@@ -380,6 +385,65 @@ class _WeatherContent extends StatelessWidget {
     return '$label (${degrees.round()}°)';
   }
 
+  static String _localizedWeatherCondition(
+    BuildContext context,
+    String value,
+  ) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    if (!isRo) return value;
+    return switch (value.trim().toLowerCase()) {
+      'clear' || 'clear sky' || 'sunny' => 'Senin',
+      'mainly clear' || 'mostly clear' => 'Mai mult senin',
+      'partly cloudy' => 'Parțial înnorat',
+      'cloudy' => 'Înnorat',
+      'overcast' => 'Cer acoperit',
+      'fog' || 'mist' => 'Ceață',
+      'drizzle' => 'Burniță',
+      'rain' || 'light rain' || 'moderate rain' || 'heavy rain' => 'Ploaie',
+      'showers' || 'rain showers' => 'Averse',
+      'snow' || 'snow showers' => 'Ninsoare',
+      'sleet' => 'Lapoviță',
+      'thunderstorm' || 'thunderstorms' => 'Furtună',
+      'hail' => 'Grindină',
+      _ => value,
+    };
+  }
+
+  static String _localizedWindDirectionLabel(
+    BuildContext context,
+    String value,
+  ) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    if (!isRo) return value;
+    return switch (value.trim().toLowerCase()) {
+      'n' || 'north' => 'N',
+      'ne' || 'north east' || 'northeast' => 'NE',
+      'e' || 'east' => 'E',
+      'se' || 'south east' || 'southeast' => 'SE',
+      's' || 'south' => 'S',
+      'sw' || 'south west' || 'southwest' => 'SV',
+      'w' || 'west' => 'V',
+      'nw' || 'north west' || 'northwest' => 'NV',
+      _ => value,
+    };
+  }
+
+  static String _localizedMoonPhase(BuildContext context, String value) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    if (!isRo) return value;
+    return switch (value.trim().toLowerCase()) {
+      'new moon' => 'Lună nouă',
+      'waxing crescent' => 'Semilună în creștere',
+      'first quarter' => 'Primul pătrar',
+      'waxing gibbous' => 'Lună gibboasă în creștere',
+      'full moon' => 'Lună plină',
+      'waning gibbous' => 'Lună gibboasă în descreștere',
+      'last quarter' || 'third quarter' => 'Ultimul pătrar',
+      'waning crescent' => 'Semilună în descreștere',
+      _ => value,
+    };
+  }
+
   static String _dayLabel(BuildContext context, DateTime date) {
     final days = [
       context.l10n.mondayShort,
@@ -398,6 +462,8 @@ class _WeatherContent extends StatelessWidget {
     AstronomyContext context,
   ) {
     final golden = context.goldenHour;
+    final isRo =
+        Localizations.localeOf(buildContext).languageCode == 'ro';
     if (context.availability == AstronomyAvailability.locationRequired) {
       return buildContext.l10n.locationRequired;
     }
@@ -405,7 +471,7 @@ class _WeatherContent extends StatelessWidget {
         golden == null) {
       return buildContext.l10n.notAvailable;
     }
-    return '${_clock(golden.morningStart)}–${_clock(golden.morningEnd)} ${buildContext.l10n.or} '
+    return '${_clock(golden.morningStart)}–${_clock(golden.morningEnd)} ${isRo ? 'sau' : buildContext.l10n.or} '
         '${_clock(golden.eveningStart)}–${_clock(golden.eveningEnd)}';
   }
 
