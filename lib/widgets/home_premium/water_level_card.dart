@@ -64,7 +64,9 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         final stationName =
             station?.name ??
             (snapshot.hasError
-                ? 'Unable to update data right now'
+                ? Localizations.localeOf(context).languageCode == 'ro'
+                      ? 'Datele nu pot fi actualizate momentan'
+                      : 'Unable to update data right now'
                 : isLoading
                 ? context.l10n.loadingEllipsis
                 : context.l10n.noStationAvailable);
@@ -83,7 +85,9 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
             : context.l10n.noData;
         final lastUpdate = station == null
             ? (snapshot.hasError
-                  ? 'Please try again in a few moments'
+                  ? Localizations.localeOf(context).languageCode == 'ro'
+                        ? 'Încercați din nou în câteva momente'
+                        : 'Please try again in a few moments'
                   : context.l10n.waitingForData)
             : _relativeUpdate(context, station.lastUpdate);
         final sourceLabel = station?.hasWaterLevel == true
