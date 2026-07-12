@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 class HomePremiumLayout {
   const HomePremiumLayout._({
+    required this.isPortrait,
+    required this.isLandscape,
     required this.isSmallPhone,
     required this.isNormalPhone,
     required this.isLargePhone,
@@ -11,10 +13,14 @@ class HomePremiumLayout {
     required this.usableHeight,
     required this.headerHeight,
     required this.heroMapHeight,
-    required this.dashboardAreaHeight,
-    required this.dashboardCardHeight,
+    required this.waterCardHeight,
+    required this.weatherCardHeight,
+    required this.standardSectionHeight,
     required this.recentCatchesHeight,
     required this.bottomNavHeight,
+    required this.bottomContentClearance,
+    required this.dashboardAreaHeight,
+    required this.dashboardCardHeight,
     required this.bottomSafeClearance,
     required this.titleFontScale,
     required this.bodyFontScale,
@@ -27,53 +33,153 @@ class HomePremiumLayout {
     final usableHeight = (size.height - viewPadding.top - viewPadding.bottom)
         .clamp(0.0, double.infinity)
         .toDouble();
-    final isSmallPhone = size.width <= 360;
-    final isNormalPhone = size.width > 360 && size.width <= 430;
-    final isLargePhone = size.width > 430 && size.width < 480;
-    final isTablet = size.width >= 480;
+    final isLandscape = size.width > size.height;
+    final isPortrait = !isLandscape;
+    final shortestSide = size.shortestSide;
+    final isTablet = shortestSide >= 600;
+    final isSmallPhone = !isTablet && shortestSide <= 360;
+    final isNormalPhone =
+        !isTablet && shortestSide > 360 && shortestSide <= 430;
+    final isLargePhone = !isTablet && shortestSide > 430;
+
+    double bounded(double value, double minimum, double maximum) =>
+        value.clamp(minimum, maximum).toDouble();
 
     late final double horizontalPadding;
-    final sectionGap = (usableHeight * .008).clamp(4.0, 10.0).toDouble();
-    final headerHeight = usableHeight * .10;
-    final heroMapHeight = usableHeight * .45;
-    final dashboardAreaHeight = usableHeight * .55;
-    final dashboardContentHeight = (dashboardAreaHeight - (sectionGap * 2))
-        .clamp(0.0, double.infinity)
-        .toDouble();
-    final dashboardCardHeight = (dashboardContentHeight * .35)
-        .clamp(132.0, double.infinity)
-        .toDouble();
-    final recentCatchesHeight = (dashboardContentHeight * .30)
-        .clamp(112.0, double.infinity)
-        .toDouble();
-    final bottomNavHeight = (usableHeight * .072).clamp(58.0, 64.0).toDouble();
+    late final double sectionGap;
+    late final double headerHeight;
+    late final double bottomNavHeight;
+    late final double heroMapHeight;
+    late final double waterCardHeight;
+    late final double weatherCardHeight;
+    late final double standardSectionHeight;
+    late final double recentCatchesHeight;
     late final double titleFontScale;
     late final double bodyFontScale;
     late final double iconScale;
 
-    if (isSmallPhone) {
-      horizontalPadding = 12;
+    if (isTablet) {
+      horizontalPadding = bounded(
+        shortestSide * .04,
+        24,
+        isLandscape ? 32 : 28,
+      );
+      titleFontScale = 1.08;
+      bodyFontScale = 1.05;
+      iconScale = 1.10;
+    } else if (isLandscape) {
+      horizontalPadding = bounded(shortestSide * .04, 14, 18);
+      titleFontScale = .90;
+      bodyFontScale = .90;
+      iconScale = .90;
+    } else if (isSmallPhone) {
+      horizontalPadding = bounded(shortestSide * .035, 12, 14);
       titleFontScale = .90;
       bodyFontScale = .90;
       iconScale = .90;
     } else if (isNormalPhone) {
-      horizontalPadding = 14;
+      horizontalPadding = bounded(shortestSide * .036, 14, 16);
       titleFontScale = .95;
       bodyFontScale = .95;
       iconScale = .95;
     } else if (isLargePhone) {
-      horizontalPadding = 16;
+      horizontalPadding = bounded(shortestSide * .038, 16, 20);
       titleFontScale = 1;
       bodyFontScale = 1;
       iconScale = 1;
-    } else {
-      horizontalPadding = 22;
-      titleFontScale = 1.08;
-      bodyFontScale = 1.05;
-      iconScale = 1.10;
     }
 
+    if (isLandscape) {
+      sectionGap = bounded(usableHeight * .012, 4, 8);
+      headerHeight = bounded(usableHeight * .12, 52, isTablet ? 72 : 64);
+      bottomNavHeight = bounded(
+        usableHeight * .14,
+        isTablet ? 58 : 52,
+        isTablet ? 68 : 58,
+      );
+      final firstHomeViewportHeight = bounded(
+        usableHeight - bottomNavHeight,
+        0,
+        usableHeight,
+      );
+      heroMapHeight = bounded(
+        firstHomeViewportHeight * (isTablet ? .34 : .36),
+        isTablet ? 220 : 190,
+        isTablet ? 320 : 260,
+      );
+      waterCardHeight = bounded(
+        usableHeight * .38,
+        isTablet ? 156 : 132,
+        isTablet ? 190 : 160,
+      );
+      weatherCardHeight = waterCardHeight;
+      standardSectionHeight = bounded(
+        usableHeight * .36,
+        132,
+        isTablet ? 184 : 156,
+      );
+      recentCatchesHeight = bounded(
+        usableHeight * .48,
+        156,
+        isTablet ? 240 : 210,
+      );
+    } else {
+      sectionGap = bounded(
+        usableHeight * .009,
+        isTablet ? 8 : 6,
+        isTablet ? 14 : 10,
+      );
+      headerHeight = bounded(
+        usableHeight * .085,
+        isTablet ? 72 : 64,
+        isTablet ? 96 : 82,
+      );
+      bottomNavHeight = bounded(
+        usableHeight * .072,
+        isTablet ? 64 : 58,
+        isTablet ? 72 : 64,
+      );
+      final firstHomeViewportHeight = bounded(
+        usableHeight - bottomNavHeight,
+        0,
+        usableHeight,
+      );
+      heroMapHeight = bounded(
+        firstHomeViewportHeight * (isTablet ? .41 : .42),
+        isTablet ? 320 : 250,
+        isTablet ? 480 : 390,
+      );
+      waterCardHeight = bounded(
+        usableHeight * (isTablet ? .19 : .205),
+        isTablet ? 180 : 148,
+        isTablet ? 220 : 184,
+      );
+      weatherCardHeight = waterCardHeight;
+      standardSectionHeight = bounded(
+        usableHeight * (isTablet ? .18 : .19),
+        isTablet ? 172 : 140,
+        isTablet ? 212 : 176,
+      );
+      recentCatchesHeight = bounded(
+        usableHeight * .25,
+        isTablet ? 220 : 180,
+        isTablet ? 300 : 240,
+      );
+    }
+
+    final bottomContentClearance =
+        bottomNavHeight + viewPadding.bottom + sectionGap;
+
+    // Transitional compatibility for the current two-row dashboard. These
+    // aliases can be removed after its staged migration to vertical sections.
+    final dashboardCardHeight = standardSectionHeight;
+    final dashboardAreaHeight =
+        (dashboardCardHeight * 2) + recentCatchesHeight + (sectionGap * 2);
+    final bottomSafeClearance = bottomContentClearance;
+
     return HomePremiumLayout._(
+      isPortrait: isPortrait,
+      isLandscape: isLandscape,
       isSmallPhone: isSmallPhone,
       isNormalPhone: isNormalPhone,
       isLargePhone: isLargePhone,
@@ -83,17 +189,23 @@ class HomePremiumLayout {
       usableHeight: usableHeight,
       headerHeight: headerHeight,
       heroMapHeight: heroMapHeight,
-      dashboardAreaHeight: dashboardAreaHeight,
-      dashboardCardHeight: dashboardCardHeight,
+      waterCardHeight: waterCardHeight,
+      weatherCardHeight: weatherCardHeight,
+      standardSectionHeight: standardSectionHeight,
       recentCatchesHeight: recentCatchesHeight,
       bottomNavHeight: bottomNavHeight,
-      bottomSafeClearance: sectionGap + viewPadding.bottom,
+      bottomContentClearance: bottomContentClearance,
+      dashboardAreaHeight: dashboardAreaHeight,
+      dashboardCardHeight: dashboardCardHeight,
+      bottomSafeClearance: bottomSafeClearance,
       titleFontScale: titleFontScale,
       bodyFontScale: bodyFontScale,
       iconScale: iconScale,
     );
   }
 
+  final bool isPortrait;
+  final bool isLandscape;
   final bool isSmallPhone;
   final bool isNormalPhone;
   final bool isLargePhone;
@@ -103,10 +215,16 @@ class HomePremiumLayout {
   final double usableHeight;
   final double headerHeight;
   final double heroMapHeight;
-  final double dashboardAreaHeight;
-  final double dashboardCardHeight;
+  final double waterCardHeight;
+  final double weatherCardHeight;
+  final double standardSectionHeight;
   final double recentCatchesHeight;
   final double bottomNavHeight;
+  final double bottomContentClearance;
+
+  // Transitional compatibility fields for staged Home migration.
+  final double dashboardAreaHeight;
+  final double dashboardCardHeight;
   final double bottomSafeClearance;
   final double titleFontScale;
   final double bodyFontScale;
