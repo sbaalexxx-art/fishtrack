@@ -91,6 +91,33 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
     }
   }
 
+  String _localizedWindDirection(BuildContext context, String value) {
+    if (Localizations.localeOf(context).languageCode != 'ro') return value;
+    return switch (value.trim().toUpperCase()) {
+      'SW' => 'SV',
+      'W' => 'V',
+      'NW' => 'NV',
+      _ => value,
+    };
+  }
+
+  String _unavailableLabel(BuildContext context) =>
+      Localizations.localeOf(context).languageCode == 'ro'
+      ? 'Indisponibil'
+      : 'Unavailable';
+
+  String _pressureLabel(BuildContext context, double? pressure) {
+    if (pressure == null || !pressure.isFinite) {
+      return _unavailableLabel(context);
+    }
+    return '${pressure.round()} hPa';
+  }
+
+  String _timeLabel(BuildContext context, DateTime? value) {
+    if (value == null) return _unavailableLabel(context);
+    return TimeOfDay.fromDateTime(value.toLocal()).format(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<WeatherData>(
@@ -109,16 +136,28 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
         final humidity = weather == null
             ? '--'
             : '${weather.humidity.round()}%';
-        final wind = weather == null
+        final windSpeed = weather == null
             ? '--'
             : '${weather.windSpeed.toStringAsFixed(1)} km/h';
+        final windDirection = weather == null
+            ? '--'
+            : _localizedWindDirection(context, weather.windDirectionLabel);
+        final wind = weather == null ? '--' : '$windSpeed $windDirection';
+        final pressure = _pressureLabel(context, weather?.pressure);
+        final precipitation = weather == null
+            ? '--'
+            : weather.precipitationProbability.isFinite
+            ? '${weather.precipitationProbability.round()}%'
+            : _unavailableLabel(context);
+        final sunrise = _timeLabel(context, weather?.sunrise);
+        final sunset = _timeLabel(context, weather?.sunset);
 
         return PremiumLoadingShimmer(
           isLoading: isLoading,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final layout = HomePremiumLayout.of(context);
-              final compact = constraints.maxWidth < 180;
+              final dense = constraints.maxWidth < 360;
 
               return Container(
                 padding: EdgeInsets.all(
@@ -153,59 +192,126 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.wb_sunny_rounded,
-                          size: compact ? 32 : 40,
-                          color: const Color(0xFFFFC107),
-                        ),
-                        SizedBox(width: compact ? 8 : 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '$temperature°',
-                                maxLines: 1,
-                                style: TextStyle(
-                                  fontSize:
-                                      (compact ? 26 : 32) *
-                                      layout.titleFontScale,
-                                  height: 1,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                    const SizedBox(height: 4),
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            flex: dense ? 3 : 4,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.wb_sunny_rounded,
+                                  size: dense ? 28 : 38,
+                                  color: const Color(0xFFFFC107),
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                condition,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppTextStyles.caption,
-                              ),
-                            ],
+                                SizedBox(width: dense ? 6 : 10),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '$temperature°',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize:
+                                              (dense ? 23 : 30) *
+                                              layout.titleFontScale,
+                                          height: 1,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        condition,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTextStyles.caption,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                          SizedBox(width: dense ? 6 : 12),
+                          Expanded(
+                            flex: dense ? 4 : 5,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _WeatherMetric(
+                                        icon: Icons.air_rounded,
+                                        label: context.l10n.wind,
+                                        value: wind,
+                                        dense: dense,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: _WeatherMetric(
+                                        icon: Icons.speed_rounded,
+                                        label: context.l10n.pressure,
+                                        value: pressure,
+                                        dense: dense,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 5),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _WeatherMetric(
+                                        icon: Icons.water_drop_outlined,
+                                        label: context.l10n.humidity,
+                                        value: humidity,
+                                        dense: dense,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: _WeatherMetric(
+                                        icon: Icons.umbrella_outlined,
+                                        label: context.l10n.precipitation,
+                                        value: precipitation,
+                                        dense: dense,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const Spacer(),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Expanded(
                           child: _WeatherMetric(
-                            icon: Icons.water_drop_outlined,
-                            value: humidity,
-                            compact: compact,
+                            icon: Icons.wb_twilight_rounded,
+                            label: context.l10n.sunrise,
+                            value: sunrise,
+                            dense: dense,
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: _WeatherMetric(
-                            icon: Icons.air,
-                            value: wind,
-                            compact: compact,
+                            icon: Icons.nights_stay_outlined,
+                            label: context.l10n.sunset,
+                            value: sunset,
+                            dense: dense,
                           ),
                         ),
                       ],
@@ -224,26 +330,46 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
 class _WeatherMetric extends StatelessWidget {
   const _WeatherMetric({
     required this.icon,
+    required this.label,
     required this.value,
-    required this.compact,
+    required this.dense,
   });
 
   final IconData icon;
+  final String label;
   final String value;
-  final bool compact;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: Colors.white70, size: 15),
+        Icon(icon, color: Colors.white70, size: dense ? 13 : 15),
         const SizedBox(width: 4),
         Expanded(
-          child: Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.caption.copyWith(fontSize: compact ? 11 : 13),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption.copyWith(
+                  color: Colors.white54,
+                  fontSize: dense ? 8 : 9,
+                ),
+              ),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption.copyWith(
+                  fontSize: dense ? 9 : 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ],
