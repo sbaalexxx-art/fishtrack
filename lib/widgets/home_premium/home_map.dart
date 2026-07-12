@@ -831,7 +831,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
               // SEARCH - icon only, small and premium.
               Positioned(
                 left: 10,
-                top: 10,
+                top: 44,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _openCompactSearch,
@@ -862,8 +862,8 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
               // Floating tools stay compact and do not reduce map height.
               Positioned(
-                right: 10,
-                top: 58,
+                right: 12,
+                top: 44,
                 child: Column(
                   children: [
                     _FloatingButton(
@@ -885,7 +885,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
               // LOCATION - compact overlay over the map, not separate layout space.
               Positioned(
                 left: 10,
-                bottom: 10,
+                bottom: 36,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _handleLocationAction,
@@ -938,7 +938,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
               // LIVE - small premium badge over the map.
               Positioned(
-                right: 10,
+                right: 12,
                 bottom: 10,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
