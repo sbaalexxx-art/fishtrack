@@ -103,12 +103,13 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
 
     final now = DateTime.now();
     final cutoff = now.subtract(const Duration(hours: 24));
-    final filtered = readings
-        .where((reading) => reading.value.isFinite)
-        .where((reading) => !reading.timestamp.isBefore(cutoff))
-        .where((reading) => !reading.timestamp.isAfter(now))
-        .toList(growable: false)
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final filtered =
+        readings
+            .where((reading) => reading.value.isFinite)
+            .where((reading) => !reading.timestamp.isBefore(cutoff))
+            .where((reading) => !reading.timestamp.isAfter(now))
+            .toList(growable: false)
+          ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
     setState(() {
       _history = filtered;
@@ -162,21 +163,25 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
             builder: (context, constraints) {
               final layout = HomePremiumLayout.of(context);
               final narrow = constraints.maxWidth < 340;
-              final trendColor =
+              final hasKnownTrend =
                   station?.hasWaterLevel == true &&
-                      station?.hasKnownTrend == true
+                  station?.hasKnownTrend == true;
+              final trendColor = hasKnownTrend
                   ? _colorFor(trend)
                   : Colors.white54;
-              final history = station != null &&
-                      _historyStationId == station.id
+              final history = station != null && _historyStationId == station.id
                   ? _history
                   : const <WaterLevel>[];
-              final historyLoading = station != null &&
+              final historyLoading =
+                  station != null &&
                   _historyStationId == station.id &&
                   _isHistoryLoading;
-              final isRo =
-                  Localizations.localeOf(context).languageCode == 'ro';
-              final colorScheme = Theme.of(context).colorScheme;
+              final hasEnoughHistory = history.length >= 2;
+              final canShowHistory = hasKnownTrend && hasEnoughHistory;
+              final historyDelta = canShowHistory
+                  ? _historyDeltaLabel(history, station!.waterLevelUnit)
+                  : null;
+              final isRo = Localizations.localeOf(context).languageCode == 'ro';
 
               return Container(
                 padding: EdgeInsets.all(
@@ -210,19 +215,35 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                         ),
                         const SizedBox(width: 8),
                         Flexible(
-                          child: Text(
-                            sourceLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.end,
-                            style: AppTextStyles.caption.copyWith(
-                              fontSize: narrow ? 8 : 10,
-                            ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                sourceLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.end,
+                                style: AppTextStyles.caption.copyWith(
+                                  fontSize: narrow ? 8 : 10,
+                                ),
+                              ),
+                              Text(
+                                lastUpdate,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.end,
+                                style: AppTextStyles.caption.copyWith(
+                                  color: Colors.white54,
+                                  fontSize: narrow ? 7 : 9,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Expanded(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -294,18 +315,19 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                             ),
                                           ),
                                         )
-                                      : history.length >= 2
+                                      : canShowHistory
                                       ? CustomPaint(
                                           painter: _WaterSparklinePainter(
                                             readings: history,
-                                            lineColor: trendColor,
-                                            pointColor: colorScheme.primary,
+                                            color: trendColor,
                                           ),
                                           child: const SizedBox.expand(),
                                         )
                                       : Center(
                                           child: Text(
-                                            isRo
+                                            hasEnoughHistory
+                                                ? context.l10n.unknown
+                                                : isRo
                                                 ? 'Istoric indisponibil'
                                                 : 'History unavailable',
                                             maxLines: 2,
@@ -320,41 +342,37 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                         ),
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  isRo ? 'Trend 24 h' : '24h trend',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.caption.copyWith(
-                                    color: Colors.white54,
-                                    fontSize: narrow ? 8 : 10,
+                                if (historyDelta != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: trendColor.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: trendColor.withValues(
+                                          alpha: 0.45,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      historyDelta,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.caption.copyWith(
+                                        color: trendColor,
+                                        fontSize: narrow ? 8 : 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.schedule,
-                          size: 14,
-                          color: Colors.white54,
-                        ),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: Text(
-                            '$status • $lastUpdate',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.caption.copyWith(
-                              fontSize: narrow ? 10 : 12,
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
@@ -385,6 +403,19 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         WaterTrend.falling => context.l10n.falling,
       };
 
+  static String _historyDeltaLabel(List<WaterLevel> history, String unit) {
+    final first = history.first;
+    final last = history.last;
+    final difference = (last.value - first.value).round();
+    final sign = difference > 0 ? '+' : '';
+    final elapsedHours = last.timestamp.difference(first.timestamp).inHours;
+    final periodLabel = elapsedHours > 0
+        ? ' / ${elapsedHours >= 24 ? 24 : elapsedHours} h'
+        : '';
+
+    return '$sign$difference $unit$periodLabel';
+  }
+
   static String _relativeUpdate(BuildContext context, DateTime timestamp) {
     if (timestamp.millisecondsSinceEpoch == 0) {
       return context.l10n.updateTimeUnavailable;
@@ -405,15 +436,10 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
 }
 
 class _WaterSparklinePainter extends CustomPainter {
-  const _WaterSparklinePainter({
-    required this.readings,
-    required this.lineColor,
-    required this.pointColor,
-  });
+  const _WaterSparklinePainter({required this.readings, required this.color});
 
   final List<WaterLevel> readings;
-  final Color lineColor;
-  final Color pointColor;
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -453,26 +479,45 @@ class _WaterSparklinePainter extends CustomPainter {
       }
     }
 
+    final fillPath = Path.from(path)
+      ..lineTo(points.last.dx, size.height - inset)
+      ..lineTo(points.first.dx, size.height - inset)
+      ..close();
+    canvas.drawPath(
+      fillPath,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color.withValues(alpha: 0.28),
+            color.withValues(alpha: 0.02),
+          ],
+        ).createShader(Offset.zero & size)
+        ..style = PaintingStyle.fill,
+    );
+
     canvas.drawPath(
       path,
       Paint()
-        ..color = lineColor
+        ..color = color
         ..strokeWidth = 2
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
 
-    final pointPaint = Paint()..color = pointColor;
-    for (final point in points) {
-      canvas.drawCircle(point, 2, pointPaint);
-    }
+    final lastPoint = points.last;
+    canvas.drawCircle(
+      lastPoint,
+      5,
+      Paint()..color = color.withValues(alpha: 0.18),
+    );
+    canvas.drawCircle(lastPoint, 2.5, Paint()..color = color);
   }
 
   @override
   bool shouldRepaint(covariant _WaterSparklinePainter oldDelegate) {
-    return oldDelegate.readings != readings ||
-        oldDelegate.lineColor != lineColor ||
-        oldDelegate.pointColor != pointColor;
+    return oldDelegate.readings != readings || oldDelegate.color != color;
   }
 }

@@ -107,12 +107,14 @@ class HomePremiumLayout {
         isTablet ? 220 : 190,
         isTablet ? 320 : 260,
       );
-      waterCardHeight = bounded(
-        usableHeight * .38,
-        isTablet ? 156 : 132,
-        isTablet ? 190 : 160,
+      waterCardHeight = isTablet
+          ? bounded(usableHeight * .20, 135, 160)
+          : bounded(usableHeight * .30, 116, 130);
+      weatherCardHeight = bounded(
+        waterCardHeight * (isTablet ? .74 : .76),
+        isTablet ? 132 : 120,
+        isTablet ? 150 : 130,
       );
-      weatherCardHeight = waterCardHeight;
       standardSectionHeight = bounded(
         usableHeight * .36,
         132,
@@ -125,9 +127,9 @@ class HomePremiumLayout {
       );
     } else {
       sectionGap = bounded(
-        usableHeight * .009,
-        isTablet ? 8 : 6,
-        isTablet ? 14 : 10,
+        shortestSide * (isTablet ? .02 : .027),
+        isTablet ? 12 : 8,
+        isTablet ? 16 : 12,
       );
       headerHeight = bounded(
         usableHeight * .085,
@@ -149,12 +151,33 @@ class HomePremiumLayout {
         isTablet ? 320 : 250,
         isTablet ? 480 : 390,
       );
-      waterCardHeight = bounded(
-        usableHeight * (isTablet ? .19 : .205),
-        isTablet ? 180 : 148,
-        isTablet ? 220 : 184,
-      );
-      weatherCardHeight = waterCardHeight;
+      if (isTablet) {
+        waterCardHeight = bounded(usableHeight * .15, 145, 175);
+        weatherCardHeight = bounded(waterCardHeight * .74, 145, 165);
+      } else {
+        final waterMinimum = isSmallPhone
+            ? 116.0
+            : (isNormalPhone ? 122.0 : 128.0);
+        final waterMaximum = isSmallPhone
+            ? 126.0
+            : (isNormalPhone ? 134.0 : 140.0);
+        final weatherMinimum = isSmallPhone
+            ? 125.0
+            : (isNormalPhone ? 128.0 : 132.0);
+        final weatherMaximum = isSmallPhone
+            ? 136.0
+            : (isNormalPhone ? 142.0 : 150.0);
+        waterCardHeight = bounded(
+          usableHeight * .16,
+          waterMinimum,
+          waterMaximum,
+        );
+        weatherCardHeight = bounded(
+          waterCardHeight * .74,
+          weatherMinimum,
+          weatherMaximum,
+        );
+      }
       standardSectionHeight = bounded(
         usableHeight * (isTablet ? .18 : .19),
         isTablet ? 172 : 140,

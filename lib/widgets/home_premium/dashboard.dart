@@ -37,20 +37,39 @@ class PremiumDashboard extends StatelessWidget {
     return Column(
       children: [
         SizedBox(
-          height: layout.dashboardCardHeight,
+          width: double.infinity,
+          height: layout.waterCardHeight,
+          child: _action(
+            onTap: onWaterLevelPressed,
+            child: const WaterLevelCardPremium(),
+          ),
+        ),
+        SizedBox(height: spacing),
+        SizedBox(
+          width: double.infinity,
+          height: layout.weatherCardHeight,
+          child: _action(
+            onTap: onWeatherPressed,
+            child: const WeatherCardPremium(),
+          ),
+        ),
+        SizedBox(height: spacing),
+        SizedBox(
+          width: double.infinity,
+          height: layout.standardSectionHeight,
           child: Row(
             children: [
               Expanded(
                 child: _action(
-                  onTap: onWaterLevelPressed,
-                  child: const WaterLevelCardPremium(),
+                  onTap: onAiPressed,
+                  child: const AIConditionsCardPremium(),
                 ),
               ),
               SizedBox(width: spacing),
               Expanded(
                 child: _action(
-                  onTap: onWeatherPressed,
-                  child: const WeatherCardPremium(),
+                  onTap: onCommunityPressed,
+                  child: const CommunityCardPremium(),
                 ),
               ),
             ],
@@ -58,27 +77,10 @@ class PremiumDashboard extends StatelessWidget {
         ),
         SizedBox(height: spacing),
         SizedBox(
-          height: layout.dashboardCardHeight,
-          child: Row(
-            children: [
-              Expanded(
-                child: _action(
-                  onTap: onCommunityPressed,
-                  child: const CommunityCardPremium(),
-                ),
-              ),
-              SizedBox(width: spacing),
-              Expanded(
-                child: _action(
-                  onTap: onAiPressed,
-                  child: const AIConditionsCardPremium(),
-                ),
-              ),
-            ],
-          ),
+          width: double.infinity,
+          height: layout.recentCatchesHeight,
+          child: const RecentCatchesCardPremium(),
         ),
-        SizedBox(height: spacing),
-        const RecentCatchesCardPremium(),
       ],
     );
   }

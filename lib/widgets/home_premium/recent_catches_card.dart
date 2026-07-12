@@ -89,8 +89,7 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
               ],
             ),
             const SizedBox(height: 4),
-            SizedBox(
-              height: layout.recentCatchesHeight,
+            Expanded(
               child: FutureBuilder<List<CommunityPost>>(
                 future: _catches,
                 builder: (context, snapshot) {

@@ -113,9 +113,21 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
     return '${pressure.round()} hPa';
   }
 
-  String _timeLabel(BuildContext context, DateTime? value) {
-    if (value == null) return _unavailableLabel(context);
-    return TimeOfDay.fromDateTime(value.toLocal()).format(context);
+  String _solunarLabel(BuildContext context, Object? value) {
+    if (value is! String || value.trim().isEmpty) {
+      return _unavailableLabel(context);
+    }
+
+    final label = value.trim();
+    if (Localizations.localeOf(context).languageCode != 'ro') return label;
+
+    return switch (label.toLowerCase()) {
+      'excellent' => 'Excelent',
+      'good' => 'Bun',
+      'fair' => 'Acceptabil',
+      'poor' => 'Slab',
+      _ => label,
+    };
   }
 
   @override
@@ -149,8 +161,7 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
             : weather.precipitationProbability.isFinite
             ? '${weather.precipitationProbability.round()}%'
             : _unavailableLabel(context);
-        final sunrise = _timeLabel(context, weather?.sunrise);
-        final sunset = _timeLabel(context, weather?.sunset);
+        final solunar = _solunarLabel(context, weather?.fishingActivity);
 
         return PremiumLoadingShimmer(
           isLoading: isLoading,
@@ -167,154 +178,124 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                   color: const Color(0xFF2C2216),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.wb_sunny_rounded,
-                          color: const Color(0xFFFFB300),
-                          size: 20 * layout.iconScale,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            context.l10n.weather.toUpperCase(),
+                    Expanded(
+                      flex: dense ? 3 : 4,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.wb_sunny_rounded,
+                                color: const Color(0xFFFFB300),
+                                size: 18 * layout.iconScale,
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  context.l10n.weather.toUpperCase(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14 * layout.titleFontScale,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$temperature°',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: Colors.white,
+                              fontSize:
+                                  (dense ? 26 : 30) * layout.titleFontScale,
+                              height: 1,
                               fontWeight: FontWeight.bold,
-                              fontSize: 16 * layout.titleFontScale,
+                              color: Colors.white,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: dense ? 3 : 4,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.wb_sunny_rounded,
-                                  size: dense ? 28 : 38,
-                                  color: const Color(0xFFFFC107),
-                                ),
-                                SizedBox(width: dense ? 6 : 10),
-                                Expanded(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '$temperature°',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize:
-                                              (dense ? 23 : 30) *
-                                              layout.titleFontScale,
-                                          height: 1,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        condition,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: AppTextStyles.caption,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(width: dense ? 6 : 12),
-                          Expanded(
-                            flex: dense ? 4 : 5,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _WeatherMetric(
-                                        icon: Icons.air_rounded,
-                                        label: context.l10n.wind,
-                                        value: wind,
-                                        dense: dense,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: _WeatherMetric(
-                                        icon: Icons.speed_rounded,
-                                        label: context.l10n.pressure,
-                                        value: pressure,
-                                        dense: dense,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 5),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _WeatherMetric(
-                                        icon: Icons.water_drop_outlined,
-                                        label: context.l10n.humidity,
-                                        value: humidity,
-                                        dense: dense,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: _WeatherMetric(
-                                        icon: Icons.umbrella_outlined,
-                                        label: context.l10n.precipitation,
-                                        value: precipitation,
-                                        dense: dense,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                          const SizedBox(height: 3),
+                          Text(
+                            condition,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.caption,
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _WeatherMetric(
-                            icon: Icons.wb_twilight_rounded,
-                            label: context.l10n.sunrise,
-                            value: sunrise,
-                            dense: dense,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _WeatherMetric(
-                            icon: Icons.nights_stay_outlined,
-                            label: context.l10n.sunset,
-                            value: sunset,
-                            dense: dense,
-                          ),
-                        ),
-                      ],
+                    SizedBox(width: dense ? 6 : 10),
+                    Container(
+                      width: 1,
+                      color: Colors.white.withValues(alpha: 0.10),
+                    ),
+                    SizedBox(width: dense ? 6 : 10),
+                    Expanded(
+                      flex: dense ? 7 : 8,
+                      child: LayoutBuilder(
+                        builder: (context, metricConstraints) {
+                          final spacing = dense ? 4.0 : 6.0;
+                          final columns = metricConstraints.maxWidth >= 480
+                              ? 5
+                              : 3;
+                          final metricWidth =
+                              (metricConstraints.maxWidth -
+                                  (spacing * (columns - 1))) /
+                              columns;
+                          final metrics = [
+                            _WeatherMetric(
+                              icon: Icons.air_rounded,
+                              label: context.l10n.wind,
+                              value: wind,
+                              dense: dense,
+                            ),
+                            _WeatherMetric(
+                              icon: Icons.speed_rounded,
+                              label: context.l10n.pressure,
+                              value: pressure,
+                              dense: dense,
+                            ),
+                            _WeatherMetric(
+                              icon: Icons.umbrella_outlined,
+                              label: context.l10n.precipitation,
+                              value: precipitation,
+                              dense: dense,
+                            ),
+                            _WeatherMetric(
+                              icon: Icons.water_drop_outlined,
+                              label: context.l10n.humidity,
+                              value: humidity,
+                              dense: dense,
+                            ),
+                            _WeatherMetric(
+                              icon: Icons.nights_stay_outlined,
+                              label: 'Solunar',
+                              value: solunar,
+                              dense: dense,
+                            ),
+                          ];
+
+                          return Align(
+                            alignment: Alignment.centerLeft,
+                            child: Wrap(
+                              spacing: spacing,
+                              runSpacing: dense ? 4 : 6,
+                              children: [
+                                for (final metric in metrics)
+                                  SizedBox(width: metricWidth, child: metric),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),
