@@ -386,16 +386,31 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   }
 
   String get _locationLabel {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
     if (_isLocating) {
-      return 'Locating...';
+      return isRo ? 'Se localizează...' : 'Locating...';
     }
 
     return switch (_locationFailure) {
-      LocationFailureReason.serviceDisabled => 'Location is off',
-      LocationFailureReason.permissionDenied => 'Permission denied',
-      LocationFailureReason.permissionDeniedForever => 'Enable in settings',
-      LocationFailureReason.unavailable => 'Location unavailable',
-      null => 'Current Location',
+      LocationFailureReason.serviceDisabled =>
+        isRo ? 'Localizarea este dezactivată' : 'Location is off',
+      LocationFailureReason.permissionDenied =>
+        isRo ? 'Permisiune refuzată' : 'Permission denied',
+      LocationFailureReason.permissionDeniedForever =>
+        isRo ? 'Activați din setări' : 'Enable in settings',
+      LocationFailureReason.unavailable =>
+        isRo ? 'Locație indisponibilă' : 'Location unavailable',
+      null => isRo ? 'Locația curentă' : 'Current Location',
+    };
+  }
+
+  static String _localizedTrendName(BuildContext context, String value) {
+    if (Localizations.localeOf(context).languageCode != 'ro') return value;
+    return switch (value.trim().toLowerCase()) {
+      'rising' => 'În creștere',
+      'stable' => 'Stabil',
+      'falling' => 'În scădere',
+      _ => value,
     };
   }
 
@@ -438,22 +453,24 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                 child: _GlassSurface(
                   borderRadius: 14,
                   blur: 14,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox.square(
+                        const SizedBox.square(
                           dimension: 12,
                           child: CircularProgressIndicator(
                             strokeWidth: 1.8,
                             color: Color(0xFF67D04B),
                           ),
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text(
-                          'Live data',
-                          style: TextStyle(
+                          Localizations.localeOf(context).languageCode == 'ro'
+                              ? 'Date în timp real'
+                              : 'Live data',
+                          style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
@@ -629,7 +646,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                   spacing: 6,
                   children: WaterTrend.values.map((trend) {
                     return FilterChip(
-                      label: Text(trend.name),
+                      label: Text(_localizedTrendName(context, trend.name)),
                       selected: draft.trends.contains(trend),
                       onSelected: (selected) {
                         setSheetState(() {
