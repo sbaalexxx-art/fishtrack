@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../l10n/app_localizations.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/station.dart';
 import '../../services/fishing_score_service.dart';
@@ -50,6 +49,8 @@ class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
     return FutureBuilder<FishingScoreResult>(
       future: _scoreFuture,
       builder: (context, snapshot) {
+        final isRomanian =
+            Localizations.localeOf(context).languageCode == 'ro';
         final result = snapshot.data;
         final rating = _rating(result?.rating);
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
@@ -59,8 +60,13 @@ class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
             score: result?.score,
             rating: rating,
             recommendation: snapshot.hasError
-                ? 'No data available yet'
-                : result?.recommendation ?? 'Calculating...',
+                ? isRomanian
+                      ? 'Nu există încă date disponibile'
+                      : 'No data available yet'
+                : _localizedStatus(
+                    result?.recommendation ?? 'Calculating...',
+                    isRomanian,
+                  ),
             bestTime: result?.bestTime ?? '--:--',
             confidence: result?.confidence,
             isLoading: isLoading,
@@ -76,6 +82,18 @@ class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
     FishingScoreRating.fair => FishingRating.fair,
     FishingScoreRating.poor || null => FishingRating.poor,
   };
+
+  String _localizedStatus(String value, bool isRomanian) {
+    if (!isRomanian) return value;
+    return switch (value) {
+      'Excellent' => 'Excelent',
+      'Good' => 'Bun',
+      'Fair' => 'Acceptabil',
+      'Poor' => 'Slab',
+      'Calculating...' => 'Se calculează...',
+      _ => value,
+    };
+  }
 }
 
 class _AIConditionsCardView extends StatelessWidget {
@@ -106,6 +124,10 @@ class _AIConditionsCardView extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final isRomanian =
+            Localizations.localeOf(context).languageCode == 'ro';
+        final localizedBestTime =
+            isRomanian ? bestTime.replaceAll(' or ', ' sau ') : bestTime;
         final layout = HomePremiumLayout.of(context);
         final compact = constraints.maxWidth < 180;
         final gaugeSize = (compact ? 48.0 : 58.0) * layout.iconScale;
@@ -131,7 +153,7 @@ class _AIConditionsCardView extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      AppLocalizations.of(context).fluviAiRadar,
+                      isRomanian ? 'Indice FluviAI' : 'FluviAI Fishing Index',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.cardTitle.copyWith(
@@ -208,8 +230,8 @@ class _AIConditionsCardView extends StatelessWidget {
                   Expanded(
                     child: Text(
                       confidence == null
-                          ? 'Best: $bestTime'
-                          : 'Best: $bestTime • $confidence%',
+                          ? '${isRomanian ? 'Cel mai favorabil:' : 'Best:'} $localizedBestTime'
+                          : '${isRomanian ? 'Cel mai favorabil:' : 'Best:'} $localizedBestTime • $confidence%',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.caption.copyWith(
