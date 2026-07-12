@@ -56,7 +56,9 @@ class HomePremiumHeader extends StatelessWidget {
                   ),
                   const SizedBox(height: 1),
                   Text(
-                    'Date live • Comunitate • AI',
+                    Localizations.localeOf(context).languageCode == 'ro'
+                        ? 'Pescuit inteligent • Date live • Comunitate'
+                        : 'Smart fishing • Live data • Community',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
