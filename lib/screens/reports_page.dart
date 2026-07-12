@@ -221,7 +221,9 @@ class _CommunityPostCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
               child: Text(
-                post.title,
+                !isCatch && post.reportCategory != null
+                    ? _reportCategoryLabel(context, post.reportCategory!)
+                    : post.title,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
