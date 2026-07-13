@@ -39,6 +39,13 @@ class WaterUiResult {
   final String? safeDiagnosticMessage;
 }
 
+class _WaterUiCacheEntry {
+  const _WaterUiCacheEntry({required this.result, required this.savedAt});
+
+  final WaterUiResult result;
+  final DateTime savedAt;
+}
+
 class WaterService {
   WaterService({WaterRepository? repository, LocationService? locationService})
     : _repository = repository ?? const WaterRepository(),
@@ -50,6 +57,10 @@ class WaterService {
   static final TimedCache<List<Station>> _stationsCache =
       TimedCache<List<Station>>(duration: cacheDuration);
   static final Map<String, TimedCache<List<WaterLevel>>> _historyCache = {};
+  static final Map<String, _WaterUiCacheEntry> _waterUiCache = {};
+  static final Map<String, Future<WaterUiResult>> _waterUiInFlight = {};
+  static final Map<String, int> _waterUiKeyGenerations = {};
+  static int _waterUiCacheEpoch = 0;
   static Station? _selectedStation;
 
   final WaterRepository _repository;
@@ -68,6 +79,10 @@ class WaterService {
   static void clearCache() {
     _stationsCache.clear();
     _historyCache.clear();
+    _waterUiCacheEpoch++;
+    _waterUiCache.clear();
+    _waterUiInFlight.clear();
+    _waterUiKeyGenerations.clear();
   }
 
   Stream<Station> get stationSelections => _stationSelectionController.stream;
@@ -107,6 +122,53 @@ class WaterService {
     Station station, {
     int limit = 72,
     Duration historyWindow = const Duration(hours: 24),
+    bool forceRefresh = false,
+  }) {
+    final key = _waterUiCacheKey(station, limit, historyWindow);
+    final now = DateTime.now();
+    if (forceRefresh) {
+      _waterUiCache.remove(key);
+      _waterUiInFlight.remove(key);
+      _waterUiKeyGenerations[key] = (_waterUiKeyGenerations[key] ?? 0) + 1;
+    } else {
+      final cached = _waterUiCache[key];
+      if (cached != null && now.difference(cached.savedAt) < cacheDuration) {
+        return Future<WaterUiResult>.value(
+          _withCurrentFreshness(cached.result, now),
+        );
+      }
+      final activeRequest = _waterUiInFlight[key];
+      if (activeRequest != null) return activeRequest;
+    }
+
+    final requestEpoch = _waterUiCacheEpoch;
+    final requestGeneration = _waterUiKeyGenerations[key] ?? 0;
+    late final Future<WaterUiResult> request;
+    request =
+        _loadWaterUiResult(station, limit: limit, historyWindow: historyWindow)
+            .then((result) {
+              if (_waterUiCacheEpoch == requestEpoch &&
+                  (_waterUiKeyGenerations[key] ?? 0) == requestGeneration) {
+                _waterUiCache[key] = _WaterUiCacheEntry(
+                  result: result,
+                  savedAt: DateTime.now(),
+                );
+              }
+              return _withCurrentFreshness(result, DateTime.now());
+            })
+            .whenComplete(() {
+              if (identical(_waterUiInFlight[key], request)) {
+                _waterUiInFlight.remove(key);
+              }
+            });
+    _waterUiInFlight[key] = request;
+    return request;
+  }
+
+  Future<WaterUiResult> _loadWaterUiResult(
+    Station station, {
+    required int limit,
+    required Duration historyWindow,
   }) async {
     final now = DateTime.now();
     final stationReading = _readingFromStation(station);
@@ -139,11 +201,6 @@ class WaterService {
         .toList(growable: false);
     final latestReading = _latestReading(stationReading, validReadings);
     final measurementTimestamp = latestReading?.timestamp;
-    final dataAge = measurementTimestamp == null
-        ? null
-        : _nonNegativeAge(now, measurementTimestamp);
-    final isStale =
-        dataAge != null && dataAge > WaterRepository.defaultFreshnessThreshold;
 
     final status = history.length >= 2
         ? WaterUiStatus.availableHistory
@@ -159,8 +216,8 @@ class WaterService {
       source: latestReading?.source ?? repositoryResult.source,
       sourceName: latestReading?.sourceName,
       measurementTimestamp: measurementTimestamp,
-      dataAge: dataAge,
-      isStale: isStale,
+      dataAge: null,
+      isStale: false,
       status: status,
       safeDiagnosticMessage: repositoryResult.safeDiagnosticMessage,
     );
@@ -218,6 +275,35 @@ class WaterService {
       }
       return selected;
     }
+  }
+
+  String _waterUiCacheKey(Station station, int limit, Duration historyWindow) {
+    final measurementTimestamp = station.hasWaterLevel
+        ? station.lastUpdate.microsecondsSinceEpoch
+        : 'none';
+    return '${identityHashCode(_repository)}:${station.id}:'
+        '$measurementTimestamp:$limit:${historyWindow.inMicroseconds}';
+  }
+
+  static WaterUiResult _withCurrentFreshness(
+    WaterUiResult result,
+    DateTime now,
+  ) {
+    final timestamp = result.measurementTimestamp;
+    final dataAge = timestamp == null ? null : _nonNegativeAge(now, timestamp);
+    final isStale =
+        dataAge != null && dataAge > WaterRepository.defaultFreshnessThreshold;
+    return WaterUiResult(
+      latestReading: result.latestReading,
+      history: result.history,
+      source: result.source,
+      sourceName: result.sourceName,
+      measurementTimestamp: timestamp,
+      dataAge: dataAge,
+      isStale: isStale,
+      status: result.status,
+      safeDiagnosticMessage: result.safeDiagnosticMessage,
+    );
   }
 
   static WaterLevel? _readingFromStation(Station station) {
