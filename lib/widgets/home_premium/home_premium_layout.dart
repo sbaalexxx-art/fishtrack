@@ -145,40 +145,103 @@ class HomePremiumLayout {
       iconScale = 1;
     }
 
-    if (isLandscape) {
-      sectionGap = bounded(usableHeight * .012, 4, 8);
-      headerHeight = bounded(usableHeight * .12, 52, isTablet ? 72 : 64);
+    if (isLandscapePhone) {
+      const landscapePhoneMinimumGap = 4.0;
+      const landscapePhoneMaximumGap = 6.0;
+      const landscapePhoneMinimumHeaderHeight = 48.0;
+      const landscapePhoneMaximumHeaderHeight = 56.0;
+      const landscapePhoneMinimumNavigationHeight = 52.0;
+      const landscapePhoneMaximumNavigationHeight = 58.0;
+      const landscapePhoneMinimumMapHeight = 150.0;
+      const landscapePhoneMaximumMapHeight = 230.0;
+      const landscapePhoneMinimumWaterHeight = 124.0;
+      const landscapePhoneMaximumWaterHeight = 140.0;
+      const landscapePhoneMinimumWeatherHeight = 120.0;
+      const landscapePhoneMaximumWeatherHeight = 132.0;
+      const landscapePhoneMinimumStandardSectionHeight = 132.0;
+      const landscapePhoneMaximumStandardSectionHeight = 156.0;
+      const landscapePhoneMinimumRecentCatchesHeight = 156.0;
+      const landscapePhoneMaximumRecentCatchesHeight = 200.0;
+      const landscapePhoneHeaderSpacingFactor = 1.75;
+      const landscapePhoneMapHeightFactor = .62;
+      const landscapePhoneWaterHeightFactor = .42;
+      const landscapePhoneWeatherHeightFactor = .38;
+      const landscapePhoneStandardSectionHeightFactor = .42;
+      const landscapePhoneRecentCatchesHeightFactor = .50;
+
+      sectionGap = bounded(
+        usableHeight * .012,
+        landscapePhoneMinimumGap,
+        landscapePhoneMaximumGap,
+      );
+      headerHeight = bounded(
+        usableHeight * .16,
+        landscapePhoneMinimumHeaderHeight,
+        landscapePhoneMaximumHeaderHeight,
+      );
       bottomNavHeight = resolveBottomNavigationHeight(
-        bounded(usableHeight * .14, isTablet ? 58 : 52, isTablet ? 68 : 58),
+        bounded(
+          usableHeight * .14,
+          landscapePhoneMinimumNavigationHeight,
+          landscapePhoneMaximumNavigationHeight,
+        ),
       );
       final firstHomeViewportHeight = bounded(
         usableHeight - (bottomNavigationOverlaysBody ? bottomNavHeight : 0),
         0,
         usableHeight,
       );
-      heroMapHeight = bounded(
-        firstHomeViewportHeight * (isTablet ? .34 : .36),
-        isTablet ? 220 : 190,
-        isTablet ? 320 : 260,
+      final mapHeightBudget = bounded(
+        firstHomeViewportHeight -
+            headerHeight -
+            (sectionGap * landscapePhoneHeaderSpacingFactor),
+        0,
+        firstHomeViewportHeight,
       );
-      waterCardHeight = isTablet
-          ? bounded(usableHeight * .20, 135, 160)
-          : bounded(usableHeight * .30, 116, 130);
+      final proportionalMapHeight = bounded(
+        firstHomeViewportHeight * landscapePhoneMapHeightFactor,
+        landscapePhoneMinimumMapHeight,
+        landscapePhoneMaximumMapHeight,
+      );
+      heroMapHeight = proportionalMapHeight
+          .clamp(0.0, mapHeightBudget)
+          .toDouble();
+      waterCardHeight = bounded(
+        usableHeight * landscapePhoneWaterHeightFactor,
+        landscapePhoneMinimumWaterHeight,
+        landscapePhoneMaximumWaterHeight,
+      );
       weatherCardHeight = bounded(
-        waterCardHeight * (isTablet ? .74 : .76),
-        isTablet ? 132 : 120,
-        isTablet ? 150 : 130,
+        usableHeight * landscapePhoneWeatherHeightFactor,
+        landscapePhoneMinimumWeatherHeight,
+        landscapePhoneMaximumWeatherHeight,
       );
       standardSectionHeight = bounded(
-        usableHeight * .36,
-        132,
-        isTablet ? 184 : 156,
+        usableHeight * landscapePhoneStandardSectionHeightFactor,
+        landscapePhoneMinimumStandardSectionHeight,
+        landscapePhoneMaximumStandardSectionHeight,
       );
       recentCatchesHeight = bounded(
-        usableHeight * .48,
-        156,
-        isTablet ? 240 : 210,
+        usableHeight * landscapePhoneRecentCatchesHeightFactor,
+        landscapePhoneMinimumRecentCatchesHeight,
+        landscapePhoneMaximumRecentCatchesHeight,
       );
+    } else if (isLandscape) {
+      sectionGap = bounded(usableHeight * .012, 4, 8);
+      headerHeight = bounded(usableHeight * .12, 52, 72);
+      bottomNavHeight = resolveBottomNavigationHeight(
+        bounded(usableHeight * .14, 58, 68),
+      );
+      final firstHomeViewportHeight = bounded(
+        usableHeight - (bottomNavigationOverlaysBody ? bottomNavHeight : 0),
+        0,
+        usableHeight,
+      );
+      heroMapHeight = bounded(firstHomeViewportHeight * .34, 220, 320);
+      waterCardHeight = bounded(usableHeight * .20, 135, 160);
+      weatherCardHeight = bounded(waterCardHeight * .74, 132, 150);
+      standardSectionHeight = bounded(usableHeight * .36, 132, 184);
+      recentCatchesHeight = bounded(usableHeight * .48, 156, 240);
     } else {
       sectionGap = bounded(
         shortestSide * (isTablet ? .02 : .027),
@@ -242,11 +305,9 @@ class HomePremiumLayout {
       );
     }
 
-    final scrollClearance =
-        sectionGap +
-        (bottomNavigationOverlaysBody
-            ? bottomNavHeight + systemSafeArea.bottom
-            : 0);
+    final scrollClearance = bottomNavigationOverlaysBody
+        ? sectionGap + bottomNavHeight + systemSafeArea.bottom
+        : (isLandscapePhone ? 0.0 : sectionGap);
     final bottomContentClearance = scrollClearance;
 
     // Transitional compatibility for the current two-row dashboard. These
