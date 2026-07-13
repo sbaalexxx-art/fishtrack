@@ -206,7 +206,7 @@ class WaterRepository implements OfficialWaterDataSource {
             data['has_known_trend'] = trend != null;
             data['has_water_level'] = true;
             data['water_level_unit'] = latest.unit;
-            data['water_level_source'] = latest.sourceName;
+            data['water_level_source'] = latest.source.name;
           } else {
             data['has_water_level'] = false;
           }
