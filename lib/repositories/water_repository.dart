@@ -18,6 +18,29 @@ abstract interface class OfficialWaterDataSource {
   });
 }
 
+enum WaterHistoryResultStatus {
+  success,
+  insufficientHistory,
+  providerError,
+  unavailable,
+}
+
+class WaterHistoryResult {
+  const WaterHistoryResult({
+    required this.status,
+    required this.readings,
+    required this.source,
+    required this.hadProviderError,
+    this.safeDiagnosticMessage,
+  });
+
+  final WaterHistoryResultStatus status;
+  final List<WaterLevel> readings;
+  final WaterLevelSource? source;
+  final bool hadProviderError;
+  final String? safeDiagnosticMessage;
+}
+
 class WaterRepository implements OfficialWaterDataSource {
   const WaterRepository({
     this.afdjProvider = const AfdjWaterProvider(),
@@ -28,6 +51,8 @@ class WaterRepository implements OfficialWaterDataSource {
   final AfdjWaterProvider afdjProvider;
   final DanubeHisWaterProvider danubeHisProvider;
   final DanubeFisWaterProvider danubeFisProvider;
+
+  static const defaultFreshnessThreshold = Duration(hours: 36);
 
   static const officialAfdjStationOrder = <String>[
     'Bazias',
@@ -162,7 +187,7 @@ class WaterRepository implements OfficialWaterDataSource {
                 stationName,
               )] ??
               const [];
-          final providerReadings = _selectProviderReadings(
+          final providerReadings = _selectCurrentProviderReadings(
             stationName,
             afdjReadings,
             externalReadings,
@@ -207,7 +232,18 @@ class WaterRepository implements OfficialWaterDataSource {
     String stationId, {
     String? stationName,
     int limit = 30,
+  }) async => (await getHistoryResult(
+    stationId,
+    stationName: stationName,
+    limit: limit,
+  )).readings;
+
+  Future<WaterHistoryResult> getHistoryResult(
+    String stationId, {
+    String? stationName,
+    int limit = 30,
   }) async {
+    final failedProviders = <String>[];
     if (stationName != null && stationName.trim().isNotEmpty) {
       final normalized = DanubeHisWaterProvider.normalizedName(stationName);
       List<WaterLevel> afdjReadings = const [];
@@ -217,6 +253,7 @@ class WaterRepository implements OfficialWaterDataSource {
         final result = await afdjProvider.getLevels([stationName]);
         afdjReadings = result[normalized] ?? const [];
       } on Exception catch (error, stackTrace) {
+        failedProviders.add('AFDJ');
         _logFailure('AFDJ history', error, stackTrace);
         _logAfdjNotSelected(stationName, _providerFailureReason(error));
       }
@@ -226,26 +263,50 @@ class WaterRepository implements OfficialWaterDataSource {
         ], limit: limit);
         hisReadings = result[normalized] ?? const [];
       } on Exception catch (error, stackTrace) {
+        failedProviders.add('DanubeHIS');
         _logFailure('DanubeHIS history', error, stackTrace);
       }
       try {
         final result = await danubeFisProvider.getLevels([stationName]);
         fisReadings = result[normalized] ?? const [];
       } on Exception catch (error, stackTrace) {
+        failedProviders.add('DanubeFIS');
         _logFailure('DanubeFIS history', error, stackTrace);
       }
-      final readings = _selectProviderReadings(
+      final selectedReadings = _selectProviderReadings(
         stationName,
         afdjReadings,
         hisReadings,
         fisReadings,
       );
-      if (readings.isNotEmpty) {
-        return _withCalculatedTrends(readings, stationId);
+      if (selectedReadings.isNotEmpty) {
+        final readings = _chronologicalValidReadings(
+          _withCalculatedTrends(selectedReadings, stationId),
+        );
+        if (readings.isNotEmpty) {
+          final status = readings.length >= 2
+              ? WaterHistoryResultStatus.success
+              : WaterHistoryResultStatus.insufficientHistory;
+          return WaterHistoryResult(
+            status: status,
+            readings: List<WaterLevel>.unmodifiable(readings),
+            source: readings.last.source,
+            hadProviderError: failedProviders.isNotEmpty,
+            safeDiagnosticMessage: _safeProviderDiagnostic(failedProviders),
+          );
+        }
       }
     }
     _logProviderFallback(stationName ?? stationId, 'no provider history');
-    return const [];
+    return WaterHistoryResult(
+      status: failedProviders.isNotEmpty
+          ? WaterHistoryResultStatus.providerError
+          : WaterHistoryResultStatus.unavailable,
+      readings: const [],
+      source: null,
+      hadProviderError: failedProviders.isNotEmpty,
+      safeDiagnosticMessage: _safeProviderDiagnostic(failedProviders),
+    );
   }
 
   static List<WaterLevel> _withCalculatedTrends(
@@ -280,6 +341,116 @@ class WaterRepository implements OfficialWaterDataSource {
     if (difference.abs() <= .01) return WaterTrend.stable;
     return difference > 0 ? WaterTrend.rising : WaterTrend.falling;
   }
+
+  static List<WaterLevel> _selectCurrentProviderReadings(
+    String stationName,
+    List<WaterLevel> afdj,
+    List<WaterLevel> danubeHis,
+    List<WaterLevel> danubeFis,
+  ) {
+    final providers = [
+      _validNewestFirst(afdj),
+      _validNewestFirst(danubeHis),
+      _validNewestFirst(danubeFis),
+    ];
+    final afdjReadings = providers[0];
+    final now = DateTime.now();
+
+    if (afdjReadings.isNotEmpty &&
+        _isWithinDefaultFreshness(afdjReadings.first, now)) {
+      _logProviderUsed(
+        stationName,
+        afdjReadings.first,
+        'AFDJ primary reading is within freshness tolerance',
+      );
+      return [
+        afdjReadings.first,
+        ...providers[1]
+            .where(
+              (reading) =>
+                  reading.timestamp.isBefore(afdjReadings.first.timestamp),
+            )
+            .take(13),
+      ];
+    }
+
+    WaterLevel? freshestReading;
+    var freshestProviderIndex = -1;
+    for (var index = 0; index < providers.length; index++) {
+      if (providers[index].isEmpty) continue;
+      final candidate = providers[index].first;
+      if (freshestReading == null ||
+          candidate.timestamp.isAfter(freshestReading.timestamp)) {
+        freshestReading = candidate;
+        freshestProviderIndex = index;
+      }
+    }
+
+    if (freshestReading == null) {
+      developer.log(
+        'Unmatched station: $stationName; no valid provider reading',
+        name: 'AIFishMap.Water',
+      );
+      return const [];
+    }
+
+    final reason = afdjReadings.isEmpty
+        ? 'AFDJ unavailable; freshest valid provider reading selected'
+        : 'AFDJ reading exceeded freshness tolerance; freshest valid '
+              'provider reading selected';
+    if (freshestProviderIndex != 0) {
+      _logAfdjNotSelected(stationName, reason);
+    }
+    _logProviderUsed(stationName, freshestReading, reason);
+
+    return switch (freshestProviderIndex) {
+      0 => [
+        freshestReading,
+        ...providers[1]
+            .where(
+              (reading) =>
+                  reading.timestamp.isBefore(freshestReading!.timestamp),
+            )
+            .take(13),
+      ],
+      1 => providers[1].take(14).toList(growable: false),
+      2 => providers[2],
+      _ => const [],
+    };
+  }
+
+  static List<WaterLevel> _validNewestFirst(List<WaterLevel> readings) {
+    final valid = readings.where(_isValidReading).toList(growable: false);
+    valid.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return valid;
+  }
+
+  static List<WaterLevel> _chronologicalValidReadings(
+    List<WaterLevel> readings,
+  ) {
+    final valid = readings.where(_isValidReading).toList(growable: false);
+    valid.sort((a, b) {
+      final timestampComparison = a.timestamp.compareTo(b.timestamp);
+      if (timestampComparison != 0) return timestampComparison;
+      final sourceComparison = a.source.index.compareTo(b.source.index);
+      if (sourceComparison != 0) return sourceComparison;
+      final stationComparison = a.stationId.compareTo(b.stationId);
+      if (stationComparison != 0) return stationComparison;
+      return a.value.compareTo(b.value);
+    });
+    return valid;
+  }
+
+  static bool _isValidReading(WaterLevel reading) =>
+      reading.value.isFinite && reading.timestamp.millisecondsSinceEpoch > 0;
+
+  static bool _isWithinDefaultFreshness(WaterLevel reading, DateTime now) =>
+      now.difference(reading.timestamp.toLocal()) <= defaultFreshnessThreshold;
+
+  static String? _safeProviderDiagnostic(List<String> failedProviders) =>
+      failedProviders.isEmpty
+      ? null
+      : 'Provider request failed: ${failedProviders.join(', ')}';
 
   static List<WaterLevel> _selectProviderReadings(
     String stationName,
