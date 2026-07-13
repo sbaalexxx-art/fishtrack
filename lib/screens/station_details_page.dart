@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../core/formatters/water_freshness_formatter.dart';
 import '../l10n/l10n.dart';
 
 import '../models/station.dart';
@@ -20,9 +23,15 @@ class StationDetailsPage extends StatefulWidget {
 
 class _StationDetailsPageState extends State<StationDetailsPage> {
   final _favoritesService = const FavoriteStationsService();
+  final _waterService = WaterService();
   bool _isFavorite = false;
   bool _favoriteLoading = true;
-  late final Future<List<WaterLevel>> _history;
+  WaterStationDetailsRange _selectedRange = WaterStationDetailsRange.sevenDays;
+  WaterStationDetailsResult? _detailsResult;
+  bool _detailsLoading = true;
+  bool _historyLoading = true;
+  bool _detailsLoadFailed = false;
+  int _detailsRequestId = 0;
   late final Future<WeatherData> _weather;
 
   Station get station => widget.station;
@@ -31,9 +40,44 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   void initState() {
     super.initState();
     _isFavorite = station.isFavorite;
-    _history = _loadHistory();
     _weather = WeatherService().getCurrentWeather(fallbackStation: station);
+    unawaited(_loadDetails());
     _loadFavorite();
+  }
+
+  Future<void> _loadDetails() async {
+    final requestId = ++_detailsRequestId;
+    final requestedRange = _selectedRange;
+    try {
+      final result = await _waterService.getStationDetailsResult(
+        station,
+        range: requestedRange,
+      );
+      if (!mounted || requestId != _detailsRequestId) return;
+      setState(() {
+        _detailsResult = result;
+        _detailsLoading = false;
+        _historyLoading = false;
+        _detailsLoadFailed = false;
+      });
+    } on Exception {
+      if (!mounted || requestId != _detailsRequestId) return;
+      setState(() {
+        _detailsLoading = false;
+        _historyLoading = false;
+        _detailsLoadFailed = true;
+      });
+    }
+  }
+
+  void _selectRange(WaterStationDetailsRange range) {
+    if (range == _selectedRange) return;
+    setState(() {
+      _selectedRange = range;
+      _historyLoading = true;
+      _detailsLoadFailed = false;
+    });
+    unawaited(_loadDetails());
   }
 
   Future<void> _loadFavorite() async {
@@ -46,9 +90,6 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
       if (mounted) setState(() => _favoriteLoading = false);
     }
   }
-
-  Future<List<WaterLevel>> _loadHistory() =>
-      WaterService().getHistory(station.id, stationName: station.name);
 
   Future<void> _toggleFavorite() async {
     setState(() => _favoriteLoading = true);
@@ -71,8 +112,8 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Color get trendColor {
-    switch (station.trend) {
+  static Color _trendColor(WaterTrend? trend) {
+    switch (trend) {
       case WaterTrend.rising:
         return Colors.blue;
 
@@ -81,11 +122,14 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
 
       case WaterTrend.stable:
         return Colors.green;
+
+      case null:
+        return Colors.grey;
     }
   }
 
-  IconData get trendIcon {
-    switch (station.trend) {
+  static IconData _trendIcon(WaterTrend? trend) {
+    switch (trend) {
       case WaterTrend.rising:
         return Icons.trending_up;
 
@@ -94,11 +138,32 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
 
       case WaterTrend.stable:
         return Icons.trending_flat;
+
+      case null:
+        return Icons.help_outline_rounded;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final details = _detailsResult;
+    final current = details?.currentReading;
+    final hasCurrent = current != null;
+    final history = _detailsLoadFailed
+        ? const <WaterLevel>[]
+        : details?.history ?? const <WaterLevel>[];
+    final historyLoading = _historyLoading || details == null;
+    final trend = details?.trend;
+    final trendColor = _trendColor(trend);
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    final freshness = details?.measurementTimestamp == null
+        ? context.l10n.updateTimeUnavailable
+        : WaterFreshnessFormatter.format(
+            measurementTimestamp: details!.measurementTimestamp!,
+            now: DateTime.now(),
+            isStale: details.isStale,
+            locale: Localizations.localeOf(context).languageCode,
+          );
     return Scaffold(
       appBar: AppBar(title: Text(station.name), centerTitle: true),
       body: SingleChildScrollView(
@@ -145,19 +210,21 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
                     const SizedBox(height: 4),
 
                     Text(
-                      station.hasWaterLevel
-                          ? 'Source: ${station.waterLevelSource}'
-                          : 'Source: No data',
+                      _detailsLoading && details == null
+                          ? context.l10n.loadingEllipsis
+                          : '${isRo ? 'Surs\u0103' : 'Source'}: '
+                                '${hasCurrent ? _sourceLabel(details!.source) : context.l10n.noSource}',
                       style: const TextStyle(color: Colors.grey),
                     ),
 
                     const SizedBox(height: 24),
 
                     Text(
-                      station.hasWaterLevel
-                          ? '${station.level.toStringAsFixed(0)} '
-                                '${station.waterLevelUnit}'
-                          : 'No data',
+                      _detailsLoading && details == null
+                          ? context.l10n.loadingEllipsis
+                          : hasCurrent
+                          ? '${current.value.toStringAsFixed(0)} ${current.unit}'
+                          : context.l10n.noData,
                       style: const TextStyle(
                         fontSize: 46,
                         color: Colors.blue,
@@ -167,48 +234,35 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
 
                     const SizedBox(height: 12),
 
-                    FutureBuilder<List<WaterLevel>>(
-                      future: _history,
-                      builder: (context, snapshot) {
-                        final readings = snapshot.data ?? const [];
-                        if (!station.hasWaterLevel || readings.length < 2) {
-                          return const Text(
-                            'Not enough history for trend',
-                            style: TextStyle(color: Colors.grey),
-                          );
-                        }
-                        return Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(trendIcon, color: trendColor),
-                            const SizedBox(width: 8),
-                            Text(
-                              station.trendText,
-                              style: TextStyle(
-                                color: trendColor,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(_trendIcon(trend), color: trendColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          _detailsLoading && details == null
+                              ? context.l10n.loadingEllipsis
+                              : _trendLabel(context, trend),
+                          style: TextStyle(
+                            color: trendColor,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
 
                     const SizedBox(height: 12),
 
                     Text(
-                      _updatedLabel(station.lastUpdate),
+                      _detailsLoading && details == null
+                          ? context.l10n.loadingEllipsis
+                          : '${isRo ? 'Actualizat' : 'Updated'}: $freshness',
                       style: const TextStyle(color: Colors.grey),
                     ),
-                    Text(
-                      _relativeUpdate(station.lastUpdate),
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    if (_freshnessWarning(station.lastUpdate)
-                        case final warning?)
+                    if (details?.isStale == true)
                       Text(
-                        warning,
+                        isRo ? 'Date vechi' : 'Stale data',
                         style: const TextStyle(
                           color: Colors.orange,
                           fontWeight: FontWeight.w600,
@@ -221,9 +275,11 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
 
             const SizedBox(height: 24),
 
-            const Text(
-              "Informații despre stație",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            Text(
+              isRo
+                  ? 'Informa\u021bii despre sta\u021bie'
+                  : 'Station information',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 16),
@@ -245,99 +301,107 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
-              child: FutureBuilder<List<WaterLevel>>(
-                future: _history,
-                builder: (context, snapshot) {
-                  final readings = snapshot.data ?? const [];
-                  final subtitle = snapshot.hasError
-                      ? 'Water history unavailable'
-                      : snapshot.connectionState == ConnectionState.waiting
-                      ? 'Loading water history...'
-                      : readings.isEmpty
-                      ? 'Water history will appear here'
-                      : readings.length < 2
-                      ? 'Not enough history for trend'
-                      : _deltaLabel(readings[0], readings[1]);
-                  return Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            Icon(Icons.show_chart, color: Colors.blue),
-                            SizedBox(width: 12),
-                            Text(context.l10n.waterLevelHistory),
-                          ],
+                        const Icon(Icons.show_chart, color: Colors.blue),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            isRo
+                                ? 'Istoricul nivelului apei'
+                                : 'Water level history',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(subtitle),
-                        if (readings.isEmpty &&
-                            snapshot.connectionState !=
-                                ConnectionState.waiting) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            height: 150,
-                            width: double.infinity,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.show_chart, color: Colors.grey),
-                                SizedBox(height: 6),
-                                Text(
-                                  'Water history will appear here',
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ] else if (readings.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            height: 150,
-                            width: double.infinity,
-                            child: CustomPaint(
-                              painter: _WaterHistoryPainter(
-                                readings.reversed.toList(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          ...readings
-                              .take(14)
-                              .map(
-                                (reading) => Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 4,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(_historyDateLabel(reading)),
-                                      Text(
-                                        '${reading.value.toStringAsFixed(0)} '
-                                        '${reading.unit}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                        ],
                       ],
                     ),
-                  );
-                },
+                    const SizedBox(height: 12),
+                    SegmentedButton<WaterStationDetailsRange>(
+                      segments: [
+                        ButtonSegment(
+                          value: WaterStationDetailsRange.sevenDays,
+                          label: Text(isRo ? '7 zile' : '7 days'),
+                        ),
+                        ButtonSegment(
+                          value: WaterStationDetailsRange.thirtyDays,
+                          label: Text(isRo ? '30 zile' : '30 days'),
+                        ),
+                      ],
+                      selected: {_selectedRange},
+                      onSelectionChanged: (selection) {
+                        if (selection.isNotEmpty) {
+                          _selectRange(selection.first);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    if (historyLoading)
+                      const SizedBox(
+                        height: 150,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else ...[
+                      Text(
+                        _historyStatusLabel(
+                          context,
+                          _detailsLoadFailed
+                              ? WaterStationDetailsHistoryStatus.providerError
+                              : details.historyStatus,
+                        ),
+                        style: TextStyle(
+                          color:
+                              details.historyStatus ==
+                                  WaterStationDetailsHistoryStatus.providerError
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (details.dailyDeltaCm case final delta?) ...[
+                        const SizedBox(height: 6),
+                        Text(_deltaLabel(delta, current?.unit ?? 'cm', isRo)),
+                      ],
+                      if (history.length >= 2) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 150,
+                          width: double.infinity,
+                          child: CustomPaint(
+                            painter: _WaterHistoryPainter(history),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ...history.reversed
+                            .take(30)
+                            .map(
+                              (reading) => Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(_historyDateLabel(reading)),
+                                    Text(
+                                      '${reading.value.toStringAsFixed(0)} '
+                                      '${reading.unit}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                      ],
+                    ],
+                  ],
+                ),
               ),
             ),
 
@@ -401,34 +465,38 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     );
   }
 
-  static String _updatedLabel(DateTime timestamp) {
-    if (timestamp.millisecondsSinceEpoch == 0) {
-      return 'Not available';
-    }
-    final local = timestamp.toLocal();
-    final hour = local.hour.toString().padLeft(2, '0');
-    final minute = local.minute.toString().padLeft(2, '0');
-    return 'Updated: ${local.day}.${local.month}.${local.year} $hour:$minute';
-  }
+  static String _sourceLabel(WaterLevelSource? source) => switch (source) {
+    WaterLevelSource.afdj => 'AFDJ',
+    WaterLevelSource.danubeHis => 'DanubeHIS',
+    WaterLevelSource.danubeFis => 'DanubeFIS',
+    WaterLevelSource.inhga => 'INHGA',
+    WaterLevelSource.manualFallback => 'Manual',
+    null => '—',
+  };
 
-  static String _relativeUpdate(DateTime timestamp) {
-    if (timestamp.millisecondsSinceEpoch == 0) return 'Update age unknown';
-    final difference = DateTime.now().difference(timestamp.toLocal());
-    if (difference.isNegative || difference.inMinutes < 60) {
-      return 'Updated less than 1 hour ago';
-    }
-    if (difference.inHours < 24) {
-      return 'Updated ${difference.inHours} hours ago';
-    }
-    return 'Updated ${difference.inDays} days ago';
-  }
+  static String _trendLabel(BuildContext context, WaterTrend? trend) =>
+      switch (trend) {
+        WaterTrend.rising => context.l10n.rising,
+        WaterTrend.falling => context.l10n.falling,
+        WaterTrend.stable => context.l10n.stable,
+        null => context.l10n.unknown,
+      };
 
-  static String? _freshnessWarning(DateTime timestamp) {
-    if (timestamp.millisecondsSinceEpoch == 0) return null;
-    final age = DateTime.now().difference(timestamp.toLocal());
-    if (age.inHours > 24) return 'Data is outdated';
-    if (age.inHours > 12) return 'Data may be delayed';
-    return null;
+  static String _historyStatusLabel(
+    BuildContext context,
+    WaterStationDetailsHistoryStatus? status,
+  ) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    return switch (status) {
+      WaterStationDetailsHistoryStatus.available =>
+        isRo ? 'Istoric disponibil' : 'History available',
+      WaterStationDetailsHistoryStatus.insufficientHistory =>
+        isRo ? 'Istoric insuficient' : 'Insufficient history',
+      WaterStationDetailsHistoryStatus.providerError =>
+        isRo ? 'Date temporar indisponibile' : 'Data temporarily unavailable',
+      WaterStationDetailsHistoryStatus.unavailable ||
+      null => isRo ? 'Istoric insuficient' : 'Insufficient history',
+    };
   }
 
   static String _historyDateLabel(WaterLevel reading) {
@@ -438,11 +506,12 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     return '${local.day}.${local.month}.${local.year}  $hour:$minute';
   }
 
-  static String _deltaLabel(WaterLevel latest, WaterLevel previous) {
-    final delta = latest.value - previous.value;
+  static String _deltaLabel(double delta, String unit, bool isRo) {
     final sign = delta > 0 ? '+' : '';
-    return '$sign${delta.toStringAsFixed(0)} ${latest.unit} '
-        'since previous reading';
+    final value = '$sign${delta.toStringAsFixed(0)} $unit';
+    return isRo
+        ? '$value fa\u021b\u0103 de citirea anterioar\u0103'
+        : '$value since previous reading';
   }
 
   static String _waterInsight(Station station) {
