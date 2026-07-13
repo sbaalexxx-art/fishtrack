@@ -418,8 +418,9 @@ class WaterService {
   static bool _isOfficialSource(WaterLevelSource source) => switch (source) {
     WaterLevelSource.afdj ||
     WaterLevelSource.danubeHis ||
-    WaterLevelSource.danubeFis => true,
-    WaterLevelSource.inhga || WaterLevelSource.manualFallback => false,
+    WaterLevelSource.danubeFis ||
+    WaterLevelSource.inhga => true,
+    WaterLevelSource.manualFallback => false,
   };
 
   static bool _isValidReading(WaterLevel reading) =>
