@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/formatters/water_freshness_formatter.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../l10n/l10n.dart';
 import '../../models/station.dart';
@@ -170,11 +171,11 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                         ? 'Încercați din nou în câteva momente'
                         : 'Please try again in a few moments'
                   : context.l10n.waitingForData)
-            : _freshnessLabel(
-                context,
-                measurementTimestamp,
-                dataAge: waterResult?.dataAge,
+            : WaterFreshnessFormatter.format(
+                measurementTimestamp: measurementTimestamp,
+                now: DateTime.now(),
                 isStale: waterResult?.isStale ?? false,
+                locale: Localizations.localeOf(context).languageCode,
               );
         final sourceLabel = hasReading
             ? _compactSourceName(
@@ -523,47 +524,6 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
       };
 
   // TODO(l10n): Move beta reliability labels into ARB in the localization sprint.
-  static String _freshnessLabel(
-    BuildContext context,
-    DateTime timestamp, {
-    required Duration? dataAge,
-    required bool isStale,
-  }) {
-    if (timestamp.millisecondsSinceEpoch == 0) {
-      return context.l10n.updateTimeUnavailable;
-    }
-
-    final measuredAge =
-        dataAge ?? DateTime.now().difference(timestamp.toLocal());
-    final age = measuredAge.isNegative ? Duration.zero : measuredAge;
-    final isRo = Localizations.localeOf(context).languageCode == 'ro';
-    if (age.inMinutes < 1) {
-      return isRo ? 'Acum' : 'Now';
-    }
-
-    final ageLabel = _compactAgeLabel(age, isRo: isRo);
-    if (isStale) {
-      return isRo ? 'Vechi \u2022 $ageLabel' : 'Stale \u2022 $ageLabel';
-    }
-    return isRo ? 'Acum $ageLabel' : '$ageLabel ago';
-  }
-
-  static String _compactAgeLabel(Duration age, {required bool isRo}) {
-    if (age.inMinutes < 60) {
-      final value = age.inMinutes;
-      if (!isRo) return '$value ${value == 1 ? 'minute' : 'minutes'}';
-      return '$value ${value == 1 ? 'minut' : 'minute'}';
-    }
-    if (age.inHours < 24) {
-      final value = age.inHours;
-      if (!isRo) return '$value ${value == 1 ? 'hour' : 'hours'}';
-      return '$value ${value == 1 ? 'or\u0103' : 'ore'}';
-    }
-    final value = age.inDays;
-    if (!isRo) return '$value ${value == 1 ? 'day' : 'days'}';
-    return '$value ${value == 1 ? 'zi' : 'zile'}';
-  }
-
   static String _historyStatusLabel(
     WaterUiStatus status, {
     required bool isRo,
