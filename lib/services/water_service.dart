@@ -8,6 +8,37 @@ import '../models/water_level.dart';
 import '../repositories/water_repository.dart';
 import 'location_service.dart';
 
+enum WaterUiStatus {
+  availableHistory,
+  insufficientHistory,
+  providerError,
+  unavailable,
+}
+
+class WaterUiResult {
+  const WaterUiResult({
+    required this.latestReading,
+    required this.history,
+    required this.source,
+    required this.sourceName,
+    required this.measurementTimestamp,
+    required this.dataAge,
+    required this.isStale,
+    required this.status,
+    required this.safeDiagnosticMessage,
+  });
+
+  final WaterLevel? latestReading;
+  final List<WaterLevel> history;
+  final WaterLevelSource? source;
+  final String? sourceName;
+  final DateTime? measurementTimestamp;
+  final Duration? dataAge;
+  final bool isStale;
+  final WaterUiStatus status;
+  final String? safeDiagnosticMessage;
+}
+
 class WaterService {
   WaterService({WaterRepository? repository, LocationService? locationService})
     : _repository = repository ?? const WaterRepository(),
@@ -72,6 +103,69 @@ class WaterService {
     }
   }
 
+  Future<WaterUiResult> getWaterUiResult(
+    Station station, {
+    int limit = 72,
+    Duration historyWindow = const Duration(hours: 24),
+  }) async {
+    final now = DateTime.now();
+    final stationReading = _readingFromStation(station);
+    late final WaterHistoryResult repositoryResult;
+    try {
+      repositoryResult = await _repository.getHistoryResult(
+        station.id,
+        stationName: station.name,
+        limit: limit,
+      );
+    } on Exception {
+      repositoryResult = const WaterHistoryResult(
+        status: WaterHistoryResultStatus.providerError,
+        readings: [],
+        source: null,
+        hadProviderError: true,
+        safeDiagnosticMessage: 'Water history request failed',
+      );
+    }
+
+    final cutoff = now.subtract(historyWindow);
+    final validReadings =
+        repositoryResult.readings
+            .where(_isValidReading)
+            .where((reading) => !reading.timestamp.isAfter(now))
+            .toList(growable: false)
+          ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final history = validReadings
+        .where((reading) => !reading.timestamp.isBefore(cutoff))
+        .toList(growable: false);
+    final latestReading = _latestReading(stationReading, validReadings);
+    final measurementTimestamp = latestReading?.timestamp;
+    final dataAge = measurementTimestamp == null
+        ? null
+        : _nonNegativeAge(now, measurementTimestamp);
+    final isStale =
+        dataAge != null && dataAge > WaterRepository.defaultFreshnessThreshold;
+
+    final status = history.length >= 2
+        ? WaterUiStatus.availableHistory
+        : repositoryResult.status == WaterHistoryResultStatus.providerError
+        ? WaterUiStatus.providerError
+        : latestReading != null
+        ? WaterUiStatus.insufficientHistory
+        : WaterUiStatus.unavailable;
+
+    return WaterUiResult(
+      latestReading: latestReading,
+      history: List<WaterLevel>.unmodifiable(history),
+      source: latestReading?.source ?? repositoryResult.source,
+      sourceName: latestReading?.sourceName,
+      measurementTimestamp: measurementTimestamp,
+      dataAge: dataAge,
+      isStale: isStale,
+      status: status,
+      safeDiagnosticMessage: repositoryResult.safeDiagnosticMessage,
+    );
+  }
+
   Future<List<Station>> getStations({bool forceRefresh = false}) async =>
       (await getStationsResult(forceRefresh: forceRefresh)).value;
 
@@ -124,5 +218,44 @@ class WaterService {
       }
       return selected;
     }
+  }
+
+  static WaterLevel? _readingFromStation(Station station) {
+    if (!station.hasWaterLevel ||
+        !station.level.isFinite ||
+        station.lastUpdate.millisecondsSinceEpoch <= 0) {
+      return null;
+    }
+
+    return WaterLevel(
+      stationId: station.id,
+      value: station.level,
+      timestamp: station.lastUpdate,
+      trend: station.trend,
+      source: WaterLevelSource.parse(station.waterLevelSource),
+      unit: station.waterLevelUnit,
+      sourceName: station.waterLevelSource,
+      hasKnownTrend: station.hasKnownTrend,
+    );
+  }
+
+  static WaterLevel? _latestReading(
+    WaterLevel? stationReading,
+    List<WaterLevel> history,
+  ) {
+    final historyReading = history.isEmpty ? null : history.last;
+    if (stationReading == null) return historyReading;
+    if (historyReading == null) return stationReading;
+    return historyReading.timestamp.isAfter(stationReading.timestamp)
+        ? historyReading
+        : stationReading;
+  }
+
+  static bool _isValidReading(WaterLevel reading) =>
+      reading.value.isFinite && reading.timestamp.millisecondsSinceEpoch > 0;
+
+  static Duration _nonNegativeAge(DateTime now, DateTime timestamp) {
+    final age = now.difference(timestamp.toLocal());
+    return age.isNegative ? Duration.zero : age;
   }
 }
