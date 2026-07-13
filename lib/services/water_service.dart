@@ -196,18 +196,28 @@ class WaterService {
             .where((reading) => !reading.timestamp.isAfter(now))
             .toList(growable: false)
           ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    final history = validReadings
-        .where((reading) => !reading.timestamp.isBefore(cutoff))
-        .toList(growable: false);
-    final latestReading = _latestReading(stationReading, validReadings);
+    final selectedReading = _latestReadingByAuthority(
+      stationReading,
+      validReadings,
+    );
+    final compatibleReadings = selectedReading == null
+        ? const <WaterLevel>[]
+        : validReadings
+              .where((reading) => reading.source == selectedReading.source)
+              .where((reading) => !reading.timestamp.isBefore(cutoff))
+              .toList(growable: false);
+    final history = _withCompatibleTrends(compatibleReadings);
+    final latestReading = selectedReading == null
+        ? null
+        : _withCompatibleTrend(selectedReading, compatibleReadings);
     final measurementTimestamp = latestReading?.timestamp;
 
     final status = history.length >= 2
         ? WaterUiStatus.availableHistory
-        : repositoryResult.status == WaterHistoryResultStatus.providerError
-        ? WaterUiStatus.providerError
         : latestReading != null
         ? WaterUiStatus.insufficientHistory
+        : repositoryResult.status == WaterHistoryResultStatus.providerError
+        ? WaterUiStatus.providerError
         : WaterUiStatus.unavailable;
 
     return WaterUiResult(
@@ -325,17 +335,92 @@ class WaterService {
     );
   }
 
-  static WaterLevel? _latestReading(
+  static WaterLevel? _latestReadingByAuthority(
     WaterLevel? stationReading,
     List<WaterLevel> history,
   ) {
-    final historyReading = history.isEmpty ? null : history.last;
-    if (stationReading == null) return historyReading;
-    if (historyReading == null) return stationReading;
-    return historyReading.timestamp.isAfter(stationReading.timestamp)
-        ? historyReading
-        : stationReading;
+    final candidates = <WaterLevel>[
+      if (stationReading != null && _isValidReading(stationReading))
+        stationReading,
+      ...history.where(_isValidReading),
+    ];
+    if (candidates.isEmpty) return null;
+
+    final official = candidates.where(
+      (reading) => _isOfficialSource(reading.source),
+    );
+    final authoritativeCandidates = official.isEmpty ? candidates : official;
+    return authoritativeCandidates.reduce(
+      (current, candidate) =>
+          candidate.timestamp.isAfter(current.timestamp) ? candidate : current,
+    );
   }
+
+  static List<WaterLevel> _withCompatibleTrends(List<WaterLevel> readings) {
+    return List<WaterLevel>.unmodifiable(
+      List.generate(
+        readings.length,
+        (index) => _copyWithTrend(
+          readings[index],
+          index == 0 ? null : readings[index - 1],
+        ),
+        growable: false,
+      ),
+    );
+  }
+
+  static WaterLevel _withCompatibleTrend(
+    WaterLevel reading,
+    List<WaterLevel> compatibleHistory,
+  ) {
+    WaterLevel? previous;
+    for (final candidate in compatibleHistory.reversed) {
+      if (candidate.timestamp.isBefore(reading.timestamp)) {
+        previous = candidate;
+        break;
+      }
+    }
+    return _copyWithTrend(reading, previous);
+  }
+
+  static WaterLevel _copyWithTrend(WaterLevel reading, WaterLevel? previous) {
+    if (previous == null || previous.source != reading.source) {
+      return WaterLevel(
+        stationId: reading.stationId,
+        value: reading.value,
+        timestamp: reading.timestamp,
+        trend: WaterTrend.stable,
+        source: reading.source,
+        unit: reading.unit,
+        sourceName: reading.sourceName,
+        hasKnownTrend: false,
+      );
+    }
+
+    final difference = reading.value - previous.value;
+    final trend = difference.abs() <= .01
+        ? WaterTrend.stable
+        : difference > 0
+        ? WaterTrend.rising
+        : WaterTrend.falling;
+    return WaterLevel(
+      stationId: reading.stationId,
+      value: reading.value,
+      timestamp: reading.timestamp,
+      trend: trend,
+      source: reading.source,
+      unit: reading.unit,
+      sourceName: reading.sourceName,
+      hasKnownTrend: true,
+    );
+  }
+
+  static bool _isOfficialSource(WaterLevelSource source) => switch (source) {
+    WaterLevelSource.afdj ||
+    WaterLevelSource.danubeHis ||
+    WaterLevelSource.danubeFis => true,
+    WaterLevelSource.inhga || WaterLevelSource.manualFallback => false,
+  };
 
   static bool _isValidReading(WaterLevel reading) =>
       reading.value.isFinite && reading.timestamp.millisecondsSinceEpoch > 0;
