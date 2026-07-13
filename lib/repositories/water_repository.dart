@@ -206,7 +206,7 @@ class WaterRepository implements OfficialWaterDataSource {
             data['has_known_trend'] = trend != null;
             data['has_water_level'] = true;
             data['water_level_unit'] = latest.unit;
-            data['water_level_source'] = latest.sourceName;
+            data['water_level_source'] = latest.source.name;
           } else {
             data['has_water_level'] = false;
           }
@@ -306,6 +306,94 @@ class WaterRepository implements OfficialWaterDataSource {
       source: null,
       hadProviderError: failedProviders.isNotEmpty,
       safeDiagnosticMessage: _safeProviderDiagnostic(failedProviders),
+    );
+  }
+
+  Future<WaterHistoryResult> getCanonicalSourceHistory(
+    String stationId, {
+    required String stationName,
+    required WaterLevelSource source,
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    required int limit,
+  }) async {
+    if (limit <= 0 || rangeEnd.isBefore(rangeStart)) {
+      return WaterHistoryResult(
+        status: WaterHistoryResultStatus.unavailable,
+        readings: const <WaterLevel>[],
+        source: source,
+        hadProviderError: false,
+        safeDiagnosticMessage: 'Invalid canonical history range or limit',
+      );
+    }
+
+    final normalized = DanubeHisWaterProvider.normalizedName(stationName);
+    late final List<WaterLevel> providerReadings;
+    try {
+      providerReadings = switch (source) {
+        WaterLevelSource.afdj =>
+          (await afdjProvider.getLevels([stationName]))[normalized] ?? const [],
+        WaterLevelSource.danubeHis =>
+          (await danubeHisProvider.getLevels([
+                stationName,
+              ], limit: limit))[normalized] ??
+              const [],
+        WaterLevelSource.danubeFis =>
+          (await danubeFisProvider.getLevels([stationName]))[normalized] ??
+              const [],
+        WaterLevelSource.inhga || WaterLevelSource.manualFallback => const [],
+      };
+    } on Exception catch (error, stackTrace) {
+      _logFailure(
+        '${_sourceLabel(source)} canonical history',
+        error,
+        stackTrace,
+      );
+      return WaterHistoryResult(
+        status: WaterHistoryResultStatus.providerError,
+        readings: const <WaterLevel>[],
+        source: source,
+        hadProviderError: true,
+        safeDiagnosticMessage:
+            '${_sourceLabel(source)} canonical history request failed',
+      );
+    }
+
+    final readingsByTimestamp = <int, WaterLevel>{};
+    for (final reading in providerReadings) {
+      if (!_isValidReading(reading) || reading.source != source) continue;
+      if (reading.timestamp.isBefore(rangeStart) ||
+          reading.timestamp.isAfter(rangeEnd)) {
+        continue;
+      }
+      readingsByTimestamp.putIfAbsent(
+        reading.timestamp.toUtc().microsecondsSinceEpoch,
+        () => reading,
+      );
+    }
+    final chronological = readingsByTimestamp.values.toList(growable: false)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final limited = chronological.length <= limit
+        ? chronological
+        : chronological.sublist(chronological.length - limit);
+    if (limited.isEmpty) {
+      return WaterHistoryResult(
+        status: WaterHistoryResultStatus.unavailable,
+        readings: const <WaterLevel>[],
+        source: source,
+        hadProviderError: false,
+        safeDiagnosticMessage:
+            'No compatible ${_sourceLabel(source)} history for $stationId',
+      );
+    }
+
+    return WaterHistoryResult(
+      status: limited.length >= 2
+          ? WaterHistoryResultStatus.success
+          : WaterHistoryResultStatus.insufficientHistory,
+      readings: List<WaterLevel>.unmodifiable(limited),
+      source: source,
+      hadProviderError: false,
     );
   }
 
@@ -492,6 +580,14 @@ class WaterRepository implements OfficialWaterDataSource {
 
   static String _providerFailureReason(Object error) =>
       error is AfdjProviderException ? error.message : error.toString();
+
+  static String _sourceLabel(WaterLevelSource source) => switch (source) {
+    WaterLevelSource.afdj => 'AFDJ',
+    WaterLevelSource.danubeHis => 'DanubeHIS',
+    WaterLevelSource.danubeFis => 'DanubeFIS',
+    WaterLevelSource.inhga => 'INHGA',
+    WaterLevelSource.manualFallback => 'Manual',
+  };
 
   static void _logAfdjNotSelected(String stationName, String reason) {
     developer.log(
