@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/formatters/water_freshness_formatter.dart';
 import '../l10n/l10n.dart';
 
 import '../models/station.dart';
@@ -132,7 +133,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            context.l10n.liveWaterLevels,
+                            _officialWaterLevelsTitle(context),
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 28,
@@ -153,6 +154,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
                             _latestMeasurementLabel(
                               context,
                               batch.latestMeasurementTimestamp,
+                              isStale: _latestMeasurementIsStale(batch),
                             ),
                             textAlign: TextAlign.center,
                             style: TextStyle(
@@ -207,6 +209,11 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
   static bool _isRomanian(BuildContext context) =>
       Localizations.localeOf(context).languageCode == 'ro';
 
+  static String _officialWaterLevelsTitle(BuildContext context) =>
+      _isRomanian(context)
+      ? 'Niveluri oficiale ale apei'
+      : 'Official water levels';
+
   static String _stationSummaryLabel(
     BuildContext context, {
     required int total,
@@ -217,34 +224,34 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
 
   static String _latestMeasurementLabel(
     BuildContext context,
-    DateTime? timestamp,
-  ) {
+    DateTime? timestamp, {
+    required bool isStale,
+  }) {
     final isRo = _isRomanian(context);
     final prefix = isRo ? 'Cea mai recent\u0103' : 'Latest';
     if (timestamp == null || timestamp.millisecondsSinceEpoch <= 0) {
       return '$prefix: ${isRo ? 'indisponibil\u0103' : 'unavailable'}';
     }
 
-    final measuredAge = DateTime.now().difference(timestamp.toLocal());
-    final age = measuredAge.isNegative ? Duration.zero : measuredAge;
-    return '$prefix: ${_relativeAgeLabel(age, isRo: isRo)}';
+    final freshness = WaterFreshnessFormatter.format(
+      measurementTimestamp: timestamp,
+      now: DateTime.now(),
+      isStale: isStale,
+      locale: Localizations.localeOf(context).languageCode,
+    );
+    return '$prefix: $freshness';
   }
 
-  static String _relativeAgeLabel(Duration age, {required bool isRo}) {
-    if (age.inMinutes < 1) return isRo ? 'acum' : 'now';
-    if (age.inMinutes < 60) {
-      final value = age.inMinutes;
-      if (isRo) return 'acum $value ${value == 1 ? 'minut' : 'minute'}';
-      return '$value ${value == 1 ? 'minute' : 'minutes'} ago';
+  static bool _latestMeasurementIsStale(WaterStationBatchResult batch) {
+    final latestTimestamp = batch.latestMeasurementTimestamp;
+    if (latestTimestamp == null) return false;
+    for (final result in batch.resultsByStationId.values) {
+      if (result.measurementTimestamp?.millisecondsSinceEpoch ==
+          latestTimestamp.millisecondsSinceEpoch) {
+        return result.isStale;
+      }
     }
-    if (age.inHours < 24) {
-      final value = age.inHours;
-      if (isRo) return 'acum $value ${value == 1 ? 'or\u0103' : 'ore'}';
-      return '$value ${value == 1 ? 'hour' : 'hours'} ago';
-    }
-    final value = age.inDays;
-    if (isRo) return 'acum $value ${value == 1 ? 'zi' : 'zile'}';
-    return '$value ${value == 1 ? 'day' : 'days'} ago';
+    return false;
   }
 
   static String _partialResultLabel(BuildContext context, int errorCount) =>
