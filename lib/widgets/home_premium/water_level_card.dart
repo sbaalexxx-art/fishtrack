@@ -57,8 +57,6 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
 
   Future<Station?> _loadStation(Station? fallbackStation) async {
     final requestId = ++_stationRequestId;
-    _waterResult = null;
-    _waterResultStationId = null;
     _isWaterResultLoading = true;
 
     final station = await _waterService.getNearestStation(
@@ -78,7 +76,9 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
   Future<void> _loadWaterResult(Station station, int requestId) async {
     if (mounted && requestId == _stationRequestId) {
       setState(() {
-        _waterResult = null;
+        final hasCurrentResult =
+            _waterResult != null && _waterResultStationId == station.id;
+        if (!hasCurrentResult) _waterResult = null;
         _waterResultStationId = station.id;
         _isWaterResultLoading = true;
       });
@@ -124,6 +124,10 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
             station != null && _waterResultStationId == station.id
             ? _waterResult
             : null;
+        final isInitialLoading =
+            waterResult == null &&
+            !snapshot.hasError &&
+            (isLoading || _isWaterResultLoading);
         final latestReading = waterResult?.latestReading;
         final hasStationReading = station?.hasWaterLevel == true;
         final hasReading = latestReading != null || hasStationReading;
@@ -173,11 +177,15 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                 isStale: waterResult?.isStale ?? false,
               );
         final sourceLabel = hasReading
-            ? latestReading?.sourceName ?? station!.waterLevelSource
+            ? _compactSourceName(
+                    waterResult?.source ?? latestReading?.source,
+                  ) ??
+                  latestReading?.sourceName ??
+                  station!.waterLevelSource
             : context.l10n.noSource;
 
         return PremiumLoadingShimmer(
-          isLoading: isLoading,
+          isLoading: isInitialLoading,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final layout = HomePremiumLayout.of(context);
@@ -208,6 +216,61 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                   ? _historyDeltaLabel(history, waterUnit)
                   : null;
               final isRo = Localizations.localeOf(context).languageCode == 'ro';
+
+              if (isInitialLoading) {
+                return Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: cardPadding,
+                    vertical: compact ? 6 : cardPadding,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF17293A),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.water_drop_rounded,
+                            color: const Color(0xFF42A5F5),
+                            size: 20 * layout.iconScale,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              context.l10n.waterLevel.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.cardTitle.copyWith(
+                                fontSize:
+                                    (compact ? 14 : 16) * layout.titleFontScale,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            isRo
+                                ? 'Se \u00eencarc\u0103 datele\u2026'
+                                : 'Loading data\u2026',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.caption.copyWith(
+                              color: Colors.white70,
+                              fontSize: compact ? 10 : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
 
               return Container(
                 padding: EdgeInsets.symmetric(
@@ -448,6 +511,16 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
 
     return '$sign$difference $unit$periodLabel';
   }
+
+  static String? _compactSourceName(WaterLevelSource? source) =>
+      switch (source) {
+        WaterLevelSource.afdj => 'AFDJ',
+        WaterLevelSource.danubeHis => 'DanubeHIS',
+        WaterLevelSource.danubeFis => 'DanubeFIS',
+        WaterLevelSource.inhga => 'INHGA',
+        WaterLevelSource.manualFallback => 'Manual',
+        null => null,
+      };
 
   // TODO(l10n): Move beta reliability labels into ARB in the localization sprint.
   static String _freshnessLabel(
