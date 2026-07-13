@@ -90,6 +90,7 @@ class WaterService {
       TimedCache<List<Station>>(duration: cacheDuration);
   static final Map<String, TimedCache<List<WaterLevel>>> _historyCache = {};
   static final Map<String, _WaterUiCacheEntry> _waterUiCache = {};
+  static final Map<String, WaterUiResult> _lastKnownGoodByStation = {};
   static final Map<String, Future<WaterUiResult>> _waterUiInFlight = {};
   static final Map<String, int> _waterUiKeyGenerations = {};
   static int _waterUiCacheEpoch = 0;
@@ -114,6 +115,7 @@ class WaterService {
     _historyCache.clear();
     _waterUiCacheEpoch++;
     _waterUiCache.clear();
+    _lastKnownGoodByStation.clear();
     _waterUiInFlight.clear();
     _waterUiKeyGenerations.clear();
   }
@@ -166,8 +168,13 @@ class WaterService {
     } else {
       final cached = _waterUiCache[key];
       if (cached != null && now.difference(cached.savedAt) < cacheDuration) {
+        final resolved = _resolveWithLastKnownGood(
+          station,
+          cached.result,
+          canUpdateLastKnownGood: true,
+        );
         return Future<WaterUiResult>.value(
-          _withCurrentFreshness(cached.result, now),
+          _withCurrentFreshness(resolved, now),
         );
       }
       final activeRequest = _waterUiInFlight[key];
@@ -180,14 +187,21 @@ class WaterService {
     request =
         _loadWaterUiResult(station, limit: limit, historyWindow: historyWindow)
             .then((result) {
-              if (_waterUiCacheEpoch == requestEpoch &&
-                  (_waterUiKeyGenerations[key] ?? 0) == requestGeneration) {
+              final canCommit =
+                  _waterUiCacheEpoch == requestEpoch &&
+                  (_waterUiKeyGenerations[key] ?? 0) == requestGeneration;
+              final resolved = _resolveWithLastKnownGood(
+                station,
+                result,
+                canUpdateLastKnownGood: canCommit,
+              );
+              if (canCommit) {
                 _waterUiCache[key] = _WaterUiCacheEntry(
-                  result: result,
+                  result: resolved,
                   savedAt: DateTime.now(),
                 );
               }
-              return _withCurrentFreshness(result, DateTime.now());
+              return _withCurrentFreshness(resolved, DateTime.now());
             })
             .whenComplete(() {
               if (identical(_waterUiInFlight[key], request)) {
@@ -311,17 +325,13 @@ class WaterService {
             forceRefresh: forceRefresh,
           );
         } on Exception catch (error) {
-          orderedResults[index] = WaterUiResult(
-            latestReading: null,
-            history: const <WaterLevel>[],
-            source: null,
-            sourceName: null,
-            measurementTimestamp: null,
-            dataAge: null,
-            isStale: false,
-            status: WaterUiStatus.providerError,
-            safeDiagnosticMessage:
-                'Water station request failed (${error.runtimeType})',
+          orderedResults[index] = _withCurrentFreshness(
+            _resolveWithLastKnownGood(
+              station,
+              _providerErrorResult(error),
+              canUpdateLastKnownGood: false,
+            ),
+            DateTime.now(),
           );
         }
       }
@@ -449,8 +459,26 @@ class WaterService {
       );
       if (stations.isEmpty) return;
 
+      final now = DateTime.now();
+      for (final station in stations) {
+        final lastKnownGood = _lastKnownGoodResult(station, now);
+        if (lastKnownGood != null) {
+          resultsByStationId[station.id] = lastKnownGood;
+        }
+      }
+      if (resultsByStationId.isNotEmpty) {
+        emit(
+          _buildProgressiveSnapshot(
+            stations: stations,
+            resultsByStationId: resultsByStationId,
+            isStationListStaleFallback: stationResult.isStaleFallback,
+            isComplete: false,
+          ),
+        );
+      }
+
+      final completedStationIds = <String>{};
       if (!forceRefresh) {
-        final now = DateTime.now();
         for (final station in stations) {
           final cached = _cachedWaterUiResult(
             station,
@@ -458,22 +486,25 @@ class WaterService {
             historyWindow: historyWindow,
             now: now,
           );
-          if (cached != null) resultsByStationId[station.id] = cached;
+          if (cached != null) {
+            resultsByStationId[station.id] = cached;
+            completedStationIds.add(station.id);
+          }
         }
-        if (resultsByStationId.isNotEmpty) {
+        if (completedStationIds.isNotEmpty) {
           emit(
             _buildProgressiveSnapshot(
               stations: stations,
               resultsByStationId: resultsByStationId,
               isStationListStaleFallback: stationResult.isStaleFallback,
-              isComplete: resultsByStationId.length == stations.length,
+              isComplete: completedStationIds.length == stations.length,
             ),
           );
         }
       }
 
       final pendingStations = stations
-          .where((station) => !resultsByStationId.containsKey(station.id))
+          .where((station) => !completedStationIds.contains(station.id))
           .toList(growable: false);
       if (pendingStations.isEmpty) return;
 
@@ -493,16 +524,24 @@ class WaterService {
               forceRefresh: forceRefresh,
             );
           } on Exception catch (error) {
-            result = _providerErrorResult(error);
+            result = _withCurrentFreshness(
+              _resolveWithLastKnownGood(
+                station,
+                _providerErrorResult(error),
+                canUpdateLastKnownGood: false,
+              ),
+              DateTime.now(),
+            );
           }
           if (!isActive()) return;
           resultsByStationId[station.id] = result;
+          completedStationIds.add(station.id);
           emit(
             _buildProgressiveSnapshot(
               stations: stations,
               resultsByStationId: resultsByStationId,
               isStationListStaleFallback: stationResult.isStaleFallback,
-              isComplete: resultsByStationId.length == stations.length,
+              isComplete: completedStationIds.length == stations.length,
             ),
           );
         }
@@ -528,7 +567,12 @@ class WaterService {
     if (cached == null || now.difference(cached.savedAt) >= cacheDuration) {
       return null;
     }
-    return _withCurrentFreshness(cached.result, now);
+    final resolved = _resolveWithLastKnownGood(
+      station,
+      cached.result,
+      canUpdateLastKnownGood: true,
+    );
+    return _withCurrentFreshness(resolved, now);
   }
 
   static WaterUiResult _providerErrorResult(Object error) => WaterUiResult(
@@ -657,6 +701,58 @@ class WaterService {
         : 'none';
     return '${identityHashCode(_repository)}:${station.id}:'
         '$measurementTimestamp:$limit:${historyWindow.inMicroseconds}';
+  }
+
+  String _lastKnownGoodKey(Station station) =>
+      '${identityHashCode(_repository)}:${station.id}';
+
+  WaterUiResult? _lastKnownGoodResult(Station station, DateTime now) {
+    final result = _lastKnownGoodByStation[_lastKnownGoodKey(station)];
+    if (result == null || !_hasValidReading(result)) return null;
+    return _withCurrentFreshness(result, now);
+  }
+
+  WaterUiResult _resolveWithLastKnownGood(
+    Station station,
+    WaterUiResult result, {
+    required bool canUpdateLastKnownGood,
+  }) {
+    final key = _lastKnownGoodKey(station);
+    final previous = _lastKnownGoodByStation[key];
+    if (_hasValidReading(result)) {
+      final previousTimestamp = previous?.measurementTimestamp;
+      final resultTimestamp = result.measurementTimestamp!;
+      if (previousTimestamp != null &&
+          previousTimestamp.isAfter(resultTimestamp)) {
+        return previous!;
+      }
+      if (canUpdateLastKnownGood) {
+        _lastKnownGoodByStation[key] = result;
+      }
+      return result;
+    }
+
+    if (previous == null || !_hasValidReading(previous)) return result;
+    return WaterUiResult(
+      latestReading: previous.latestReading,
+      history: previous.history,
+      source: previous.source,
+      sourceName: previous.sourceName,
+      measurementTimestamp: previous.measurementTimestamp,
+      dataAge: previous.dataAge,
+      isStale: previous.isStale,
+      status: WaterUiStatus.providerError,
+      safeDiagnosticMessage:
+          result.safeDiagnosticMessage ?? 'Water update temporarily failed',
+    );
+  }
+
+  static bool _hasValidReading(WaterUiResult result) {
+    final reading = result.latestReading;
+    return reading != null &&
+        _isValidReading(reading) &&
+        result.measurementTimestamp != null &&
+        result.measurementTimestamp!.millisecondsSinceEpoch > 0;
   }
 
   static WaterUiResult _withCurrentFreshness(
