@@ -19,7 +19,7 @@ class WeatherCardPremium extends StatefulWidget {
 
 class _WeatherCardPremiumState extends State<WeatherCardPremium> {
   final WeatherService _weatherService = WeatherService();
-  late Future<WeatherData> _weatherFuture;
+  late Future<WeatherHomeResult> _weatherFuture;
 
   @override
   void initState() {
@@ -35,24 +35,14 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
     }
   }
 
-  Future<WeatherData> _loadWeather() {
-    return _weatherService.getCurrentWeather(
+  Future<WeatherHomeResult> _loadWeather() {
+    return _weatherService.getHomeWeatherResult(
       fallbackStation: widget.fallbackStation,
     );
   }
 
-  String _localizedCondition(
-    BuildContext context, {
-    required bool hasError,
-    required String? condition,
-  }) {
+  String _localizedCondition(BuildContext context, String? condition) {
     final isRo = Localizations.localeOf(context).languageCode == 'ro';
-
-    if (hasError) {
-      return isRo
-          ? 'Nu se pot actualiza datele acum'
-          : 'Unable to update data right now';
-    }
 
     final value = condition?.trim();
     if (value == null || value.isEmpty) {
@@ -113,51 +103,103 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
     return '${pressure.round()} hPa';
   }
 
-  String _solunarLabel(BuildContext context, Object? value) {
-    if (value is! String || value.trim().isEmpty) {
-      return _unavailableLabel(context);
-    }
-
-    final label = value.trim();
-    if (Localizations.localeOf(context).languageCode != 'ro') return label;
-
-    return switch (label.toLowerCase()) {
-      'excellent' => 'Excelent',
-      'good' => 'Bun',
-      'fair' => 'Acceptabil',
-      'poor' => 'Slab',
-      _ => label,
+  String _solunarLabel(BuildContext context, FishingActivity? value) {
+    if (value == null) return _unavailableLabel(context);
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    return switch (value) {
+      FishingActivity.excellent => isRo ? 'Excelent' : 'Excellent',
+      FishingActivity.good => isRo ? 'Bun' : 'Good',
+      FishingActivity.fair => isRo ? 'Acceptabil' : 'Fair',
+      FishingActivity.poor => isRo ? 'Slab' : 'Poor',
     };
+  }
+
+  // TODO(l10n): Move beta availability labels into ARB.
+  String _availabilityLabel(
+    BuildContext context,
+    WeatherHomeStatus? status, {
+    required bool hasSnapshotError,
+  }) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    if (hasSnapshotError) {
+      return isRo
+          ? 'Date meteo temporar indisponibile'
+          : 'Weather data temporarily unavailable';
+    }
+    return switch (status) {
+      WeatherHomeStatus.providerError =>
+        isRo
+            ? 'Date meteo temporar indisponibile'
+            : 'Weather data temporarily unavailable',
+      WeatherHomeStatus.locationUnavailable =>
+        isRo ? 'Loca\u021bie indisponibil\u0103' : 'Location unavailable',
+      WeatherHomeStatus.unavailable ||
+      null => isRo ? 'Date meteo indisponibile' : 'Weather data unavailable',
+      WeatherHomeStatus.available || WeatherHomeStatus.staleFallback => '',
+    };
+  }
+
+  String? _contextLabel(BuildContext context, WeatherHomeResult result) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    final labels = <String>[];
+    if (result.status == WeatherHomeStatus.staleFallback) {
+      labels.add(isRo ? 'Date vechi' : 'Stale data');
+    }
+    if (result.locationSource == WeatherLocationSource.stationFallback ||
+        result.locationSource == WeatherLocationSource.defaultFallback) {
+      labels.add(isRo ? 'Loca\u021bie estimat\u0103' : 'Estimated location');
+    }
+    return labels.isEmpty ? null : labels.join('\n');
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<WeatherData>(
+    return FutureBuilder<WeatherHomeResult>(
       future: _weatherFuture,
       builder: (context, snapshot) {
-        final weather = snapshot.data;
-        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final result = snapshot.data;
+        final weather = result?.data;
+        final isLoading =
+            snapshot.connectionState == ConnectionState.waiting &&
+            result == null;
         final temperature = weather == null
-            ? '--'
-            : weather.temperature.round().toString();
-        final condition = _localizedCondition(
-          context,
-          hasError: snapshot.hasError,
-          condition: weather?.condition,
-        );
+            ? null
+            : '${weather.temperature.round()}\u00b0';
+        final neutralValue = isLoading
+            ? context.l10n.loadingEllipsis
+            : _unavailableLabel(context);
+        final conditionLabel = isLoading
+            ? context.l10n.loadingEllipsis
+            : weather != null
+            ? _localizedCondition(context, weather.condition)
+            : _availabilityLabel(
+                context,
+                result?.status,
+                hasSnapshotError: snapshot.hasError,
+              );
+        final contextLabel = weather == null || result == null
+            ? null
+            : _contextLabel(context, result);
+        final condition = contextLabel == null
+            ? conditionLabel
+            : '$conditionLabel\n$contextLabel';
         final humidity = weather == null
-            ? '--'
+            ? neutralValue
             : '${weather.humidity.round()}%';
         final windSpeed = weather == null
-            ? '--'
+            ? null
             : '${weather.windSpeed.toStringAsFixed(1)} km/h';
         final windDirection = weather == null
-            ? '--'
+            ? null
             : _localizedWindDirection(context, weather.windDirectionLabel);
-        final wind = weather == null ? '--' : '$windSpeed $windDirection';
-        final pressure = _pressureLabel(context, weather?.pressure);
+        final wind = windSpeed == null || windDirection == null
+            ? neutralValue
+            : '$windSpeed $windDirection';
+        final pressure = weather == null
+            ? neutralValue
+            : _pressureLabel(context, weather.pressure);
         final precipitation = weather == null
-            ? '--'
+            ? neutralValue
             : weather.precipitationProbability.isFinite
             ? '${weather.precipitationProbability.round()}%'
             : _unavailableLabel(context);
@@ -210,22 +252,24 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            '$temperature°',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize:
-                                  (dense ? 26 : 30) * layout.titleFontScale,
-                              height: 1,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                          if (temperature != null) ...[
+                            Text(
+                              temperature,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize:
+                                    (dense ? 26 : 30) * layout.titleFontScale,
+                                height: 1,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 3),
+                            const SizedBox(height: 3),
+                          ],
                           Text(
                             condition,
-                            maxLines: 2,
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                             style: AppTextStyles.caption,
                           ),
