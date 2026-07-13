@@ -6,6 +6,47 @@ import 'astronomy_service.dart';
 import 'location_service.dart';
 import 'water_service.dart';
 
+enum WeatherLocationSource { gps, stationFallback, defaultFallback }
+
+enum WeatherHomeStatus {
+  available,
+  staleFallback,
+  locationUnavailable,
+  providerError,
+  unavailable,
+}
+
+class WeatherHomeResult {
+  const WeatherHomeResult({
+    required this.data,
+    required this.latitude,
+    required this.longitude,
+    required this.locationSource,
+    required this.status,
+    required this.dataTimestamp,
+    required this.dataAge,
+    required this.isStale,
+    required this.safeDiagnosticMessage,
+  });
+
+  final WeatherData? data;
+  final double? latitude;
+  final double? longitude;
+  final WeatherLocationSource? locationSource;
+  final WeatherHomeStatus status;
+  final DateTime? dataTimestamp;
+  final Duration? dataAge;
+  final bool isStale;
+  final String? safeDiagnosticMessage;
+}
+
+class _WeatherHomeCacheEntry {
+  const _WeatherHomeCacheEntry({required this.result, required this.savedAt});
+
+  final WeatherHomeResult result;
+  final DateTime savedAt;
+}
+
 class WeatherService {
   WeatherService({
     WeatherRepository? repository,
@@ -18,12 +59,22 @@ class WeatherService {
   static const cacheDuration = Duration(minutes: 30);
   static const _defaultRomaniaCoordinates = _Coordinates(43.90, 25.97);
   static final Map<String, TimedCache<WeatherData>> _cache = {};
+  static final Map<String, _WeatherHomeCacheEntry> _homeCache = {};
+  static final Map<String, Future<WeatherHomeResult>> _homeInFlight = {};
+  static final Map<String, int> _homeKeyGenerations = {};
+  static int _homeCacheEpoch = 0;
 
   final WeatherRepository _repository;
   final LocationService _locationService;
   final WaterService _waterService;
 
-  static void clearCache() => _cache.clear();
+  static void clearCache() {
+    _cache.clear();
+    _homeCacheEpoch++;
+    _homeCache.clear();
+    _homeInFlight.clear();
+    _homeKeyGenerations.clear();
+  }
 
   Future<AstronomyContext> getAstronomyContext({
     Station? fallbackStation,
@@ -85,6 +136,191 @@ class WeatherService {
     }
   }
 
+  Future<WeatherHomeResult> getHomeWeatherResult({
+    Station? fallbackStation,
+    bool forceRefresh = false,
+  }) {
+    final key = _homeWeatherKey(fallbackStation);
+    final now = DateTime.now();
+    if (forceRefresh) {
+      _homeCache.remove(key);
+      _homeInFlight.remove(key);
+      _homeKeyGenerations[key] = (_homeKeyGenerations[key] ?? 0) + 1;
+    } else {
+      final cached = _homeCache[key];
+      if (cached != null && now.difference(cached.savedAt) < cacheDuration) {
+        return Future<WeatherHomeResult>.value(
+          _withCurrentDataAge(cached.result, now),
+        );
+      }
+      final activeRequest = _homeInFlight[key];
+      if (activeRequest != null) return activeRequest;
+    }
+
+    final requestEpoch = _homeCacheEpoch;
+    final requestGeneration = _homeKeyGenerations[key] ?? 0;
+    late final Future<WeatherHomeResult> request;
+    request =
+        _loadHomeWeatherResult(
+              fallbackStation: fallbackStation,
+              forceRefresh: forceRefresh,
+            )
+            .then((result) {
+              if (_homeCacheEpoch == requestEpoch &&
+                  (_homeKeyGenerations[key] ?? 0) == requestGeneration) {
+                _homeCache[key] = _WeatherHomeCacheEntry(
+                  result: result,
+                  savedAt: DateTime.now(),
+                );
+              }
+              return _withCurrentDataAge(result, DateTime.now());
+            })
+            .whenComplete(() {
+              if (identical(_homeInFlight[key], request)) {
+                _homeInFlight.remove(key);
+              }
+            });
+    _homeInFlight[key] = request;
+    return request;
+  }
+
+  Future<WeatherHomeResult> _loadHomeWeatherResult({
+    required Station? fallbackStation,
+    required bool forceRefresh,
+  }) async {
+    final coordinates = await _resolveHomeCoordinates(fallbackStation);
+    if (coordinates == null) {
+      return const WeatherHomeResult(
+        data: null,
+        latitude: null,
+        longitude: null,
+        locationSource: null,
+        status: WeatherHomeStatus.locationUnavailable,
+        dataTimestamp: null,
+        dataAge: null,
+        isStale: false,
+        safeDiagnosticMessage: 'No valid weather coordinates available',
+      );
+    }
+
+    try {
+      final cached = await _getHomeCachedWeather(
+        coordinates,
+        forceRefresh: forceRefresh,
+      );
+      final data = cached.value;
+      if (!_hasUsableHomeData(data)) {
+        return WeatherHomeResult(
+          data: null,
+          latitude: coordinates.latitude,
+          longitude: coordinates.longitude,
+          locationSource: coordinates.source,
+          status: WeatherHomeStatus.unavailable,
+          dataTimestamp: data.observedAt,
+          dataAge: null,
+          isStale: false,
+          safeDiagnosticMessage: 'Weather response contains invalid values',
+        );
+      }
+      return WeatherHomeResult(
+        data: data,
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        locationSource: coordinates.source,
+        status: cached.isStaleFallback
+            ? WeatherHomeStatus.staleFallback
+            : WeatherHomeStatus.available,
+        dataTimestamp: data.observedAt,
+        dataAge: null,
+        isStale: cached.isStaleFallback,
+        safeDiagnosticMessage: cached.isStaleFallback
+            ? 'Open-Meteo refresh failed; using cached data'
+            : coordinates.safeDiagnosticMessage,
+      );
+    } on Exception catch (error) {
+      return WeatherHomeResult(
+        data: null,
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        locationSource: coordinates.source,
+        status: WeatherHomeStatus.providerError,
+        dataTimestamp: null,
+        dataAge: null,
+        isStale: false,
+        safeDiagnosticMessage:
+            'Open-Meteo request failed (${error.runtimeType})',
+      );
+    }
+  }
+
+  Future<CacheResult<WeatherData>> _getHomeCachedWeather(
+    _HomeCoordinates coordinates, {
+    required bool forceRefresh,
+  }) {
+    final key =
+        '${coordinates.latitude.toStringAsFixed(3)}:'
+        '${coordinates.longitude.toStringAsFixed(3)}';
+    final cache = _cache.putIfAbsent(
+      key,
+      () => TimedCache<WeatherData>(duration: cacheDuration),
+    );
+    return cache.get(
+      () => _repository.getCurrentWeather(
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+      ),
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<_HomeCoordinates?> _resolveHomeCoordinates(
+    Station? fallbackStation,
+  ) async {
+    Object? locationError;
+    try {
+      final position = await _locationService.determinePosition();
+      if (_validCoordinates(position.latitude, position.longitude)) {
+        return _HomeCoordinates(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          source: WeatherLocationSource.gps,
+        );
+      }
+      locationError = const WeatherServiceException(
+        'GPS returned invalid coordinates.',
+      );
+    } on LocationFailure catch (error) {
+      locationError = error;
+    } on Exception catch (error) {
+      locationError = error;
+    }
+
+    final station = fallbackStation ?? await _firstStation();
+    if (station != null &&
+        _validCoordinates(station.latitude, station.longitude)) {
+      return _HomeCoordinates(
+        latitude: station.latitude,
+        longitude: station.longitude,
+        source: WeatherLocationSource.stationFallback,
+        safeDiagnosticMessage:
+            'GPS unavailable (${locationError.runtimeType}); using station',
+      );
+    }
+    if (_validCoordinates(
+      _defaultRomaniaCoordinates.latitude,
+      _defaultRomaniaCoordinates.longitude,
+    )) {
+      return _HomeCoordinates(
+        latitude: _defaultRomaniaCoordinates.latitude,
+        longitude: _defaultRomaniaCoordinates.longitude,
+        source: WeatherLocationSource.defaultFallback,
+        safeDiagnosticMessage:
+            'GPS and station unavailable; using default coordinates',
+      );
+    }
+    return null;
+  }
+
   Future<_Coordinates> _resolveCoordinates(Station? fallbackStation) async {
     try {
       final position = await _locationService.determinePosition();
@@ -105,6 +341,56 @@ class WeatherService {
       return null;
     }
   }
+
+  String _homeWeatherKey(Station? fallbackStation) {
+    final stationKey = fallbackStation == null
+        ? 'auto'
+        : '${fallbackStation.id}:'
+              '${fallbackStation.latitude.toStringAsFixed(4)}:'
+              '${fallbackStation.longitude.toStringAsFixed(4)}';
+    return '${identityHashCode(_repository)}:'
+        '${identityHashCode(_locationService)}:$stationKey';
+  }
+
+  static WeatherHomeResult _withCurrentDataAge(
+    WeatherHomeResult result,
+    DateTime now,
+  ) {
+    final timestamp = result.dataTimestamp;
+    final age = timestamp == null ? null : _nonNegativeAge(now, timestamp);
+    return WeatherHomeResult(
+      data: result.data,
+      latitude: result.latitude,
+      longitude: result.longitude,
+      locationSource: result.locationSource,
+      status: result.status,
+      dataTimestamp: timestamp,
+      dataAge: age,
+      isStale: result.isStale,
+      safeDiagnosticMessage: result.safeDiagnosticMessage,
+    );
+  }
+
+  static bool _hasUsableHomeData(WeatherData data) =>
+      data.temperature.isFinite &&
+      data.humidity.isFinite &&
+      data.windSpeed.isFinite &&
+      data.windDirectionDegrees.isFinite &&
+      data.precipitationProbability.isFinite &&
+      data.observedAt.millisecondsSinceEpoch > 0;
+
+  static bool _validCoordinates(double latitude, double longitude) =>
+      latitude.isFinite &&
+      longitude.isFinite &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180;
+
+  static Duration _nonNegativeAge(DateTime now, DateTime timestamp) {
+    final age = now.difference(timestamp.toLocal());
+    return age.isNegative ? Duration.zero : age;
+  }
 }
 
 class WeatherServiceException implements Exception {
@@ -118,4 +404,18 @@ class _Coordinates {
 
   final double latitude;
   final double longitude;
+}
+
+class _HomeCoordinates {
+  const _HomeCoordinates({
+    required this.latitude,
+    required this.longitude,
+    required this.source,
+    this.safeDiagnosticMessage,
+  });
+
+  final double latitude;
+  final double longitude;
+  final WeatherLocationSource source;
+  final String? safeDiagnosticMessage;
 }
