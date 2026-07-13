@@ -163,6 +163,16 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
             builder: (context, constraints) {
               final layout = HomePremiumLayout.of(context);
               final narrow = constraints.maxWidth < 340;
+              final hasFiniteHeight = constraints.maxHeight.isFinite;
+              final compactHeightLimit =
+                  layout.waterCardHeight *
+                  (layout.isLandscapePhone ? 1.0 : .85);
+              final compact =
+                  hasFiniteHeight &&
+                  constraints.maxHeight <= compactHeightLimit;
+              final cardPadding = layout.isSmallPhone
+                  ? 8.0
+                  : (layout.isTablet ? 12.0 : 10.0);
               final hasKnownTrend =
                   station?.hasWaterLevel == true &&
                   station?.hasKnownTrend == true;
@@ -184,8 +194,9 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
               final isRo = Localizations.localeOf(context).languageCode == 'ro';
 
               return Container(
-                padding: EdgeInsets.all(
-                  layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
+                padding: EdgeInsets.symmetric(
+                  horizontal: cardPadding,
+                  vertical: compact ? 6 : cardPadding,
                 ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF17293A),
@@ -209,7 +220,8 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: AppTextStyles.cardTitle.copyWith(
-                              fontSize: 16 * layout.titleFontScale,
+                              fontSize:
+                                  (compact ? 14 : 16) * layout.titleFontScale,
                             ),
                           ),
                         ),
@@ -225,7 +237,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.end,
                                 style: AppTextStyles.caption.copyWith(
-                                  fontSize: narrow ? 8 : 10,
+                                  fontSize: narrow || compact ? 8 : 10,
                                 ),
                               ),
                               Text(
@@ -235,7 +247,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                 textAlign: TextAlign.end,
                                 style: AppTextStyles.caption.copyWith(
                                   color: Colors.white54,
-                                  fontSize: narrow ? 7 : 9,
+                                  fontSize: narrow || compact ? 7 : 9,
                                 ),
                               ),
                             ],
@@ -243,7 +255,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 3),
+                    SizedBox(height: compact ? 1 : 3),
                     Expanded(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -258,9 +270,11 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                   stationName,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.caption,
+                                  style: AppTextStyles.caption.copyWith(
+                                    fontSize: compact ? 10 : null,
+                                  ),
                                 ),
-                                const SizedBox(height: 3),
+                                SizedBox(height: compact ? 1 : 3),
                                 Text(
                                   waterLevel,
                                   maxLines: 1,
@@ -274,13 +288,13 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                     color: Colors.white,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                SizedBox(height: compact ? 2 : 4),
                                 Row(
                                   children: [
                                     Icon(
                                       _iconFor(trend),
                                       color: trendColor,
-                                      size: 16,
+                                      size: compact ? 14 : 16,
                                     ),
                                     const SizedBox(width: 3),
                                     Flexible(
@@ -290,7 +304,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: trendColor,
-                                          fontSize: narrow ? 11 : 13,
+                                          fontSize: narrow || compact ? 11 : 13,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
@@ -341,12 +355,12 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                           ),
                                         ),
                                 ),
-                                const SizedBox(height: 2),
+                                SizedBox(height: compact ? 1 : 2),
                                 if (historyDelta != null)
                                   Container(
-                                    padding: const EdgeInsets.symmetric(
+                                    padding: EdgeInsets.symmetric(
                                       horizontal: 6,
-                                      vertical: 2,
+                                      vertical: compact ? 1 : 2,
                                     ),
                                     decoration: BoxDecoration(
                                       color: trendColor.withValues(alpha: 0.12),
@@ -363,7 +377,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                       overflow: TextOverflow.ellipsis,
                                       style: AppTextStyles.caption.copyWith(
                                         color: trendColor,
-                                        fontSize: narrow ? 8 : 10,
+                                        fontSize: narrow || compact ? 8 : 10,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
