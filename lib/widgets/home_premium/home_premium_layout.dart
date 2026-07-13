@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 
 class HomePremiumLayout {
   const HomePremiumLayout._({
+    required this.bodyViewportSize,
+    required this.systemSafeArea,
+    required this.bottomNavigationOverlaysBody,
     required this.isPortrait,
     required this.isLandscape,
+    required this.isLandscapePhone,
     required this.isSmallPhone,
     required this.isNormalPhone,
     required this.isLargePhone,
@@ -18,6 +22,7 @@ class HomePremiumLayout {
     required this.standardSectionHeight,
     required this.recentCatchesHeight,
     required this.bottomNavHeight,
+    required this.scrollClearance,
     required this.bottomContentClearance,
     required this.dashboardAreaHeight,
     required this.dashboardCardHeight,
@@ -28,15 +33,61 @@ class HomePremiumLayout {
   });
 
   factory HomePremiumLayout.of(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
+    final screenSize = MediaQuery.sizeOf(context);
     final viewPadding = MediaQuery.viewPaddingOf(context);
-    final usableHeight = (size.height - viewPadding.top - viewPadding.bottom)
-        .clamp(0.0, double.infinity)
-        .toDouble();
-    final isLandscape = size.width > size.height;
+    final usableHeight = _nonNegativeFinite(
+      screenSize.height - viewPadding.top - viewPadding.bottom,
+    );
+
+    // This compatibility path derives a body-like size from the full screen.
+    // Use fromViewport when LayoutBuilder supplies the actual Scaffold body.
+    return _calculate(
+      bodyViewportSize: Size(screenSize.width, usableHeight),
+      classificationSize: screenSize,
+      orientationSize: screenSize,
+      systemSafeArea: viewPadding,
+      bottomNavigationOverlaysBody: true,
+    );
+  }
+
+  factory HomePremiumLayout.fromViewport(
+    BuildContext context, {
+    required Size viewportSize,
+    EdgeInsets? systemSafeArea,
+    double? bottomNavigationHeight,
+    bool bottomNavigationOverlaysBody = false,
+  }) {
+    final bodyViewportSize = Size(
+      _nonNegativeFinite(viewportSize.width),
+      _nonNegativeFinite(viewportSize.height),
+    );
+
+    // LayoutBuilder reports the real body viewport, unlike MediaQuery's full
+    // screen size. A Scaffold bottomNavigationBar is outside this viewport.
+    return _calculate(
+      bodyViewportSize: bodyViewportSize,
+      classificationSize: bodyViewportSize,
+      orientationSize: bodyViewportSize,
+      systemSafeArea: systemSafeArea ?? MediaQuery.viewPaddingOf(context),
+      bottomNavigationHeight: bottomNavigationHeight,
+      bottomNavigationOverlaysBody: bottomNavigationOverlaysBody,
+    );
+  }
+
+  static HomePremiumLayout _calculate({
+    required Size bodyViewportSize,
+    required Size classificationSize,
+    required Size orientationSize,
+    required EdgeInsets systemSafeArea,
+    required bool bottomNavigationOverlaysBody,
+    double? bottomNavigationHeight,
+  }) {
+    final usableHeight = bodyViewportSize.height;
+    final isLandscape = orientationSize.width > orientationSize.height;
     final isPortrait = !isLandscape;
-    final shortestSide = size.shortestSide;
+    final shortestSide = classificationSize.shortestSide;
     final isTablet = shortestSide >= 600;
+    final isLandscapePhone = isLandscape && !isTablet;
     final isSmallPhone = !isTablet && shortestSide <= 360;
     final isNormalPhone =
         !isTablet && shortestSide > 360 && shortestSide <= 430;
@@ -57,6 +108,11 @@ class HomePremiumLayout {
     late final double titleFontScale;
     late final double bodyFontScale;
     late final double iconScale;
+
+    double resolveBottomNavigationHeight(double calculatedHeight) =>
+        bottomNavigationHeight == null
+        ? calculatedHeight
+        : _nonNegativeFinite(bottomNavigationHeight);
 
     if (isTablet) {
       horizontalPadding = bounded(
@@ -92,13 +148,11 @@ class HomePremiumLayout {
     if (isLandscape) {
       sectionGap = bounded(usableHeight * .012, 4, 8);
       headerHeight = bounded(usableHeight * .12, 52, isTablet ? 72 : 64);
-      bottomNavHeight = bounded(
-        usableHeight * .14,
-        isTablet ? 58 : 52,
-        isTablet ? 68 : 58,
+      bottomNavHeight = resolveBottomNavigationHeight(
+        bounded(usableHeight * .14, isTablet ? 58 : 52, isTablet ? 68 : 58),
       );
       final firstHomeViewportHeight = bounded(
-        usableHeight - bottomNavHeight,
+        usableHeight - (bottomNavigationOverlaysBody ? bottomNavHeight : 0),
         0,
         usableHeight,
       );
@@ -136,13 +190,11 @@ class HomePremiumLayout {
         isTablet ? 72 : 64,
         isTablet ? 96 : 82,
       );
-      bottomNavHeight = bounded(
-        usableHeight * .072,
-        isTablet ? 64 : 58,
-        isTablet ? 72 : 64,
+      bottomNavHeight = resolveBottomNavigationHeight(
+        bounded(usableHeight * .072, isTablet ? 64 : 58, isTablet ? 72 : 64),
       );
       final firstHomeViewportHeight = bounded(
-        usableHeight - bottomNavHeight,
+        usableHeight - (bottomNavigationOverlaysBody ? bottomNavHeight : 0),
         0,
         usableHeight,
       );
@@ -190,8 +242,12 @@ class HomePremiumLayout {
       );
     }
 
-    final bottomContentClearance =
-        bottomNavHeight + viewPadding.bottom + sectionGap;
+    final scrollClearance =
+        sectionGap +
+        (bottomNavigationOverlaysBody
+            ? bottomNavHeight + systemSafeArea.bottom
+            : 0);
+    final bottomContentClearance = scrollClearance;
 
     // Transitional compatibility for the current two-row dashboard. These
     // aliases can be removed after its staged migration to vertical sections.
@@ -201,8 +257,12 @@ class HomePremiumLayout {
     final bottomSafeClearance = bottomContentClearance;
 
     return HomePremiumLayout._(
+      bodyViewportSize: bodyViewportSize,
+      systemSafeArea: systemSafeArea,
+      bottomNavigationOverlaysBody: bottomNavigationOverlaysBody,
       isPortrait: isPortrait,
       isLandscape: isLandscape,
+      isLandscapePhone: isLandscapePhone,
       isSmallPhone: isSmallPhone,
       isNormalPhone: isNormalPhone,
       isLargePhone: isLargePhone,
@@ -217,6 +277,7 @@ class HomePremiumLayout {
       standardSectionHeight: standardSectionHeight,
       recentCatchesHeight: recentCatchesHeight,
       bottomNavHeight: bottomNavHeight,
+      scrollClearance: scrollClearance,
       bottomContentClearance: bottomContentClearance,
       dashboardAreaHeight: dashboardAreaHeight,
       dashboardCardHeight: dashboardCardHeight,
@@ -227,8 +288,19 @@ class HomePremiumLayout {
     );
   }
 
+  static double _nonNegativeFinite(double value) {
+    if (!value.isFinite || value <= 0) {
+      return 0;
+    }
+    return value;
+  }
+
+  final Size bodyViewportSize;
+  final EdgeInsets systemSafeArea;
+  final bool bottomNavigationOverlaysBody;
   final bool isPortrait;
   final bool isLandscape;
+  final bool isLandscapePhone;
   final bool isSmallPhone;
   final bool isNormalPhone;
   final bool isLargePhone;
@@ -243,6 +315,7 @@ class HomePremiumLayout {
   final double standardSectionHeight;
   final double recentCatchesHeight;
   final double bottomNavHeight;
+  final double scrollClearance;
   final double bottomContentClearance;
 
   // Transitional compatibility fields for staged Home migration.
