@@ -139,9 +139,10 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
     var providerErrorCount = 0;
     DateTime? latestMeasurementTimestamp;
     for (final station in incoming.stations) {
-      final result =
-          incoming.resultsByStationId[station.id] ??
-          previous.resultsByStationId[station.id];
+      final result = _mergeStationResult(
+        previous.resultsByStationId[station.id],
+        incoming.resultsByStationId[station.id],
+      );
       if (result == null) continue;
       mergedResults[station.id] = result;
       final reading = result.latestReading;
@@ -177,6 +178,44 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
       safeDiagnosticMessage: incoming.safeDiagnosticMessage,
       isComplete: incoming.isComplete,
     );
+  }
+
+  static WaterUiResult? _mergeStationResult(
+    WaterUiResult? previous,
+    WaterUiResult? incoming,
+  ) {
+    if (incoming == null) return previous;
+    if (_hasValidReading(incoming) || !_hasValidReading(previous)) {
+      return incoming;
+    }
+    if (incoming.status != WaterUiStatus.providerError &&
+        incoming.status != WaterUiStatus.unavailable) {
+      return incoming;
+    }
+
+    return WaterUiResult(
+      latestReading: previous!.latestReading,
+      history: previous.history,
+      source: previous.source,
+      sourceName: previous.sourceName,
+      measurementTimestamp: previous.measurementTimestamp,
+      dataAge: previous.dataAge,
+      isStale: previous.isStale,
+      status: WaterUiStatus.providerError,
+      safeDiagnosticMessage:
+          incoming.safeDiagnosticMessage ??
+          'Water update temporarily unavailable',
+    );
+  }
+
+  static bool _hasValidReading(WaterUiResult? result) {
+    if (result == null) return false;
+    final reading = result.latestReading;
+    return reading != null &&
+        reading.value.isFinite &&
+        reading.timestamp.millisecondsSinceEpoch > 0 &&
+        result.measurementTimestamp != null &&
+        result.measurementTimestamp!.millisecondsSinceEpoch > 0;
   }
 
   Future<void> _openStation(Station station) async {
