@@ -51,6 +51,7 @@ class WaterStationBatchResult {
     required this.isStationListStaleFallback,
     required this.stationListLoadFailed,
     required this.safeDiagnosticMessage,
+    this.isComplete = true,
   });
 
   final List<Station> stations;
@@ -63,6 +64,10 @@ class WaterStationBatchResult {
   final bool isStationListStaleFallback;
   final bool stationListLoadFailed;
   final String? safeDiagnosticMessage;
+  final bool isComplete;
+
+  int get loadedStationCount => resultsByStationId.length;
+  int get pendingStationCount => totalStationCount - loadedStationCount;
 }
 
 class _WaterUiCacheEntry {
@@ -88,6 +93,7 @@ class WaterService {
   static final Map<String, Future<WaterUiResult>> _waterUiInFlight = {};
   static final Map<String, int> _waterUiKeyGenerations = {};
   static int _waterUiCacheEpoch = 0;
+  static int _progressiveBatchGeneration = 0;
   static Station? _selectedStation;
 
   final WaterRepository _repository;
@@ -362,6 +368,229 @@ class WaterService {
       isStationListStaleFallback: stationResult.isStaleFallback,
       stationListLoadFailed: false,
       safeDiagnosticMessage: null,
+    );
+  }
+
+  Stream<WaterStationBatchResult> getProgressiveStationBatch({
+    bool forceRefresh = false,
+    int limit = 72,
+    Duration historyWindow = const Duration(hours: 24),
+  }) {
+    late final StreamController<WaterStationBatchResult> controller;
+    var isCanceled = false;
+    controller = StreamController<WaterStationBatchResult>(
+      onListen: () {
+        final generation = ++_progressiveBatchGeneration;
+        unawaited(
+          _loadProgressiveStationBatch(
+            controller: controller,
+            generation: generation,
+            isCanceled: () => isCanceled,
+            forceRefresh: forceRefresh,
+            limit: limit,
+            historyWindow: historyWindow,
+          ),
+        );
+      },
+      onCancel: () => isCanceled = true,
+    );
+    return controller.stream;
+  }
+
+  Future<void> _loadProgressiveStationBatch({
+    required StreamController<WaterStationBatchResult> controller,
+    required int generation,
+    required bool Function() isCanceled,
+    required bool forceRefresh,
+    required int limit,
+    required Duration historyWindow,
+  }) async {
+    bool isActive() =>
+        !isCanceled() && generation == _progressiveBatchGeneration;
+
+    void emit(WaterStationBatchResult snapshot) {
+      if (isActive() && !controller.isClosed) controller.add(snapshot);
+    }
+
+    try {
+      late final CacheResult<List<Station>> stationResult;
+      try {
+        stationResult = await _loadStationsResult(forceRefresh: forceRefresh);
+      } on Exception catch (error) {
+        emit(
+          WaterStationBatchResult(
+            stations: const <Station>[],
+            resultsByStationId: const <String, WaterUiResult>{},
+            totalStationCount: 0,
+            stationWithReadingCount: 0,
+            stationWithoutDataCount: 0,
+            providerErrorCount: 0,
+            latestMeasurementTimestamp: null,
+            isStationListStaleFallback: false,
+            stationListLoadFailed: true,
+            safeDiagnosticMessage:
+                'Water station list failed (${error.runtimeType})',
+            isComplete: true,
+          ),
+        );
+        return;
+      }
+
+      if (!isActive()) return;
+      final stations = List<Station>.unmodifiable(stationResult.value);
+      final resultsByStationId = <String, WaterUiResult>{};
+      emit(
+        _buildProgressiveSnapshot(
+          stations: stations,
+          resultsByStationId: resultsByStationId,
+          isStationListStaleFallback: stationResult.isStaleFallback,
+          isComplete: stations.isEmpty,
+        ),
+      );
+      if (stations.isEmpty) return;
+
+      if (!forceRefresh) {
+        final now = DateTime.now();
+        for (final station in stations) {
+          final cached = _cachedWaterUiResult(
+            station,
+            limit: limit,
+            historyWindow: historyWindow,
+            now: now,
+          );
+          if (cached != null) resultsByStationId[station.id] = cached;
+        }
+        if (resultsByStationId.isNotEmpty) {
+          emit(
+            _buildProgressiveSnapshot(
+              stations: stations,
+              resultsByStationId: resultsByStationId,
+              isStationListStaleFallback: stationResult.isStaleFallback,
+              isComplete: resultsByStationId.length == stations.length,
+            ),
+          );
+        }
+      }
+
+      final pendingStations = stations
+          .where((station) => !resultsByStationId.containsKey(station.id))
+          .toList(growable: false);
+      if (pendingStations.isEmpty) return;
+
+      var nextIndex = 0;
+      Future<void> loadNext() async {
+        while (isActive()) {
+          final index = nextIndex;
+          if (index >= pendingStations.length) return;
+          nextIndex++;
+          final station = pendingStations[index];
+          late final WaterUiResult result;
+          try {
+            result = await getWaterUiResult(
+              station,
+              limit: limit,
+              historyWindow: historyWindow,
+              forceRefresh: forceRefresh,
+            );
+          } on Exception catch (error) {
+            result = _providerErrorResult(error);
+          }
+          if (!isActive()) return;
+          resultsByStationId[station.id] = result;
+          emit(
+            _buildProgressiveSnapshot(
+              stations: stations,
+              resultsByStationId: resultsByStationId,
+              isStationListStaleFallback: stationResult.isStaleFallback,
+              isComplete: resultsByStationId.length == stations.length,
+            ),
+          );
+        }
+      }
+
+      final workerCount = pendingStations.length < _maxBatchConcurrency
+          ? pendingStations.length
+          : _maxBatchConcurrency;
+      await Future.wait(List.generate(workerCount, (_) => loadNext()));
+    } finally {
+      if (!controller.isClosed) await controller.close();
+    }
+  }
+
+  WaterUiResult? _cachedWaterUiResult(
+    Station station, {
+    required int limit,
+    required Duration historyWindow,
+    required DateTime now,
+  }) {
+    final key = _waterUiCacheKey(station, limit, historyWindow);
+    final cached = _waterUiCache[key];
+    if (cached == null || now.difference(cached.savedAt) >= cacheDuration) {
+      return null;
+    }
+    return _withCurrentFreshness(cached.result, now);
+  }
+
+  static WaterUiResult _providerErrorResult(Object error) => WaterUiResult(
+    latestReading: null,
+    history: const <WaterLevel>[],
+    source: null,
+    sourceName: null,
+    measurementTimestamp: null,
+    dataAge: null,
+    isStale: false,
+    status: WaterUiStatus.providerError,
+    safeDiagnosticMessage:
+        'Water station request failed (${error.runtimeType})',
+  );
+
+  static WaterStationBatchResult _buildProgressiveSnapshot({
+    required List<Station> stations,
+    required Map<String, WaterUiResult> resultsByStationId,
+    required bool isStationListStaleFallback,
+    required bool isComplete,
+  }) {
+    final orderedResults = <String, WaterUiResult>{};
+    var stationWithReadingCount = 0;
+    var stationWithoutDataCount = 0;
+    var providerErrorCount = 0;
+    DateTime? latestMeasurementTimestamp;
+    for (final station in stations) {
+      final result = resultsByStationId[station.id];
+      if (result == null) continue;
+      orderedResults[station.id] = result;
+      final reading = result.latestReading;
+      if (reading != null && _isValidReading(reading)) {
+        stationWithReadingCount++;
+        final timestamp = result.measurementTimestamp;
+        if (timestamp != null &&
+            timestamp.millisecondsSinceEpoch > 0 &&
+            (latestMeasurementTimestamp == null ||
+                timestamp.isAfter(latestMeasurementTimestamp))) {
+          latestMeasurementTimestamp = timestamp;
+        }
+      } else {
+        stationWithoutDataCount++;
+      }
+      if (result.status == WaterUiStatus.providerError) {
+        providerErrorCount++;
+      }
+    }
+
+    return WaterStationBatchResult(
+      stations: stations,
+      resultsByStationId: Map<String, WaterUiResult>.unmodifiable(
+        orderedResults,
+      ),
+      totalStationCount: stations.length,
+      stationWithReadingCount: stationWithReadingCount,
+      stationWithoutDataCount: stationWithoutDataCount,
+      providerErrorCount: providerErrorCount,
+      latestMeasurementTimestamp: latestMeasurementTimestamp,
+      isStationListStaleFallback: isStationListStaleFallback,
+      stationListLoadFailed: false,
+      safeDiagnosticMessage: null,
+      isComplete: isComplete,
     );
   }
 
