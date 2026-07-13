@@ -34,26 +34,7 @@ class HomePremiumHeader extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text.rich(
-                    TextSpan(
-                      style: TextStyle(
-                        fontSize: 18 * layout.titleFontScale,
-                        height: 1,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -.3,
-                      ),
-                      children: const [
-                        TextSpan(
-                          text: 'Fluvi',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        TextSpan(
-                          text: 'AI',
-                          style: TextStyle(color: Color(0xFF12D8D6)),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _FluviAiWordmark(fontSize: 18 * layout.titleFontScale),
                   const SizedBox(height: 1),
                   Text(
                     Localizations.localeOf(context).languageCode == 'ro'
@@ -107,6 +88,126 @@ class HomePremiumHeader extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _FluviAiWordmark extends StatelessWidget {
+  const _FluviAiWordmark({required this.fontSize});
+
+  static const _silver = Color(0xFFE7EDF3);
+  static const _cyan = Color(0xFF12D8D6);
+
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = DefaultTextStyle.of(context).style.merge(
+      TextStyle(
+        fontSize: fontSize,
+        height: 1,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -.3,
+      ),
+    );
+    final textDirection = Directionality.of(context);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final text = TextSpan(
+      style: style,
+      children: const [
+        TextSpan(
+          text: 'Fluvi',
+          style: TextStyle(color: _silver),
+        ),
+        TextSpan(
+          text: 'AI',
+          style: TextStyle(color: _cyan),
+        ),
+      ],
+    );
+    final textPainter = TextPainter(
+      text: text,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+
+    return Semantics(
+      label: 'FluviAI',
+      child: ExcludeSemantics(
+        child: CustomPaint(
+          size: textPainter.size,
+          painter: _FluviAiWordmarkPainter(
+            text: text,
+            textDirection: textDirection,
+            textScaler: textScaler,
+            fontSize: fontSize,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FluviAiWordmarkPainter extends CustomPainter {
+  const _FluviAiWordmarkPainter({
+    required this.text,
+    required this.textDirection,
+    required this.textScaler,
+    required this.fontSize,
+  });
+
+  final TextSpan text;
+  final TextDirection textDirection;
+  final TextScaler textScaler;
+  final double fontSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final textPainter = TextPainter(
+      text: text,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    final aBoxes = textPainter.getBoxesForSelection(
+      const TextSelection(baseOffset: 5, extentOffset: 6),
+    );
+
+    canvas.saveLayer(Offset.zero & size, Paint());
+    textPainter.paint(canvas, Offset.zero);
+
+    if (aBoxes.isNotEmpty) {
+      final aBox = aBoxes.first;
+      final crossbarCenter = Offset(
+        (aBox.left + aBox.right) / 2,
+        aBox.top + ((aBox.bottom - aBox.top) * .58),
+      );
+      final crossbarHeight = (fontSize * .11).clamp(1.0, 2.4).toDouble();
+      final crossbarMask = Rect.fromCenter(
+        center: crossbarCenter,
+        width: (aBox.right - aBox.left) * .46,
+        height: crossbarHeight,
+      );
+
+      canvas.drawRect(crossbarMask, Paint()..blendMode = BlendMode.clear);
+      canvas.restore();
+      canvas.drawCircle(
+        crossbarCenter,
+        (fontSize * .075).clamp(1.0, 1.8).toDouble(),
+        Paint()..color = _FluviAiWordmark._cyan,
+      );
+      return;
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_FluviAiWordmarkPainter oldDelegate) {
+    return oldDelegate.text != text ||
+        oldDelegate.textDirection != textDirection ||
+        oldDelegate.textScaler != textScaler ||
+        oldDelegate.fontSize != fontSize;
   }
 }
 
