@@ -23,9 +23,9 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
   final WaterService _waterService = WaterService();
   late Future<Station?> _stationFuture;
   StreamSubscription<Station>? _selectionSubscription;
-  List<WaterLevel> _history = const [];
-  String? _historyStationId;
-  bool _isHistoryLoading = false;
+  WaterUiResult? _waterResult;
+  String? _waterResultStationId;
+  bool _isWaterResultLoading = false;
   int _stationRequestId = 0;
 
   @override
@@ -57,9 +57,9 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
 
   Future<Station?> _loadStation(Station? fallbackStation) async {
     final requestId = ++_stationRequestId;
-    _history = const [];
-    _historyStationId = null;
-    _isHistoryLoading = true;
+    _waterResult = null;
+    _waterResultStationId = null;
+    _isWaterResultLoading = true;
 
     final station = await _waterService.getNearestStation(
       fallbackStation: fallbackStation,
@@ -67,53 +67,49 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
     if (requestId != _stationRequestId) return station;
 
     if (station == null) {
-      if (mounted) setState(() => _isHistoryLoading = false);
+      if (mounted) setState(() => _isWaterResultLoading = false);
       return null;
     }
 
-    unawaited(_loadHistory(station, requestId));
+    unawaited(_loadWaterResult(station, requestId));
     return station;
   }
 
-  Future<void> _loadHistory(Station station, int requestId) async {
+  Future<void> _loadWaterResult(Station station, int requestId) async {
     if (mounted && requestId == _stationRequestId) {
       setState(() {
-        _history = const [];
-        _historyStationId = station.id;
-        _isHistoryLoading = true;
+        _waterResult = null;
+        _waterResultStationId = station.id;
+        _isWaterResultLoading = true;
       });
     }
 
-    List<WaterLevel> readings;
+    late final WaterUiResult result;
     try {
-      readings = await _waterService.getHistory(
-        station.id,
-        stationName: station.name,
-        limit: 72,
-      );
+      result = await _waterService.getWaterUiResult(station, limit: 72);
     } on Exception {
-      readings = const [];
+      result = const WaterUiResult(
+        latestReading: null,
+        history: [],
+        source: null,
+        sourceName: null,
+        measurementTimestamp: null,
+        dataAge: null,
+        isStale: false,
+        status: WaterUiStatus.providerError,
+        safeDiagnosticMessage: 'Water UI request failed',
+      );
     }
 
     if (!mounted ||
         requestId != _stationRequestId ||
-        _historyStationId != station.id) {
+        _waterResultStationId != station.id) {
       return;
     }
 
-    final now = DateTime.now();
-    final cutoff = now.subtract(const Duration(hours: 24));
-    final filtered =
-        readings
-            .where((reading) => reading.value.isFinite)
-            .where((reading) => !reading.timestamp.isBefore(cutoff))
-            .where((reading) => !reading.timestamp.isAfter(now))
-            .toList(growable: false)
-          ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
     setState(() {
-      _history = filtered;
-      _isHistoryLoading = false;
+      _waterResult = result;
+      _isWaterResultLoading = false;
     });
   }
 
@@ -124,6 +120,29 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
       builder: (context, snapshot) {
         final station = snapshot.data;
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final waterResult =
+            station != null && _waterResultStationId == station.id
+            ? _waterResult
+            : null;
+        final latestReading = waterResult?.latestReading;
+        final hasStationReading = station?.hasWaterLevel == true;
+        final hasReading = latestReading != null || hasStationReading;
+        final waterValue = latestReading?.value ?? station?.level;
+        final waterUnit =
+            latestReading?.unit ?? station?.waterLevelUnit ?? 'cm';
+        final trend =
+            latestReading?.trend ?? station?.trend ?? WaterTrend.stable;
+        final hasKnownTrend =
+            latestReading?.hasKnownTrend ??
+            (hasStationReading && station!.hasKnownTrend);
+        final measurementTimestamp =
+            waterResult?.measurementTimestamp ??
+            (hasStationReading ? station!.lastUpdate : null);
+        final reliabilityStatus =
+            waterResult?.status ??
+            (hasReading
+                ? WaterUiStatus.insufficientHistory
+                : WaterUiStatus.unavailable);
         final stationName =
             station?.name ??
             (snapshot.hasError
@@ -133,28 +152,27 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                 : isLoading
                 ? context.l10n.loadingEllipsis
                 : context.l10n.noStationAvailable);
-        final waterLevel = station == null
-            ? '--'
-            : station.hasWaterLevel
-            ? '${station.level.toStringAsFixed(0)} ${station.waterLevelUnit}'
+        final waterLevel = hasReading && waterValue != null
+            ? '${waterValue.toStringAsFixed(0)} $waterUnit'
             : context.l10n.noData;
-        final trend = station?.trend ?? WaterTrend.stable;
-        final status = station == null
-            ? '--'
-            : station.hasWaterLevel
-            ? (station.hasKnownTrend
+        final status = hasReading
+            ? (hasKnownTrend
                   ? _statusFor(context, trend)
                   : context.l10n.unknown)
             : context.l10n.noData;
-        final lastUpdate = station == null
+        final lastUpdate = measurementTimestamp == null
             ? (snapshot.hasError
                   ? Localizations.localeOf(context).languageCode == 'ro'
                         ? 'Încercați din nou în câteva momente'
                         : 'Please try again in a few moments'
                   : context.l10n.waitingForData)
-            : _relativeUpdate(context, station.lastUpdate);
-        final sourceLabel = station?.hasWaterLevel == true
-            ? station!.waterLevelSource
+            : _freshnessLabel(
+                context,
+                measurementTimestamp,
+                isStale: waterResult?.isStale ?? false,
+              );
+        final sourceLabel = hasReading
+            ? latestReading?.sourceName ?? station!.waterLevelSource
             : context.l10n.noSource;
 
         return PremiumLoadingShimmer(
@@ -173,23 +191,20 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
               final cardPadding = layout.isSmallPhone
                   ? 8.0
                   : (layout.isTablet ? 12.0 : 10.0);
-              final hasKnownTrend =
-                  station?.hasWaterLevel == true &&
-                  station?.hasKnownTrend == true;
               final trendColor = hasKnownTrend
                   ? _colorFor(trend)
                   : Colors.white54;
-              final history = station != null && _historyStationId == station.id
-                  ? _history
-                  : const <WaterLevel>[];
+              final history = waterResult?.history ?? const <WaterLevel>[];
               final historyLoading =
                   station != null &&
-                  _historyStationId == station.id &&
-                  _isHistoryLoading;
+                  _waterResultStationId == station.id &&
+                  _isWaterResultLoading;
               final hasEnoughHistory = history.length >= 2;
-              final canShowHistory = hasKnownTrend && hasEnoughHistory;
+              final canShowHistory =
+                  reliabilityStatus == WaterUiStatus.availableHistory &&
+                  hasEnoughHistory;
               final historyDelta = canShowHistory
-                  ? _historyDeltaLabel(history, station!.waterLevelUnit)
+                  ? _historyDeltaLabel(history, waterUnit)
                   : null;
               final isRo = Localizations.localeOf(context).languageCode == 'ro';
 
@@ -292,7 +307,9 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                 Row(
                                   children: [
                                     Icon(
-                                      _iconFor(trend),
+                                      hasKnownTrend
+                                          ? _iconFor(trend)
+                                          : Icons.help_outline_rounded,
                                       color: trendColor,
                                       size: compact ? 14 : 16,
                                     ),
@@ -339,18 +356,19 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                         )
                                       : Center(
                                           child: Text(
-                                            hasEnoughHistory
-                                                ? context.l10n.unknown
-                                                : isRo
-                                                ? 'Istoric indisponibil'
-                                                : 'History unavailable',
+                                            _historyStatusLabel(
+                                              reliabilityStatus,
+                                              isRo: isRo,
+                                            ),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                             textAlign: TextAlign.center,
                                             style: AppTextStyles.caption
                                                 .copyWith(
                                                   color: Colors.white54,
-                                                  fontSize: narrow ? 8 : 10,
+                                                  fontSize: narrow || compact
+                                                      ? 8
+                                                      : 10,
                                                 ),
                                           ),
                                         ),
@@ -429,6 +447,34 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
 
     return '$sign$difference $unit$periodLabel';
   }
+
+  // TODO(l10n): Move beta reliability labels into ARB in the localization sprint.
+  static String _freshnessLabel(
+    BuildContext context,
+    DateTime timestamp, {
+    required bool isStale,
+  }) {
+    final updated = _relativeUpdate(context, timestamp);
+    if (!isStale) return updated;
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    return isRo ? 'Date vechi \u2022 $updated' : 'Stale data \u2022 $updated';
+  }
+
+  static String _historyStatusLabel(
+    WaterUiStatus status, {
+    required bool isRo,
+  }) => switch (status) {
+    WaterUiStatus.availableHistory =>
+      isRo ? 'Istoric 24h disponibil' : '24h history available',
+    WaterUiStatus.insufficientHistory =>
+      isRo ? 'Istoric 24h insuficient' : 'Insufficient 24h history',
+    WaterUiStatus.providerError =>
+      isRo
+          ? 'Istoric temporar indisponibil'
+          : 'History temporarily unavailable',
+    WaterUiStatus.unavailable =>
+      isRo ? 'Date temporar indisponibile' : 'Data temporarily unavailable',
+  };
 
   static String _relativeUpdate(BuildContext context, DateTime timestamp) {
     if (timestamp.millisecondsSinceEpoch == 0) {
