@@ -169,6 +169,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
             : _freshnessLabel(
                 context,
                 measurementTimestamp,
+                dataAge: waterResult?.dataAge,
                 isStale: waterResult?.isStale ?? false,
               );
         final sourceLabel = hasReading
@@ -452,12 +453,42 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
   static String _freshnessLabel(
     BuildContext context,
     DateTime timestamp, {
+    required Duration? dataAge,
     required bool isStale,
   }) {
-    final updated = _relativeUpdate(context, timestamp);
-    if (!isStale) return updated;
+    if (timestamp.millisecondsSinceEpoch == 0) {
+      return context.l10n.updateTimeUnavailable;
+    }
+
+    final measuredAge =
+        dataAge ?? DateTime.now().difference(timestamp.toLocal());
+    final age = measuredAge.isNegative ? Duration.zero : measuredAge;
     final isRo = Localizations.localeOf(context).languageCode == 'ro';
-    return isRo ? 'Date vechi \u2022 $updated' : 'Stale data \u2022 $updated';
+    if (age.inMinutes < 1) {
+      return isRo ? 'Acum' : 'Now';
+    }
+
+    final ageLabel = _compactAgeLabel(age, isRo: isRo);
+    if (isStale) {
+      return isRo ? 'Vechi \u2022 $ageLabel' : 'Stale \u2022 $ageLabel';
+    }
+    return isRo ? 'Acum $ageLabel' : '$ageLabel ago';
+  }
+
+  static String _compactAgeLabel(Duration age, {required bool isRo}) {
+    if (age.inMinutes < 60) {
+      final value = age.inMinutes;
+      if (!isRo) return '$value ${value == 1 ? 'minute' : 'minutes'}';
+      return '$value ${value == 1 ? 'minut' : 'minute'}';
+    }
+    if (age.inHours < 24) {
+      final value = age.inHours;
+      if (!isRo) return '$value ${value == 1 ? 'hour' : 'hours'}';
+      return '$value ${value == 1 ? 'or\u0103' : 'ore'}';
+    }
+    final value = age.inDays;
+    if (!isRo) return '$value ${value == 1 ? 'day' : 'days'}';
+    return '$value ${value == 1 ? 'zi' : 'zile'}';
   }
 
   static String _historyStatusLabel(
@@ -475,24 +506,6 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
     WaterUiStatus.unavailable =>
       isRo ? 'Date temporar indisponibile' : 'Data temporarily unavailable',
   };
-
-  static String _relativeUpdate(BuildContext context, DateTime timestamp) {
-    if (timestamp.millisecondsSinceEpoch == 0) {
-      return context.l10n.updateTimeUnavailable;
-    }
-
-    final difference = DateTime.now().difference(timestamp.toLocal());
-    if (difference.isNegative || difference.inMinutes < 1) {
-      return context.l10n.updatedNow;
-    }
-    if (difference.inMinutes < 60) {
-      return context.l10n.updatedMinutesAgo(difference.inMinutes);
-    }
-    if (difference.inHours < 24) {
-      return context.l10n.updatedHoursAgo(difference.inHours);
-    }
-    return context.l10n.updatedDaysAgo(difference.inDays);
-  }
 }
 
 class _WaterSparklinePainter extends CustomPainter {
