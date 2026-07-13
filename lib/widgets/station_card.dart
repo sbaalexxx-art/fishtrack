@@ -49,8 +49,9 @@ class StationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final canonicalReading = waterResult?.latestReading;
     final usesCanonicalResult = waterResult != null;
+    final hasValidCanonicalReading = _hasValidReading(waterResult);
     final hasReading = usesCanonicalResult
-        ? canonicalReading != null
+        ? hasValidCanonicalReading
         : station.hasWaterLevel;
     final value = canonicalReading?.value ?? station.level;
     final unit = canonicalReading?.unit ?? station.waterLevelUnit;
@@ -59,13 +60,15 @@ class StationCard extends StatelessWidget {
         ? canonicalReading?.hasKnownTrend == true
         : station.hasKnownTrend;
     final trendColor = hasKnownTrend ? _trendColor(trend) : Colors.grey;
-    final source = usesCanonicalResult ? waterResult?.source : null;
+    final source = usesCanonicalResult
+        ? waterResult?.source ?? canonicalReading?.source
+        : null;
     final freshness = usesCanonicalResult && hasReading
         ? _freshnessLabel(context, waterResult!)
         : null;
     final updateUnavailable =
         usesCanonicalResult &&
-        hasReading &&
+        hasValidCanonicalReading &&
         waterResult?.status == WaterUiStatus.providerError;
 
     return Card(
@@ -176,6 +179,16 @@ class StationCard extends StatelessWidget {
     WaterLevelSource.inhga => 'INHGA',
     WaterLevelSource.manualFallback => 'Manual',
   };
+
+  static bool _hasValidReading(WaterUiResult? result) {
+    if (result == null) return false;
+    final reading = result.latestReading;
+    return reading != null &&
+        reading.value.isFinite &&
+        reading.timestamp.millisecondsSinceEpoch > 0 &&
+        result.measurementTimestamp != null &&
+        result.measurementTimestamp!.millisecondsSinceEpoch > 0;
+  }
 
   static String _freshnessLabel(BuildContext context, WaterUiResult result) {
     final timestamp = result.measurementTimestamp;
