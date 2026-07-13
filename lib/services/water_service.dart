@@ -39,6 +39,32 @@ class WaterUiResult {
   final String? safeDiagnosticMessage;
 }
 
+class WaterStationBatchResult {
+  const WaterStationBatchResult({
+    required this.stations,
+    required this.resultsByStationId,
+    required this.totalStationCount,
+    required this.stationWithReadingCount,
+    required this.stationWithoutDataCount,
+    required this.providerErrorCount,
+    required this.latestMeasurementTimestamp,
+    required this.isStationListStaleFallback,
+    required this.stationListLoadFailed,
+    required this.safeDiagnosticMessage,
+  });
+
+  final List<Station> stations;
+  final Map<String, WaterUiResult> resultsByStationId;
+  final int totalStationCount;
+  final int stationWithReadingCount;
+  final int stationWithoutDataCount;
+  final int providerErrorCount;
+  final DateTime? latestMeasurementTimestamp;
+  final bool isStationListStaleFallback;
+  final bool stationListLoadFailed;
+  final String? safeDiagnosticMessage;
+}
+
 class _WaterUiCacheEntry {
   const _WaterUiCacheEntry({required this.result, required this.savedAt});
 
@@ -52,6 +78,7 @@ class WaterService {
       _locationService = locationService ?? const LocationService();
 
   static const cacheDuration = Duration(minutes: 30);
+  static const _maxBatchConcurrency = 4;
   static final StreamController<Station> _stationSelectionController =
       StreamController<Station>.broadcast(sync: true);
   static final TimedCache<List<Station>> _stationsCache =
@@ -236,17 +263,125 @@ class WaterService {
   Future<List<Station>> getStations({bool forceRefresh = false}) async =>
       (await getStationsResult(forceRefresh: forceRefresh)).value;
 
+  Future<WaterStationBatchResult> getStationBatchResult({
+    bool forceRefresh = false,
+    int limit = 72,
+    Duration historyWindow = const Duration(hours: 24),
+  }) async {
+    late final CacheResult<List<Station>> stationResult;
+    try {
+      stationResult = await _loadStationsResult(forceRefresh: forceRefresh);
+    } on Exception catch (error) {
+      return WaterStationBatchResult(
+        stations: const <Station>[],
+        resultsByStationId: const <String, WaterUiResult>{},
+        totalStationCount: 0,
+        stationWithReadingCount: 0,
+        stationWithoutDataCount: 0,
+        providerErrorCount: 0,
+        latestMeasurementTimestamp: null,
+        isStationListStaleFallback: false,
+        stationListLoadFailed: true,
+        safeDiagnosticMessage:
+            'Water station list failed (${error.runtimeType})',
+      );
+    }
+
+    final stations = stationResult.value;
+    final orderedResults = List<WaterUiResult?>.filled(stations.length, null);
+    var nextIndex = 0;
+
+    Future<void> loadNext() async {
+      while (true) {
+        final index = nextIndex;
+        if (index >= stations.length) return;
+        nextIndex++;
+        final station = stations[index];
+        try {
+          orderedResults[index] = await getWaterUiResult(
+            station,
+            limit: limit,
+            historyWindow: historyWindow,
+            forceRefresh: forceRefresh,
+          );
+        } on Exception catch (error) {
+          orderedResults[index] = WaterUiResult(
+            latestReading: null,
+            history: const <WaterLevel>[],
+            source: null,
+            sourceName: null,
+            measurementTimestamp: null,
+            dataAge: null,
+            isStale: false,
+            status: WaterUiStatus.providerError,
+            safeDiagnosticMessage:
+                'Water station request failed (${error.runtimeType})',
+          );
+        }
+      }
+    }
+
+    final workerCount = stations.length < _maxBatchConcurrency
+        ? stations.length
+        : _maxBatchConcurrency;
+    await Future.wait(List.generate(workerCount, (_) => loadNext()));
+
+    final resultsByStationId = <String, WaterUiResult>{};
+    var stationWithReadingCount = 0;
+    var providerErrorCount = 0;
+    DateTime? latestMeasurementTimestamp;
+    for (var index = 0; index < stations.length; index++) {
+      final result = orderedResults[index]!;
+      resultsByStationId[stations[index].id] = result;
+      final reading = result.latestReading;
+      if (reading != null && _isValidReading(reading)) {
+        stationWithReadingCount++;
+        final timestamp = result.measurementTimestamp;
+        if (timestamp != null &&
+            timestamp.millisecondsSinceEpoch > 0 &&
+            (latestMeasurementTimestamp == null ||
+                timestamp.isAfter(latestMeasurementTimestamp))) {
+          latestMeasurementTimestamp = timestamp;
+        }
+      }
+      if (result.status == WaterUiStatus.providerError) {
+        providerErrorCount++;
+      }
+    }
+
+    return WaterStationBatchResult(
+      stations: List<Station>.unmodifiable(stations),
+      resultsByStationId: Map<String, WaterUiResult>.unmodifiable(
+        resultsByStationId,
+      ),
+      totalStationCount: stations.length,
+      stationWithReadingCount: stationWithReadingCount,
+      stationWithoutDataCount: stations.length - stationWithReadingCount,
+      providerErrorCount: providerErrorCount,
+      latestMeasurementTimestamp: latestMeasurementTimestamp,
+      isStationListStaleFallback: stationResult.isStaleFallback,
+      stationListLoadFailed: false,
+      safeDiagnosticMessage: null,
+    );
+  }
+
   Future<CacheResult<List<Station>>> getStationsResult({
     bool forceRefresh = false,
   }) async {
     try {
-      return await _stationsCache.get(
-        () async => List<Station>.unmodifiable(await _repository.getStations()),
-        forceRefresh: forceRefresh,
-      );
+      return await _loadStationsResult(forceRefresh: forceRefresh);
     } on Exception {
       return const CacheResult<List<Station>>(<Station>[]);
     }
+  }
+
+  Future<CacheResult<List<Station>>> _loadStationsResult({
+    required bool forceRefresh,
+  }) {
+    return _stationsCache.get(
+      () async => List<Station>.unmodifiable(await _repository.getStations()),
+      forceRefresh: forceRefresh,
+    );
   }
 
   Future<Station?> getNearestStation({Station? fallbackStation}) async {
