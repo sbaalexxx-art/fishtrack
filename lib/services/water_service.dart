@@ -15,6 +15,53 @@ enum WaterUiStatus {
   unavailable,
 }
 
+enum WaterStationDetailsRange {
+  sevenDays(Duration(days: 7)),
+  thirtyDays(Duration(days: 30));
+
+  const WaterStationDetailsRange(this.duration);
+
+  final Duration duration;
+  int get historyLimit => duration.inHours + 1;
+}
+
+enum WaterStationDetailsHistoryStatus {
+  available,
+  insufficientHistory,
+  providerError,
+  unavailable,
+}
+
+class WaterStationDetailsResult {
+  const WaterStationDetailsResult({
+    required this.currentReading,
+    required this.source,
+    required this.sourceName,
+    required this.measurementTimestamp,
+    required this.dataAge,
+    required this.isStale,
+    required this.history,
+    required this.selectedRange,
+    required this.historyStatus,
+    required this.dailyDeltaCm,
+    required this.trend,
+    required this.safeDiagnosticMessage,
+  });
+
+  final WaterLevel? currentReading;
+  final WaterLevelSource? source;
+  final String? sourceName;
+  final DateTime? measurementTimestamp;
+  final Duration? dataAge;
+  final bool isStale;
+  final List<WaterLevel> history;
+  final WaterStationDetailsRange selectedRange;
+  final WaterStationDetailsHistoryStatus historyStatus;
+  final double? dailyDeltaCm;
+  final WaterTrend? trend;
+  final String? safeDiagnosticMessage;
+}
+
 class WaterUiResult {
   const WaterUiResult({
     required this.latestReading,
@@ -89,6 +136,8 @@ class WaterService {
   static final TimedCache<List<Station>> _stationsCache =
       TimedCache<List<Station>>(duration: cacheDuration);
   static final Map<String, TimedCache<List<WaterLevel>>> _historyCache = {};
+  static final Map<String, TimedCache<WaterHistoryResult>>
+  _stationDetailsHistoryCache = {};
   static final Map<String, _WaterUiCacheEntry> _waterUiCache = {};
   static final Map<String, WaterUiResult> _lastKnownGoodByStation = {};
   static final Map<String, Future<WaterUiResult>> _waterUiInFlight = {};
@@ -113,6 +162,7 @@ class WaterService {
   static void clearCache() {
     _stationsCache.clear();
     _historyCache.clear();
+    _stationDetailsHistoryCache.clear();
     _waterUiCacheEpoch++;
     _waterUiCache.clear();
     _lastKnownGoodByStation.clear();
@@ -152,6 +202,141 @@ class WaterService {
       return const <WaterLevel>[];
     }
   }
+
+  Future<WaterStationDetailsResult> getStationDetailsResult(
+    Station station, {
+    WaterStationDetailsRange range = WaterStationDetailsRange.sevenDays,
+    bool forceRefresh = false,
+  }) async {
+    final currentResult = await getWaterUiResult(
+      station,
+      limit: 72,
+      historyWindow: const Duration(hours: 24),
+      forceRefresh: forceRefresh,
+    );
+    final current = currentResult.latestReading;
+    final source = currentResult.source ?? current?.source;
+    if (current == null || source == null || !_isValidReading(current)) {
+      return WaterStationDetailsResult(
+        currentReading: null,
+        source: source,
+        sourceName: currentResult.sourceName,
+        measurementTimestamp: currentResult.measurementTimestamp,
+        dataAge: currentResult.dataAge,
+        isStale: currentResult.isStale,
+        history: const <WaterLevel>[],
+        selectedRange: range,
+        historyStatus: currentResult.status == WaterUiStatus.providerError
+            ? WaterStationDetailsHistoryStatus.providerError
+            : WaterStationDetailsHistoryStatus.unavailable,
+        dailyDeltaCm: null,
+        trend: null,
+        safeDiagnosticMessage: currentResult.safeDiagnosticMessage,
+      );
+    }
+
+    final historyResult = await _getStationDetailsHistory(
+      station,
+      source: source,
+      range: range,
+      forceRefresh: forceRefresh,
+    );
+    final currentTimestamp = current.timestamp.toUtc().microsecondsSinceEpoch;
+    final readingsByTimestamp = <int, WaterLevel>{};
+    for (final reading in historyResult.readings) {
+      if (!_isValidReading(reading) || reading.source != source) continue;
+      if (reading.timestamp.isAfter(current.timestamp)) continue;
+      readingsByTimestamp[reading.timestamp.toUtc().microsecondsSinceEpoch] =
+          reading;
+    }
+    readingsByTimestamp[currentTimestamp] = current;
+    final history = readingsByTimestamp.values.toList(growable: false)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final hasTrend = history.length >= 2;
+    final dailyDeltaCm =
+        hasTrend &&
+            history[history.length - 2].unit.toLowerCase() == 'cm' &&
+            history.last.unit.toLowerCase() == 'cm'
+        ? history.last.value - history[history.length - 2].value
+        : null;
+    final trend = dailyDeltaCm == null
+        ? null
+        : dailyDeltaCm > 0
+        ? WaterTrend.rising
+        : dailyDeltaCm < 0
+        ? WaterTrend.falling
+        : WaterTrend.stable;
+
+    return WaterStationDetailsResult(
+      currentReading: current,
+      source: source,
+      sourceName: currentResult.sourceName ?? _canonicalSourceName(source),
+      measurementTimestamp: currentResult.measurementTimestamp,
+      dataAge: currentResult.dataAge,
+      isStale: currentResult.isStale,
+      history: List<WaterLevel>.unmodifiable(history),
+      selectedRange: range,
+      historyStatus: _stationDetailsHistoryStatus(
+        historyResult,
+        pointCount: history.length,
+      ),
+      dailyDeltaCm: dailyDeltaCm,
+      trend: trend,
+      safeDiagnosticMessage:
+          historyResult.safeDiagnosticMessage ??
+          currentResult.safeDiagnosticMessage,
+    );
+  }
+
+  Future<WaterHistoryResult> _getStationDetailsHistory(
+    Station station, {
+    required WaterLevelSource source,
+    required WaterStationDetailsRange range,
+    required bool forceRefresh,
+  }) async {
+    final key =
+        '${identityHashCode(_repository)}:${station.id}:'
+        '${source.name}:${range.name}:${range.historyLimit}';
+    final cache = _stationDetailsHistoryCache.putIfAbsent(
+      key,
+      () => TimedCache<WaterHistoryResult>(duration: cacheDuration),
+    );
+    return (await cache.get(() {
+      final rangeEnd = DateTime.now();
+      return _repository.getCanonicalSourceHistory(
+        station.id,
+        stationName: station.name,
+        source: source,
+        rangeStart: rangeEnd.subtract(range.duration),
+        rangeEnd: rangeEnd,
+        limit: range.historyLimit,
+      );
+    }, forceRefresh: forceRefresh)).value;
+  }
+
+  static WaterStationDetailsHistoryStatus _stationDetailsHistoryStatus(
+    WaterHistoryResult result, {
+    required int pointCount,
+  }) {
+    if (result.status == WaterHistoryResultStatus.providerError) {
+      return WaterStationDetailsHistoryStatus.providerError;
+    }
+    if (pointCount < 2) {
+      return pointCount == 0
+          ? WaterStationDetailsHistoryStatus.unavailable
+          : WaterStationDetailsHistoryStatus.insufficientHistory;
+    }
+    return WaterStationDetailsHistoryStatus.available;
+  }
+
+  static String _canonicalSourceName(WaterLevelSource source) =>
+      switch (source) {
+        WaterLevelSource.afdj => 'AFDJ',
+        WaterLevelSource.danubeHis => 'DanubeHIS',
+        WaterLevelSource.danubeFis => 'DanubeFIS',
+        WaterLevelSource.inhga => 'INHGA',
+        WaterLevelSource.manualFallback => 'Manual',
+      };
 
   Future<WaterUiResult> getWaterUiResult(
     Station station, {
