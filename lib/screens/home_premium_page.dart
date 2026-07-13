@@ -30,8 +30,6 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
 
   @override
   Widget build(BuildContext context) {
-    final layout = HomePremiumLayout.of(context);
-
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: const Color(0xFF0F1115),
@@ -40,9 +38,23 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
         bottom: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            if (constraints.maxWidth <= 0 || constraints.maxHeight <= 0) {
+            if (!constraints.maxWidth.isFinite ||
+                !constraints.maxHeight.isFinite ||
+                constraints.maxWidth <= 0 ||
+                constraints.maxHeight <= 0) {
               return const SizedBox.shrink();
             }
+
+            final viewportSize = Size(
+              constraints.maxWidth,
+              constraints.maxHeight,
+            );
+            final layout = HomePremiumLayout.fromViewport(
+              context,
+              viewportSize: viewportSize,
+              systemSafeArea: MediaQuery.viewPaddingOf(context),
+              bottomNavigationOverlaysBody: false,
+            );
 
             return SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
