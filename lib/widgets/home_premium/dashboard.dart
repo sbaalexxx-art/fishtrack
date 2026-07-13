@@ -34,54 +34,74 @@ class PremiumDashboard extends StatelessWidget {
     final layout = HomePremiumLayout.of(context);
     final spacing = layout.sectionGap;
 
-    return Column(
-      children: [
-        SizedBox(
-          width: double.infinity,
-          height: layout.waterCardHeight,
-          child: _action(
-            onTap: onWaterLevelPressed,
-            child: const WaterLevelCardPremium(),
-          ),
-        ),
-        SizedBox(height: spacing),
-        SizedBox(
-          width: double.infinity,
-          height: layout.weatherCardHeight,
-          child: _action(
-            onTap: onWeatherPressed,
-            child: const WeatherCardPremium(),
-          ),
-        ),
-        SizedBox(height: spacing),
-        SizedBox(
-          width: double.infinity,
-          height: layout.standardSectionHeight,
-          child: Row(
-            children: [
-              Expanded(
-                child: _action(
-                  onTap: onAiPressed,
-                  child: const AIConditionsCardPremium(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const minimumPairedCardsWidth = 420.0;
+        final stackPairedCards =
+            layout.isLandscapePhone &&
+            constraints.maxWidth < minimumPairedCardsWidth;
+        final aiCard = _action(
+          onTap: onAiPressed,
+          child: const AIConditionsCardPremium(),
+        );
+        final communityCard = _action(
+          onTap: onCommunityPressed,
+          child: const CommunityCardPremium(),
+        );
+
+        return Column(
+          children: [
+            SizedBox(
+              width: double.infinity,
+              height: layout.waterCardHeight,
+              child: _action(
+                onTap: onWaterLevelPressed,
+                child: const WaterLevelCardPremium(),
+              ),
+            ),
+            SizedBox(height: spacing),
+            SizedBox(
+              width: double.infinity,
+              height: layout.weatherCardHeight,
+              child: _action(
+                onTap: onWeatherPressed,
+                child: const WeatherCardPremium(),
+              ),
+            ),
+            SizedBox(height: spacing),
+            if (stackPairedCards) ...[
+              SizedBox(
+                width: double.infinity,
+                height: layout.standardSectionHeight,
+                child: aiCard,
+              ),
+              SizedBox(height: spacing),
+              SizedBox(
+                width: double.infinity,
+                height: layout.standardSectionHeight,
+                child: communityCard,
+              ),
+            ] else
+              SizedBox(
+                width: double.infinity,
+                height: layout.standardSectionHeight,
+                child: Row(
+                  children: [
+                    Expanded(child: aiCard),
+                    SizedBox(width: spacing),
+                    Expanded(child: communityCard),
+                  ],
                 ),
               ),
-              SizedBox(width: spacing),
-              Expanded(
-                child: _action(
-                  onTap: onCommunityPressed,
-                  child: const CommunityCardPremium(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: spacing),
-        SizedBox(
-          width: double.infinity,
-          height: layout.recentCatchesHeight,
-          child: const RecentCatchesCardPremium(),
-        ),
-      ],
+            SizedBox(height: spacing),
+            SizedBox(
+              width: double.infinity,
+              height: layout.recentCatchesHeight,
+              child: const RecentCatchesCardPremium(),
+            ),
+          ],
+        );
+      },
     );
   }
 }
