@@ -49,8 +49,7 @@ class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
     return FutureBuilder<FishingScoreResult>(
       future: _scoreFuture,
       builder: (context, snapshot) {
-        final isRomanian =
-            Localizations.localeOf(context).languageCode == 'ro';
+        final isRomanian = Localizations.localeOf(context).languageCode == 'ro';
         final result = snapshot.data;
         final rating = _rating(result?.rating);
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
@@ -124,17 +123,23 @@ class _AIConditionsCardView extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isRomanian =
-            Localizations.localeOf(context).languageCode == 'ro';
-        final localizedBestTime =
-            isRomanian ? bestTime.replaceAll(' or ', ' sau ') : bestTime;
+        final isRomanian = Localizations.localeOf(context).languageCode == 'ro';
+        final localizedBestTime = isRomanian
+            ? bestTime.replaceAll(' or ', ' sau ')
+            : bestTime;
         final layout = HomePremiumLayout.of(context);
-        final compact = constraints.maxWidth < 180;
-        final gaugeSize = (compact ? 48.0 : 58.0) * layout.iconScale;
+        final compact = constraints.maxWidth < 220;
+        final denseHeight = constraints.maxHeight < 145;
+        final dense = compact || layout.isLandscapePhone || denseHeight;
+        final gaugeSize = (dense ? 48.0 : 58.0) * layout.iconScale;
 
         return Container(
           padding: EdgeInsets.all(
-            layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
+            layout.isLandscapePhone
+                ? 7
+                : layout.isSmallPhone
+                ? 8
+                : (layout.isTablet ? 12 : 10),
           ),
           decoration: BoxDecoration(
             color: const Color(0xFF1E2335),
@@ -148,22 +153,25 @@ class _AIConditionsCardView extends StatelessWidget {
                   Icon(
                     Icons.psychology_alt_rounded,
                     color: Color(0xFF42A5F5),
-                    size: 20 * layout.iconScale,
+                    size: (dense ? 18 : 20) * layout.iconScale,
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: dense ? 5 : 8),
                   Expanded(
-                    child: Text(
-                      isRomanian ? 'Indice FluviAI' : 'FluviAI Fishing Index',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.cardTitle.copyWith(
-                        fontSize: 16 * layout.titleFontScale,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        isRomanian ? 'Indice FluviAI' : 'FluviAI Fishing Index',
+                        maxLines: 1,
+                        style: AppTextStyles.cardTitle.copyWith(
+                          fontSize: (dense ? 14 : 16) * layout.titleFontScale,
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: dense ? 4 : 6),
               Row(
                 children: [
                   Expanded(
@@ -174,21 +182,20 @@ class _AIConditionsCardView extends StatelessWidget {
                           score == null ? '--/100' : '${score!.round()}/100',
                           maxLines: 1,
                           style: TextStyle(
-                            fontSize:
-                                (compact ? 23 : 29) * layout.titleFontScale,
+                            fontSize: (dense ? 23 : 29) * layout.titleFontScale,
                             height: 1,
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: dense ? 2 : 4),
                         Text(
                           recommendation,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
                           style: TextStyle(
                             color: _color,
-                            fontSize: compact ? 12 : 14,
+                            fontSize: dense ? 12 : 14,
+                            height: 1.05,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -207,7 +214,7 @@ class _AIConditionsCardView extends StatelessWidget {
                             value: score == null
                                 ? (isLoading ? 0 : null)
                                 : (score! / 100).clamp(0, 1),
-                            strokeWidth: compact ? 5 : 6,
+                            strokeWidth: dense ? 5 : 6,
                             backgroundColor: Colors.white10,
                             color: _color,
                           ),
@@ -215,7 +222,7 @@ class _AIConditionsCardView extends StatelessWidget {
                         Icon(
                           Icons.phishing,
                           color: _color,
-                          size: compact ? 23 : 28,
+                          size: dense ? 23 : 28,
                         ),
                       ],
                     ),
@@ -235,7 +242,7 @@ class _AIConditionsCardView extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.caption.copyWith(
-                        fontSize: compact ? 11 : 13,
+                        fontSize: dense ? 11 : 13,
                       ),
                     ),
                   ),
@@ -339,4 +346,3 @@ class _PremiumLoadingShimmerState extends State<PremiumLoadingShimmer>
     );
   }
 }
-

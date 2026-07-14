@@ -12,8 +12,13 @@ import 'ai_conditions_card.dart' show PremiumLoadingShimmer;
 import 'home_premium_layout.dart';
 
 class WaterLevelCardPremium extends StatefulWidget {
-  const WaterLevelCardPremium({super.key, this.selectedStation});
+  const WaterLevelCardPremium({
+    super.key,
+    required this.layout,
+    this.selectedStation,
+  });
 
+  final HomePremiumLayout layout;
   final Station? selectedStation;
 
   @override
@@ -189,21 +194,21 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
           isLoading: isInitialLoading,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final layout = HomePremiumLayout.of(context);
+              final layout = widget.layout;
               final narrow = constraints.maxWidth < 340;
               final hasFiniteHeight = constraints.maxHeight.isFinite;
-              final compactHeightLimit =
-                  layout.waterCardHeight *
-                  (layout.isLandscapePhone ? 1.0 : .85);
+              final compactHeightLimit = layout.isTablet ? 145.0 : 130.0;
               final compact =
                   hasFiniteHeight &&
                   constraints.maxHeight <= compactHeightLimit;
               final cardPadding = layout.isSmallPhone
-                  ? 8.0
-                  : (layout.isTablet ? 12.0 : 10.0);
-              final trendColor = hasKnownTrend
+                  ? 7.0
+                  : (layout.isTablet ? 10.0 : 8.0);
+              final verticalPadding = (compact ? 6.0 : cardPadding) * .80;
+              final isStale = waterResult?.isStale ?? false;
+              final trendColor = hasKnownTrend && !isStale
                   ? _colorFor(trend)
-                  : Colors.white54;
+                  : const Color(0xFF9AA7B2);
               final history = waterResult?.history ?? const <WaterLevel>[];
               final historyLoading =
                   station != null &&
@@ -217,16 +222,32 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                   ? _historyDeltaLabel(history, waterUnit)
                   : null;
               final isRo = Localizations.localeOf(context).languageCode == 'ro';
+              final trendStatus = isStale
+                  ? (isRo ? 'Date neactualizate' : 'Stale data')
+                  : status;
+              final badgeLabel = hasReading
+                  ? (isRo ? 'DATE REALE' : 'LIVE DATA')
+                  : (isRo ? 'FĂRĂ DATE' : 'NO DATA');
+              final badgeColor = hasReading
+                  ? const Color(0xFF00BCD4)
+                  : Colors.white38;
+              final historyTitle = canShowHistory
+                  ? (isRo ? 'ISTORIC REAL' : 'REAL HISTORY')
+                  : (isRo ? 'ISTORIC' : 'HISTORY');
 
               if (isInitialLoading) {
                 return Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: cardPadding,
-                    vertical: compact ? 6 : cardPadding,
+                    vertical: verticalPadding,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF17293A),
-                    borderRadius: BorderRadius.circular(16),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF162F40), Color(0xFF0D2230)],
+                    ),
+                    borderRadius: BorderRadius.circular(15),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -276,66 +297,107 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
               return Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: cardPadding,
-                  vertical: compact ? 6 : cardPadding,
+                  vertical: verticalPadding,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF17293A),
-                  borderRadius: BorderRadius.circular(16),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF162F40), Color(0xFF0D2230)],
+                  ),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(
+                    color: const Color(0xFF00BCD4).withValues(alpha: 0.38),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF00BCD4).withValues(alpha: 0.06),
+                      blurRadius: 16,
+                      spreadRadius: -9,
+                      offset: const Offset(0, 7),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.water_drop_rounded,
-                          color: const Color(0xFF42A5F5),
-                          size: 20 * layout.iconScale,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            context.l10n.waterLevel.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.cardTitle.copyWith(
-                              fontSize:
-                                  (compact ? 14 : 16) * layout.titleFontScale,
+                        Container(
+                          width: compact ? 26 : 30,
+                          height: compact ? 26 : 30,
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF00BCD4,
+                            ).withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF00BCD4,
+                              ).withValues(alpha: 0.46),
                             ),
                           ),
+                          child: Icon(
+                            Icons.water_rounded,
+                            color: const Color(0xFF00BCD4),
+                            size: (compact ? 15 : 17) * layout.iconScale,
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        Flexible(
+                        SizedBox(width: compact ? 6 : 8),
+                        Expanded(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                sourceLabel,
+                                context.l10n.waterLevel.toUpperCase(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.end,
-                                style: AppTextStyles.caption.copyWith(
-                                  fontSize: narrow || compact ? 8 : 10,
+                                style: AppTextStyles.cardTitle.copyWith(
+                                  fontSize:
+                                      (compact ? 13 : 15) *
+                                      layout.titleFontScale,
                                 ),
                               ),
                               Text(
-                                lastUpdate,
+                                stationName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.end,
                                 style: AppTextStyles.caption.copyWith(
-                                  color: Colors.white54,
-                                  fontSize: narrow || compact ? 7 : 9,
+                                  color: Colors.white70,
+                                  fontSize: narrow || compact ? 8 : 10,
                                 ),
                               ),
                             ],
                           ),
                         ),
+                        SizedBox(width: compact ? 6 : 8),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: compact ? 6.5 : 7.5,
+                            vertical: compact ? 1.5 : 2.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: badgeColor.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(9),
+                            border: Border.all(
+                              color: badgeColor.withValues(alpha: 0.46),
+                            ),
+                          ),
+                          child: Text(
+                            badgeLabel,
+                            maxLines: 1,
+                            style: AppTextStyles.caption.copyWith(
+                              color: badgeColor,
+                              fontSize: narrow || compact ? 7.5 : 8.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.48,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
-                    SizedBox(height: compact ? 1 : 3),
+                    SizedBox(height: compact ? 2 : 4),
                     Expanded(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -347,28 +409,19 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  stationName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.caption.copyWith(
-                                    fontSize: compact ? 10 : null,
-                                  ),
-                                ),
-                                SizedBox(height: compact ? 1 : 3),
-                                Text(
                                   waterLevel,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize:
-                                        (narrow ? 22 : 28) *
+                                        (narrow ? 22 : 29) *
                                         layout.titleFontScale,
                                     height: 1,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
                                   ),
                                 ),
-                                SizedBox(height: compact ? 2 : 4),
+                                SizedBox(height: compact ? 1.5 : 3),
                                 Row(
                                   children: [
                                     Icon(
@@ -381,13 +434,13 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                     const SizedBox(width: 3),
                                     Flexible(
                                       child: Text(
-                                        status,
+                                        trendStatus,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: trendColor,
-                                          fontSize: narrow || compact ? 11 : 13,
-                                          fontWeight: FontWeight.bold,
+                                          fontSize: narrow || compact ? 10 : 12,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ),
@@ -396,80 +449,136 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                               ],
                             ),
                           ),
-                          SizedBox(width: narrow ? 6 : 12),
+                          SizedBox(width: narrow ? 6 : 10),
                           Expanded(
                             flex: narrow ? 2 : 3,
-                            child: Column(
-                              children: [
-                                Expanded(
-                                  child: historyLoading
-                                      ? const Center(
-                                          child: SizedBox.square(
-                                            dimension: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 1.8,
-                                            ),
-                                          ),
-                                        )
-                                      : canShowHistory
-                                      ? CustomPaint(
-                                          painter: _WaterSparklinePainter(
-                                            readings: history,
-                                            color: trendColor,
-                                          ),
-                                          child: const SizedBox.expand(),
-                                        )
-                                      : Center(
-                                          child: Text(
-                                            _historyStatusLabel(
-                                              reliabilityStatus,
-                                              isRo: isRo,
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            textAlign: TextAlign.center,
-                                            style: AppTextStyles.caption
-                                                .copyWith(
-                                                  color: Colors.white54,
-                                                  fontSize: narrow || compact
-                                                      ? 8
-                                                      : 10,
-                                                ),
-                                          ),
-                                        ),
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: compact ? 4 : 6,
+                                vertical: compact ? 2 : 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFF061720,
+                                ).withValues(alpha: 0.52),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color:
+                                      (canShowHistory
+                                              ? trendColor
+                                              : const Color(0xFF00BCD4))
+                                          .withValues(alpha: 0.20),
                                 ),
-                                SizedBox(height: compact ? 1 : 2),
-                                if (historyDelta != null)
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    historyTitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.caption.copyWith(
+                                      color: Colors.white60,
+                                      fontSize: narrow || compact ? 7 : 9,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.55,
+                                    ),
+                                  ),
+                                  SizedBox(height: compact ? 1.5 : 2.5),
                                   Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: compact ? 1 : 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: trendColor.withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: trendColor.withValues(
-                                          alpha: 0.45,
-                                        ),
-                                      ),
-                                    ),
-                                    child: Text(
+                                    height: 1,
+                                    color:
+                                        (canShowHistory
+                                                ? trendColor
+                                                : const Color(0xFF00BCD4))
+                                            .withValues(alpha: 0.14),
+                                  ),
+                                  SizedBox(height: compact ? 1.5 : 2.5),
+                                  Expanded(
+                                    child: historyLoading
+                                        ? const Center(
+                                            child: SizedBox.square(
+                                              dimension: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 1.8,
+                                              ),
+                                            ),
+                                          )
+                                        : canShowHistory
+                                        ? CustomPaint(
+                                            painter: _WaterSparklinePainter(
+                                              readings: history,
+                                              color: trendColor,
+                                            ),
+                                            child: const SizedBox.expand(),
+                                          )
+                                        : Center(
+                                            child: Text(
+                                              _historyStatusLabel(
+                                                reliabilityStatus,
+                                                isRo: isRo,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
+                                              style: AppTextStyles.caption
+                                                  .copyWith(
+                                                    color: Colors.white54,
+                                                    fontSize: narrow || compact
+                                                        ? 7
+                                                        : 9,
+                                                  ),
+                                            ),
+                                          ),
+                                  ),
+                                  if (historyDelta != null) ...[
+                                    SizedBox(height: compact ? 1 : 2),
+                                    Text(
                                       historyDelta,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: AppTextStyles.caption.copyWith(
                                         color: trendColor,
-                                        fontSize: narrow || compact ? 8 : 10,
-                                        fontWeight: FontWeight.bold,
+                                        fontSize: narrow || compact ? 7 : 9,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                  ),
-                              ],
+                                  ],
+                                ],
+                              ),
                             ),
                           ),
                         ],
                       ),
+                    ),
+                    SizedBox(height: compact ? 2 : 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${isRo ? 'Sursă' : 'Source'}: $sourceLabel',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.caption.copyWith(
+                              color: Colors.white60,
+                              fontSize: narrow || compact ? 7 : 8.5,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: compact ? 6 : 10),
+                        Flexible(
+                          child: Text(
+                            '${isRo ? 'Actualizat' : 'Updated'}: $lastUpdate',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
+                            style: AppTextStyles.caption.copyWith(
+                              color: Colors.white60,
+                              fontSize: narrow || compact ? 7 : 8.5,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -596,7 +705,7 @@ class _WaterSparklinePainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            color.withValues(alpha: 0.28),
+            color.withValues(alpha: 0.22),
             color.withValues(alpha: 0.02),
           ],
         ).createShader(Offset.zero & size)
@@ -607,7 +716,7 @@ class _WaterSparklinePainter extends CustomPainter {
       path,
       Paint()
         ..color = color
-        ..strokeWidth = 2
+        ..strokeWidth = 2.3
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,

@@ -21,11 +21,13 @@ class HomePremiumHeader extends StatelessWidget {
     final layout = HomePremiumLayout.of(context);
 
     return SizedBox(
-      height: layout.headerHeight,
+      height: layout.headerHeight * .70,
       child: Row(
         children: [
           _HeaderButton(icon: Icons.menu_rounded, onTap: onMenuPressed),
-          const SizedBox(width: 12),
+          const SizedBox(width: 4),
+          _FluviAiLogo(height: 33 * layout.iconScale),
+          const SizedBox(width: 7),
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -34,18 +36,16 @@ class HomePremiumHeader extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _FluviAiWordmark(fontSize: 18 * layout.titleFontScale),
+                  _FluviAiWordmarkAsset(height: 21.5 * layout.titleFontScale),
                   const SizedBox(height: 1),
                   Text(
-                    Localizations.localeOf(context).languageCode == 'ro'
-                        ? 'Pescuit inteligent • Date live • Comunitate'
-                        : 'Smart fishing • Live data • Community',
+                    'Acolo unde pasiunea întâlnește firul apei.',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 8 * layout.bodyFontScale,
+                      fontSize: 8.8 * layout.bodyFontScale,
                       height: 1,
-                      color: Colors.white70,
+                      color: Colors.white.withValues(alpha: .92),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -53,12 +53,13 @@ class HomePremiumHeader extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 3),
           Stack(
             clipBehavior: Clip.none,
             children: [
               _HeaderButton(
                 icon: Icons.notifications_none_rounded,
+                iconSize: 16,
                 onTap: onNotificationPressed,
               ),
               if (notificationCount > 0)
@@ -91,136 +92,63 @@ class HomePremiumHeader extends StatelessWidget {
   }
 }
 
-class _FluviAiWordmark extends StatelessWidget {
-  const _FluviAiWordmark({required this.fontSize});
+class _FluviAiLogo extends StatelessWidget {
+  const _FluviAiLogo({required this.height});
 
-  static const _silver = Color(0xFFE7EDF3);
-  static const _cyan = Color(0xFF12D8D6);
-
-  final double fontSize;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
-    final style = DefaultTextStyle.of(context).style.merge(
-      TextStyle(
-        fontSize: fontSize,
-        height: 1,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -.3,
-      ),
-    );
-    final textDirection = Directionality.of(context);
-    final textScaler = MediaQuery.textScalerOf(context);
-    final text = TextSpan(
-      style: style,
-      children: const [
-        TextSpan(
-          text: 'Fluvi',
-          style: TextStyle(color: _silver),
-        ),
-        TextSpan(
-          text: 'AI',
-          style: TextStyle(color: _cyan),
-        ),
-      ],
-    );
-    final textPainter = TextPainter(
-      text: text,
-      textDirection: textDirection,
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
-
     return Semantics(
       label: 'FluviAI',
+      image: true,
       child: ExcludeSemantics(
-        child: CustomPaint(
-          size: textPainter.size,
-          painter: _FluviAiWordmarkPainter(
-            text: text,
-            textDirection: textDirection,
-            textScaler: textScaler,
-            fontSize: fontSize,
-          ),
+        child: Image.asset(
+          'assets/branding/fluviai_logo.png',
+          height: height,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+          gaplessPlayback: true,
         ),
       ),
     );
   }
 }
 
-class _FluviAiWordmarkPainter extends CustomPainter {
-  const _FluviAiWordmarkPainter({
-    required this.text,
-    required this.textDirection,
-    required this.textScaler,
-    required this.fontSize,
-  });
+class _FluviAiWordmarkAsset extends StatelessWidget {
+  const _FluviAiWordmarkAsset({required this.height});
 
-  final TextSpan text;
-  final TextDirection textDirection;
-  final TextScaler textScaler;
-  final double fontSize;
+  final double height;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final textPainter = TextPainter(
-      text: text,
-      textDirection: textDirection,
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
-    final aBoxes = textPainter.getBoxesForSelection(
-      const TextSelection(baseOffset: 5, extentOffset: 6),
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'FluviAI',
+      image: true,
+      child: ExcludeSemantics(
+        child: Image.asset(
+          'assets/branding/fluviai_wordmark.png',
+          height: height,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+          gaplessPlayback: true,
+        ),
+      ),
     );
-
-    canvas.saveLayer(Offset.zero & size, Paint());
-    textPainter.paint(canvas, Offset.zero);
-
-    if (aBoxes.isNotEmpty) {
-      final aBox = aBoxes.first;
-      final crossbarCenter = Offset(
-        (aBox.left + aBox.right) / 2,
-        aBox.top + ((aBox.bottom - aBox.top) * .58),
-      );
-      final crossbarHeight = (fontSize * .11).clamp(1.0, 2.4).toDouble();
-      final crossbarMask = Rect.fromCenter(
-        center: crossbarCenter,
-        width: (aBox.right - aBox.left) * .46,
-        height: crossbarHeight,
-      );
-
-      canvas.drawRect(crossbarMask, Paint()..blendMode = BlendMode.clear);
-      canvas.restore();
-      canvas.drawCircle(
-        crossbarCenter,
-        (fontSize * .075).clamp(1.0, 1.8).toDouble(),
-        Paint()..color = _FluviAiWordmark._cyan,
-      );
-      return;
-    }
-
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_FluviAiWordmarkPainter oldDelegate) {
-    return oldDelegate.text != text ||
-        oldDelegate.textDirection != textDirection ||
-        oldDelegate.textScaler != textScaler ||
-        oldDelegate.fontSize != fontSize;
   }
 }
 
 class _HeaderButton extends StatelessWidget {
-  const _HeaderButton({required this.icon, this.onTap});
+  const _HeaderButton({required this.icon, this.iconSize, this.onTap});
 
   final IconData icon;
+  final double? iconSize;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final layout = HomePremiumLayout.of(context);
-    final buttonSize = 30 * layout.iconScale;
+    final buttonSize = 26 * layout.iconScale;
 
     return Material(
       color: Colors.transparent,
@@ -231,7 +159,11 @@ class _HeaderButton extends StatelessWidget {
         child: SizedBox(
           width: buttonSize,
           height: buttonSize,
-          child: Icon(icon, color: Colors.white, size: 17 * layout.iconScale),
+          child: Icon(
+            icon,
+            color: Colors.white,
+            size: (iconSize ?? 15) * layout.iconScale,
+          ),
         ),
       ),
     );

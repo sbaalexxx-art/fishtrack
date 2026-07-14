@@ -54,31 +54,29 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     final layout = HomePremiumLayout.of(context);
+    final navigationHeight = layout.bottomNavHeight * .86;
     final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
     final keyboardIsOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final showBottomNavigation = routeIsCurrent && !keyboardIsOpen;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F1115),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _pages),
 
       bottomNavigationBar: showBottomNavigation
           ? SafeArea(
               minimum: EdgeInsets.symmetric(
-                horizontal: layout.horizontalPadding,
+                horizontal: layout.horizontalPadding * .50,
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(21),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
                   child: Container(
-                    height: layout.bottomNavHeight,
+                    height: navigationHeight,
                     decoration: BoxDecoration(
                       color: const Color(0xFF171C24).withValues(alpha: .92),
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(21),
                       border: Border.all(
                         color: Colors.white.withValues(alpha: .09),
                       ),
@@ -117,11 +115,14 @@ class _MainNavigationState extends State<MainNavigation> {
                               onTap: _openAddCatchPage,
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 220),
-                                width: layout.bottomNavHeight - 12,
-                                height: layout.bottomNavHeight - 12,
+                                width: navigationHeight - 8,
+                                height: navigationHeight - 8,
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF12D8D6),
                                   shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: .22),
+                                  ),
                                   boxShadow: [
                                     BoxShadow(
                                       color: const Color(
@@ -135,7 +136,7 @@ class _MainNavigationState extends State<MainNavigation> {
                                 ),
                                 child: Icon(
                                   Icons.add,
-                                  size: 25 * layout.iconScale,
+                                  size: 24 * layout.iconScale,
                                   color: const Color(0xFF0F1115),
                                 ),
                               ),
@@ -182,7 +183,7 @@ class _MainNavigationState extends State<MainNavigation> {
       borderRadius: BorderRadius.circular(24),
       onTap: () => _selectPage(index),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: 2),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,

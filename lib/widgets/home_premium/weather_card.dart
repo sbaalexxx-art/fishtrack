@@ -9,8 +9,13 @@ import 'ai_conditions_card.dart' show PremiumLoadingShimmer;
 import 'home_premium_layout.dart';
 
 class WeatherCardPremium extends StatefulWidget {
-  const WeatherCardPremium({super.key, this.fallbackStation});
+  const WeatherCardPremium({
+    super.key,
+    required this.layout,
+    this.fallbackStation,
+  });
 
+  final HomePremiumLayout layout;
   final Station? fallbackStation;
 
   @override
@@ -209,136 +214,146 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
           isLoading: isLoading,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final layout = HomePremiumLayout.of(context);
-              final dense = constraints.maxWidth < 360;
+              final layout = widget.layout;
+              final dense =
+                  constraints.maxWidth < 360 ||
+                  constraints.maxHeight < layout.weatherCardHeight * .95;
+              final cardPadding = layout.isSmallPhone
+                  ? 8.0
+                  : (layout.isTablet ? 11.0 : 9.0);
+              final metrics = [
+                _WeatherMetric(
+                  icon: Icons.thermostat_rounded,
+                  label: context.l10n.temperature,
+                  value: temperature ?? neutralValue,
+                  secondaryValue: condition,
+                  accentColor: const Color(0xFFFFC84A),
+                  dense: dense,
+                ),
+                _WeatherMetric(
+                  icon: Icons.air_rounded,
+                  label: context.l10n.wind,
+                  value: wind,
+                  accentColor: const Color(0xFF62D7F5),
+                  dense: dense,
+                ),
+                _WeatherMetric(
+                  icon: Icons.speed_rounded,
+                  label: context.l10n.pressure,
+                  value: pressure,
+                  accentColor: const Color(0xFFA4D96C),
+                  dense: dense,
+                ),
+                _WeatherMetric(
+                  icon: Icons.water_drop_outlined,
+                  label: context.l10n.humidity,
+                  value: humidity,
+                  accentColor: const Color(0xFF54B9FF),
+                  dense: dense,
+                ),
+                _WeatherMetric(
+                  icon: Icons.umbrella_outlined,
+                  label: context.l10n.precipitation,
+                  value: precipitation,
+                  accentColor: const Color(0xFF7EA8FF),
+                  dense: dense,
+                ),
+                _WeatherMetric(
+                  icon: Icons.nights_stay_outlined,
+                  label: context.l10n.solunar,
+                  value: solunar,
+                  accentColor: const Color(0xFFBE9AF7),
+                  dense: dense,
+                ),
+              ];
 
               return Container(
-                padding: EdgeInsets.all(
-                  layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
+                padding: EdgeInsets.symmetric(
+                  horizontal: cardPadding,
+                  vertical: cardPadding * .76,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2C2216),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF102630), Color(0xFF071821)],
+                  ),
                   borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF39C6E6).withValues(alpha: 0.30),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF12D8D6).withValues(alpha: 0.06),
+                      blurRadius: 18,
+                      spreadRadius: -8,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: dense ? 24 : 28,
+                          height: dense ? 24 : 28,
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFFFC84A,
+                            ).withValues(alpha: 0.11),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(
+                                0xFFFFC84A,
+                              ).withValues(alpha: 0.46),
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.wb_sunny_rounded,
+                            color: const Color(0xFFFFC84A),
+                            size: (dense ? 14 : 16) * layout.iconScale,
+                          ),
+                        ),
+                        SizedBox(width: dense ? 6 : 8),
+                        Text(
+                          context.l10n.weather.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: (dense ? 13 : 15) * layout.titleFontScale,
+                            letterSpacing: 0.35,
+                          ),
+                        ),
+                        SizedBox(width: dense ? 8 : 10),
+                        Expanded(
+                          child: Container(
+                            height: 1,
+                            color: const Color(
+                              0xFF62D7F5,
+                            ).withValues(alpha: 0.18),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: dense ? 4 : 6),
                     Expanded(
-                      flex: dense ? 3 : 4,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.wb_sunny_rounded,
-                                color: const Color(0xFFFFB300),
-                                size: 18 * layout.iconScale,
-                              ),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  context.l10n.weather.toUpperCase(),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14 * layout.titleFontScale,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          if (temperature != null) ...[
-                            Text(
-                              temperature,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize:
-                                    (dense ? 26 : 30) * layout.titleFontScale,
-                                height: 1,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
+                          for (
+                            var index = 0;
+                            index < metrics.length;
+                            index++
+                          ) ...[
+                            Expanded(child: metrics[index]),
+                            if (index != metrics.length - 1)
+                              SizedBox(width: dense ? 2 : 3),
                           ],
-                          Text(
-                            condition,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.caption,
-                          ),
                         ],
-                      ),
-                    ),
-                    SizedBox(width: dense ? 6 : 10),
-                    Container(
-                      width: 1,
-                      color: Colors.white.withValues(alpha: 0.10),
-                    ),
-                    SizedBox(width: dense ? 6 : 10),
-                    Expanded(
-                      flex: dense ? 7 : 8,
-                      child: LayoutBuilder(
-                        builder: (context, metricConstraints) {
-                          final spacing = dense ? 4.0 : 6.0;
-                          final columns = metricConstraints.maxWidth >= 480
-                              ? 5
-                              : 3;
-                          final metricWidth =
-                              (metricConstraints.maxWidth -
-                                  (spacing * (columns - 1))) /
-                              columns;
-                          final metrics = [
-                            _WeatherMetric(
-                              icon: Icons.air_rounded,
-                              label: context.l10n.wind,
-                              value: wind,
-                              dense: dense,
-                            ),
-                            _WeatherMetric(
-                              icon: Icons.speed_rounded,
-                              label: context.l10n.pressure,
-                              value: pressure,
-                              dense: dense,
-                            ),
-                            _WeatherMetric(
-                              icon: Icons.umbrella_outlined,
-                              label: context.l10n.precipitation,
-                              value: precipitation,
-                              dense: dense,
-                            ),
-                            _WeatherMetric(
-                              icon: Icons.water_drop_outlined,
-                              label: context.l10n.humidity,
-                              value: humidity,
-                              dense: dense,
-                            ),
-                            _WeatherMetric(
-                              icon: Icons.nights_stay_outlined,
-                              label: 'Solunar',
-                              value: solunar,
-                              dense: dense,
-                            ),
-                          ];
-
-                          return Align(
-                            alignment: Alignment.centerLeft,
-                            child: Wrap(
-                              spacing: spacing,
-                              runSpacing: dense ? 4 : 6,
-                              children: [
-                                for (final metric in metrics)
-                                  SizedBox(width: metricWidth, child: metric),
-                              ],
-                            ),
-                          );
-                        },
                       ),
                     ),
                   ],
@@ -357,47 +372,97 @@ class _WeatherMetric extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    required this.accentColor,
     required this.dense,
+    this.secondaryValue,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final String? secondaryValue;
+  final Color accentColor;
   final bool dense;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: Colors.white70, size: dense ? 13 : 15),
-        const SizedBox(width: 4),
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.caption.copyWith(
-                  color: Colors.white54,
-                  fontSize: dense ? 8 : 9,
-                ),
-              ),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.caption.copyWith(
-                  fontSize: dense ? 9 : 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: dense ? 3 : 4,
+        vertical: dense ? 1.5 : 5,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            accentColor.withValues(alpha: 0.12),
+            const Color(0xFF09151E).withValues(alpha: 0.82),
+          ],
         ),
-      ],
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: accentColor.withValues(alpha: 0.28)),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.05),
+            blurRadius: 8,
+            spreadRadius: -4,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: dense ? 20 : 22,
+            height: dense ? 20 : 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: accentColor.withValues(alpha: 0.16)),
+            ),
+            child: Icon(icon, color: accentColor, size: dense ? 13.5 : 15),
+          ),
+          SizedBox(height: dense ? 2 : 3),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.caption.copyWith(
+              color: Color.lerp(Colors.white70, accentColor, 0.28),
+              fontSize: dense ? 7 : 8,
+            ),
+          ),
+          const SizedBox(height: 1),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.caption.copyWith(
+              color: Colors.white,
+              fontSize: dense ? 9 : 11,
+              height: 1.05,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (secondaryValue case final secondary?) ...[
+            const SizedBox(height: 1),
+            Text(
+              secondary,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.caption.copyWith(
+                color: Color.lerp(Colors.white60, accentColor, 0.34),
+                fontSize: dense ? 6 : 7,
+                height: 1.05,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

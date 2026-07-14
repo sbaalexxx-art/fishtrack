@@ -12,9 +12,10 @@ import '../../services/map_search_service.dart';
 import '../../services/station_filter_service.dart';
 import '../../services/water_service.dart';
 import '../../screens/station_details_page.dart';
-import '../../core/theme/app_dimensions.dart';
 import 'home_premium_layout.dart';
 import '../home/home_map.dart';
+
+enum HomeMapLocationAvailability { locating, available, unavailable }
 
 class HomePremiumMap extends StatefulWidget {
   const HomePremiumMap({
@@ -22,11 +23,16 @@ class HomePremiumMap extends StatefulWidget {
     this.onTap,
     this.child,
     this.showWaterStations = false,
+    this.onLocationAvailabilityChanged,
+    this.onLocationLabelChanged,
   });
 
   final VoidCallback? onTap;
   final Widget? child;
   final bool showWaterStations;
+  final ValueChanged<HomeMapLocationAvailability>?
+  onLocationAvailabilityChanged;
+  final ValueChanged<String?>? onLocationLabelChanged;
 
   @override
   State<HomePremiumMap> createState() => _HomePremiumMapState();
@@ -100,6 +106,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     }
     await Future.wait([_loadFavoriteIds(), _loadRecentCatches()]);
   }
+
   Future<List<Station>> _ensureStationsLoaded() async {
     if (_stations.isNotEmpty) return _stations;
 
@@ -111,7 +118,6 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
       return _stations;
     }
   }
-
 
   Future<void> _loadFavoriteIds() async {
     if (!_favoriteStationsService.isAuthenticated) {
@@ -170,10 +176,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
       if (selected == null || !mounted) return;
       _filterService.updateQuery(selected.name);
-      _moveCamera(
-        LatLng(selected.latitude, selected.longitude),
-        zoom: 13.5,
-      );
+      _moveCamera(LatLng(selected.latitude, selected.longitude), zoom: 13.5);
     } finally {
       if (mounted) setState(() => _isSearching = false);
     }
@@ -298,6 +301,10 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
       _locationFailure = null;
       _pendingRecenter = recenter;
     });
+    widget.onLocationAvailabilityChanged?.call(
+      HomeMapLocationAvailability.locating,
+    );
+    widget.onLocationLabelChanged?.call(null);
 
     try {
       final position = await _locationService.determinePosition();
@@ -314,17 +321,31 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
       if (_pendingRecenter || recenter || !_didApplyInitialUserCamera) {
         _didApplyInitialUserCamera = true;
-        _moveCamera(
-          location,
-          zoom: recenter || _pendingRecenter ? 13.5 : 12.5,
-        );
+        _moveCamera(location, zoom: recenter || _pendingRecenter ? 13.5 : 12.5);
       }
+
+      final languageCode = Localizations.localeOf(context).languageCode;
+      final locationLabel = await _locationService.resolveLocalityRegion(
+        position,
+        languageCode: languageCode,
+      );
+      if (!mounted) return;
+      widget.onLocationLabelChanged?.call(locationLabel);
+      widget.onLocationAvailabilityChanged?.call(
+        locationLabel == null
+            ? HomeMapLocationAvailability.unavailable
+            : HomeMapLocationAvailability.available,
+      );
     } on LocationFailure catch (failure) {
       if (mounted) {
         setState(() {
           _locationFailure = failure.reason;
           _pendingRecenter = false;
         });
+        widget.onLocationAvailabilityChanged?.call(
+          HomeMapLocationAvailability.unavailable,
+        );
+        widget.onLocationLabelChanged?.call(null);
       }
     } finally {
       if (mounted) {
@@ -439,7 +460,8 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
           overlays: _overlays,
         );
 
-        final isLoading = !snapshot.hasData &&
+        final isLoading =
+            !snapshot.hasData &&
             snapshot.connectionState == ConnectionState.waiting;
 
         return Stack(
@@ -454,7 +476,10 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                   borderRadius: 14,
                   blur: 14,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -779,12 +804,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     final mapHeight = layout.heroMapHeight.clamp(315.0, 390.0).toDouble();
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppDimensions.sectionSpacing,
-        8,
-        AppDimensions.sectionSpacing,
-        10,
-      ),
+      padding: const EdgeInsets.fromLTRB(2, 1, 2, 1),
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(borderRadius),
@@ -810,192 +830,195 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-              const DecoratedBox(
-                decoration: BoxDecoration(color: Color(0xFF16212B)),
-              ),
+                const DecoratedBox(
+                  decoration: BoxDecoration(color: Color(0xFF16212B)),
+                ),
 
-              // Map content fills the whole allocated card while the outer
-              // frame keeps the premium rounded shape.
-              Positioned.fill(child: _buildMapContent()),
+                // Map content fills the whole allocated card while the outer
+                // frame keeps the premium rounded shape.
+                Positioned.fill(child: _buildMapContent()),
 
-              // Decorative frame above the map.
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(borderRadius),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: .09),
+                // Decorative frame above the map.
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(borderRadius),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .09),
+                          ),
+                          borderRadius: BorderRadius.circular(borderRadius),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: const [0, .38, 1],
+                            colors: [
+                              Colors.black.withValues(alpha: .10),
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: .38),
+                            ],
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(borderRadius),
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          stops: const [0, .38, 1],
-                          colors: [
-                            Colors.black.withValues(alpha: .10),
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: .38),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // SEARCH - icon only, small and premium.
+                Positioned(
+                  left: 10,
+                  top: 44,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _openCompactSearch,
+                    child: _GlassSurface(
+                      borderRadius: 15,
+                      blur: 16,
+                      child: SizedBox.square(
+                        dimension: 40,
+                        child: Center(
+                          child: _isSearching
+                              ? const SizedBox.square(
+                                  dimension: 15,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFF67D04B),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.search_rounded,
+                                  size: 23,
+                                  color: Colors.white,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Floating tools stay compact and do not reduce map height.
+                Positioned(
+                  right: 12,
+                  top: 44,
+                  child: Column(
+                    children: [
+                      _FloatingButton(
+                        Icons.my_location_rounded,
+                        onTap: _handleLocationAction,
+                        isLoading: _isLocating,
+                      ),
+                      const SizedBox(height: 8),
+                      _FloatingButton(
+                        Icons.layers_rounded,
+                        onTap: _openMapOptions,
+                      ),
+                      const SizedBox(height: 8),
+                      _FloatingButton(
+                        Icons.filter_alt_rounded,
+                        onTap: _openMapOptions,
+                      ),
+                    ],
+                  ),
+                ),
+
+                // LOCATION - compact overlay over the map, not separate layout space.
+                Positioned(
+                  left: 10,
+                  bottom: 36,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _handleLocationAction,
+                    child: _GlassSurface(
+                      borderRadius: 14,
+                      blur: 18,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 6,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isLocating)
+                              const SizedBox.square(
+                                dimension: 13,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.8,
+                                  color: Color(0xFF67D04B),
+                                ),
+                              )
+                            else
+                              const Icon(
+                                Icons.location_on_rounded,
+                                color: Color(0xFF67D04B),
+                                size: 14,
+                              ),
+                            const SizedBox(width: 4),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 118),
+                              child: Text(
+                                _locationLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 10.5,
+                                  letterSpacing: .05,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
 
-              // SEARCH - icon only, small and premium.
-              Positioned(
-                left: 10,
-                top: 44,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _openCompactSearch,
-                  child: _GlassSurface(
-                    borderRadius: 15,
-                    blur: 16,
-                    child: SizedBox.square(
-                      dimension: 40,
-                      child: Center(
-                        child: _isSearching
-                            ? const SizedBox.square(
-                                dimension: 15,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Color(0xFF67D04B),
-                                ),
-                              )
-                            : const Icon(
-                                Icons.search_rounded,
-                                size: 23,
-                                color: Colors.white,
-                              ),
-                      ),
+                // LIVE - small premium badge over the map.
+                Positioned(
+                  right: 12,
+                  bottom: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
                     ),
-                  ),
-                ),
-              ),
-
-              // Floating tools stay compact and do not reduce map height.
-              Positioned(
-                right: 12,
-                top: 44,
-                child: Column(
-                  children: [
-                    _FloatingButton(
-                      Icons.my_location_rounded,
-                      onTap: _handleLocationAction,
-                      isLoading: _isLocating,
-                    ),
-                    const SizedBox(height: 8),
-                    _FloatingButton(Icons.layers_rounded, onTap: _openMapOptions),
-                    const SizedBox(height: 8),
-                    _FloatingButton(
-                      Icons.filter_alt_rounded,
-                      onTap: _openMapOptions,
-                    ),
-                  ],
-                ),
-              ),
-
-              // LOCATION - compact overlay over the map, not separate layout space.
-              Positioned(
-                left: 10,
-                bottom: 36,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _handleLocationAction,
-                  child: _GlassSurface(
-                    borderRadius: 14,
-                    blur: 18,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 6,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_isLocating)
-                            const SizedBox.square(
-                              dimension: 13,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.8,
-                                color: Color(0xFF67D04B),
-                              ),
-                            )
-                          else
-                            const Icon(
-                              Icons.location_on_rounded,
-                              color: Color(0xFF67D04B),
-                              size: 14,
-                            ),
-                          const SizedBox(width: 4),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 118),
-                            child: Text(
-                              _locationLabel,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 10.5,
-                                letterSpacing: .05,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // LIVE - small premium badge over the map.
-              Positioned(
-                right: 12,
-                bottom: 10,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF67D04B),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF67D04B).withValues(alpha: .24),
-                        blurRadius: 8,
-                        spreadRadius: -3,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.sensors_rounded,
-                        size: 10,
-                        color: Colors.black,
-                      ),
-                      SizedBox(width: 4),
-                      Text(
-                        'LIVE',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 8.5,
-                          letterSpacing: .45,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF67D04B),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF67D04B).withValues(alpha: .24),
+                          blurRadius: 8,
+                          spreadRadius: -3,
+                          offset: const Offset(0, 4),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.sensors_rounded,
+                          size: 10,
+                          color: Colors.black,
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          'LIVE',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 8.5,
+                            letterSpacing: .45,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
               ],
             ),
           ),
@@ -1048,13 +1071,15 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
     return FutureBuilder<List<MapSearchResult>>(
       future: _combinedResults(trimmed),
       builder: (context, snapshot) {
-        final stationFallback =
-            searchService.searchStations(trimmed, stations).take(12);
+        final stationFallback = searchService
+            .searchStations(trimmed, stations)
+            .take(12);
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildStationSuggestions(stationFallback);
         }
 
-        final results = snapshot.data ?? stationFallback.toList(growable: false);
+        final results =
+            snapshot.data ?? stationFallback.toList(growable: false);
         if (results.isEmpty) return Center(child: Text(noResultsText));
         return _buildStationSuggestions(results.take(12));
       },
@@ -1093,7 +1118,9 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
         return ListTile(
           leading: const Icon(Icons.place_outlined),
           title: Text(result.name),
-          subtitle: result.description == null ? null : Text(result.description!),
+          subtitle: result.description == null
+              ? null
+              : Text(result.description!),
           onTap: () => close(context, result),
         );
       },

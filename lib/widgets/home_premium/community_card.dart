@@ -50,7 +50,9 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final layout = HomePremiumLayout.of(context);
-              final compact = constraints.maxWidth < 180;
+              final compact = constraints.maxWidth < 220;
+              final denseHeight = constraints.maxHeight < 145;
+              final dense = compact || layout.isLandscapePhone || denseHeight;
               final isRo = Localizations.localeOf(context).languageCode == 'ro';
               final status = isLoading
                   ? (isRo
@@ -63,10 +65,28 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                   : (isRo
                         ? '$activeReports rapoarte active'
                         : '$activeReports active reports');
+              final statusText = Text(
+                status,
+                maxLines: dense ? 3 : 2,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: (dense ? 11.5 : 17) * layout.titleFontScale,
+                  height: 1.04,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+              final avatarRow = _AnglerAvatars(
+                avatarUrls: avatars,
+                dense: dense,
+              );
 
               return Container(
                 padding: EdgeInsets.all(
-                  layout.isSmallPhone ? 8 : (layout.isTablet ? 12 : 10),
+                  dense
+                      ? 7
+                      : layout.isSmallPhone
+                      ? 8
+                      : (layout.isTablet ? 12 : 10),
                 ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF183021),
@@ -80,24 +100,28 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                         Icon(
                           Icons.groups_rounded,
                           color: const Color(0xFF4CAF50),
-                          size: 20 * layout.iconScale,
+                          size: (dense ? 18 : 20) * layout.iconScale,
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: dense ? 5 : 8),
                         Expanded(
-                          child: Text(
-                            isRo ? 'COMUNITATE' : 'COMMUNITY',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.cardTitle.copyWith(
-                              fontSize: 16 * layout.titleFontScale,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              isRo ? 'COMUNITATE' : 'COMMUNITY',
+                              maxLines: 1,
+                              style: AppTextStyles.cardTitle.copyWith(
+                                fontSize:
+                                    (dense ? 14 : 16) * layout.titleFontScale,
+                              ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 4),
+                        SizedBox(width: dense ? 3 : 4),
                         Container(
                           padding: EdgeInsets.symmetric(
-                            horizontal: compact ? 6 : 8,
-                            vertical: 3,
+                            horizontal: dense ? 6 : 8,
+                            vertical: dense ? 2 : 3,
                           ),
                           decoration: BoxDecoration(
                             color: const Color(0xFF4CAF50),
@@ -107,27 +131,29 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                             'LIVE',
                             style: TextStyle(
                               color: Colors.black,
-                              fontSize: 10,
+                              fontSize: 9.5,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 5),
-                    _AnglerAvatars(avatarUrls: avatars),
-                    const SizedBox(height: 4),
-                    Text(
-                      status,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: (compact ? 15 : 17) * layout.titleFontScale,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
+                    SizedBox(height: dense ? 3 : 5),
+                    if (dense)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          avatarRow,
+                          const SizedBox(width: 5),
+                          Expanded(child: statusText),
+                        ],
+                      )
+                    else ...[
+                      avatarRow,
+                      const SizedBox(height: 4),
+                      statusText,
+                    ],
+                    SizedBox(height: dense ? 2 : 3),
                     Text(
                       isRo
                           ? '$reportsToday rapoarte astăzi'
@@ -135,26 +161,26 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.caption.copyWith(
-                        fontSize: compact ? 11 : 13,
+                        fontSize: dense ? 10.5 : 13,
                       ),
                     ),
                     const Spacer(),
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.circle,
-                          size: 9,
-                          color: Color(0xFF4CAF50),
+                          size: dense ? 8 : 9,
+                          color: const Color(0xFF4CAF50),
                         ),
-                        const SizedBox(width: 6),
+                        SizedBox(width: dense ? 5 : 6),
                         Expanded(
                           child: Text(
                             isRo ? 'Activitate live' : 'Live activity',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF4CAF50),
-                              fontSize: 13,
+                            style: TextStyle(
+                              color: const Color(0xFF4CAF50),
+                              fontSize: dense ? 11.5 : 13,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -173,23 +199,26 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
 }
 
 class _AnglerAvatars extends StatelessWidget {
-  const _AnglerAvatars({required this.avatarUrls});
+  const _AnglerAvatars({required this.avatarUrls, required this.dense});
 
   final List<String> avatarUrls;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
+    final avatarSize = dense ? 22.0 : 28.0;
+    final overlapStep = dense ? 16.0 : 20.0;
     return SizedBox(
-      height: 28,
-      width: 68,
+      height: avatarSize,
+      width: avatarSize + (overlapStep * 2),
       child: Stack(
         children: [
           for (var index = 0; index < 3; index++)
             Positioned(
-              left: index * 20,
+              left: index * overlapStep,
               child: Container(
-                width: 28,
-                height: 28,
+                width: avatarSize,
+                height: avatarSize,
                 decoration: BoxDecoration(
                   color: const Color(0xFF415547),
                   shape: BoxShape.circle,
@@ -203,13 +232,13 @@ class _AnglerAvatars extends StatelessWidget {
                           errorBuilder: (_, _, _) => const Icon(
                             Icons.person,
                             color: Colors.white70,
-                            size: 16,
+                            size: 14,
                           ),
                         )
                       : const Icon(
                           Icons.person,
                           color: Colors.white70,
-                          size: 16,
+                          size: 14,
                         ),
                 ),
               ),
