@@ -12,14 +12,20 @@ import 'screens/main_navigation.dart';
 import 'services/auth_service.dart';
 
 const _mapboxAccessToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
+const _minimumPremiumSplashDuration = Duration(milliseconds: 800);
+const _premiumSplashFadeDuration = Duration(milliseconds: 180);
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (_mapboxAccessToken.isNotEmpty) {
     MapboxOptions.setAccessToken(_mapboxAccessToken);
   }
 
+  runApp(_AppBootstrap(initialization: _initializeApplication()));
+}
+
+Future<LocaleController> _initializeApplication() async {
   await Supabase.initialize(
     url: 'https://rbymtavrfreweyfydkjl.supabase.co',
     publishableKey:
@@ -27,14 +33,78 @@ Future<void> main() async {
   );
 
   final preferences = await SharedPreferences.getInstance();
-  final localeController = LocaleController(preferences);
+  return LocaleController(preferences);
+}
 
-  runApp(
-    LocaleScope(
-      controller: localeController,
-      child: AIFishMapApp(localeController: localeController),
-    ),
-  );
+class _AppBootstrap extends StatefulWidget {
+  const _AppBootstrap({required this.initialization});
+
+  final Future<LocaleController> initialization;
+
+  @override
+  State<_AppBootstrap> createState() => _AppBootstrapState();
+}
+
+class _AppBootstrapState extends State<_AppBootstrap> {
+  LocaleController? _localeController;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _finishStartup());
+  }
+
+  Future<void> _finishStartup() async {
+    final minimumDisplay = Future<void>.delayed(_minimumPremiumSplashDuration);
+    final localeController = await widget.initialization;
+    await minimumDisplay;
+
+    if (!mounted) return;
+    setState(() => _localeController = localeController);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final localeController = _localeController;
+    return AnimatedSwitcher(
+      duration: _premiumSplashFadeDuration,
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: localeController == null
+          ? const _PremiumSplash(key: ValueKey('premium-splash'))
+          : KeyedSubtree(
+              key: const ValueKey('application'),
+              child: LocaleScope(
+                controller: localeController,
+                child: AIFishMapApp(localeController: localeController),
+              ),
+            ),
+    );
+  }
+}
+
+class _PremiumSplash extends StatelessWidget {
+  const _PremiumSplash({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      color: const Color(0xFF0F1115),
+      home: Scaffold(
+        backgroundColor: const Color(0xFF0F1115),
+        body: SizedBox.expand(
+          child: Image.asset(
+            'assets/branding/fluvi_ai_splash_final.png',
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+            filterQuality: FilterQuality.high,
+            gaplessPlayback: true,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class AIFishMapApp extends StatelessWidget {

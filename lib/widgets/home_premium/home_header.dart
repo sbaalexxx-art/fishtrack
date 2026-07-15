@@ -24,9 +24,13 @@ class HomePremiumHeader extends StatelessWidget {
       height: layout.headerHeight * .70,
       child: Row(
         children: [
-          _HeaderButton(icon: Icons.menu_rounded, onTap: onMenuPressed),
+          _HeaderButton(
+            icon: Icons.menu_rounded,
+            iconSize: 16.4,
+            onTap: onMenuPressed,
+          ),
           const SizedBox(width: 4),
-          _FluviAiLogo(height: 33 * layout.iconScale),
+          _FluviAiLogo(height: 31 * layout.iconScale),
           const SizedBox(width: 7),
           Expanded(
             child: GestureDetector(

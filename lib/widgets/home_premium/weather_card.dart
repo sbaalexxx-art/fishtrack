@@ -23,6 +23,8 @@ class WeatherCardPremium extends StatefulWidget {
 }
 
 class _WeatherCardPremiumState extends State<WeatherCardPremium> {
+  static const _missingValue = '\u2014';
+
   final WeatherService _weatherService = WeatherService();
   late Future<WeatherHomeResult> _weatherFuture;
 
@@ -96,51 +98,21 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
     };
   }
 
-  String _unavailableLabel(BuildContext context) =>
-      Localizations.localeOf(context).languageCode == 'ro'
-      ? 'Indisponibil'
-      : 'Unavailable';
-
-  String _pressureLabel(BuildContext context, double? pressure) {
+  String _pressureLabel(double? pressure) {
     if (pressure == null || !pressure.isFinite) {
-      return _unavailableLabel(context);
+      return _missingValue;
     }
     return '${pressure.round()} hPa';
   }
 
   String _solunarLabel(BuildContext context, FishingActivity? value) {
-    if (value == null) return _unavailableLabel(context);
+    if (value == null) return _missingValue;
     final isRo = Localizations.localeOf(context).languageCode == 'ro';
     return switch (value) {
       FishingActivity.excellent => isRo ? 'Excelent' : 'Excellent',
       FishingActivity.good => isRo ? 'Bun' : 'Good',
       FishingActivity.fair => isRo ? 'Acceptabil' : 'Fair',
       FishingActivity.poor => isRo ? 'Slab' : 'Poor',
-    };
-  }
-
-  // TODO(l10n): Move beta availability labels into ARB.
-  String _availabilityLabel(
-    BuildContext context,
-    WeatherHomeStatus? status, {
-    required bool hasSnapshotError,
-  }) {
-    final isRo = Localizations.localeOf(context).languageCode == 'ro';
-    if (hasSnapshotError) {
-      return isRo
-          ? 'Date meteo temporar indisponibile'
-          : 'Weather data temporarily unavailable';
-    }
-    return switch (status) {
-      WeatherHomeStatus.providerError =>
-        isRo
-            ? 'Date meteo temporar indisponibile'
-            : 'Weather data temporarily unavailable',
-      WeatherHomeStatus.locationUnavailable =>
-        isRo ? 'Loca\u021bie indisponibil\u0103' : 'Location unavailable',
-      WeatherHomeStatus.unavailable ||
-      null => isRo ? 'Date meteo indisponibile' : 'Weather data unavailable',
-      WeatherHomeStatus.available || WeatherHomeStatus.staleFallback => '',
     };
   }
 
@@ -172,16 +144,12 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
             : '${weather.temperature.round()}\u00b0';
         final neutralValue = isLoading
             ? context.l10n.loadingEllipsis
-            : _unavailableLabel(context);
+            : _missingValue;
         final conditionLabel = isLoading
             ? context.l10n.loadingEllipsis
             : weather != null
             ? _localizedCondition(context, weather.condition)
-            : _availabilityLabel(
-                context,
-                result?.status,
-                hasSnapshotError: snapshot.hasError,
-              );
+            : _missingValue;
         final contextLabel = weather == null || result == null
             ? null
             : _contextLabel(context, result);
@@ -202,12 +170,12 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
             : '$windSpeed $windDirection';
         final pressure = weather == null
             ? neutralValue
-            : _pressureLabel(context, weather.pressure);
+            : _pressureLabel(weather.pressure);
         final precipitation = weather == null
             ? neutralValue
             : weather.precipitationProbability.isFinite
             ? '${weather.precipitationProbability.round()}%'
-            : _unavailableLabel(context);
+            : _missingValue;
         final solunar = _solunarLabel(context, weather?.fishingActivity);
 
         return PremiumLoadingShimmer(
@@ -322,10 +290,11 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: (dense ? 13 : 15) * layout.titleFontScale,
-                            letterSpacing: 0.35,
+                            color: const Color(0xFFF4FCFF),
+                            fontWeight: FontWeight.w800,
+                            fontSize:
+                                (dense ? 13.5 : 15.5) * layout.titleFontScale,
+                            letterSpacing: 0.4,
                           ),
                         ),
                         SizedBox(width: dense ? 8 : 10),
@@ -389,22 +358,22 @@ class _WeatherMetric extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: dense ? 3 : 4,
-        vertical: dense ? 1.5 : 5,
+        vertical: dense ? 1 : 5,
       ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            accentColor.withValues(alpha: 0.12),
-            const Color(0xFF09151E).withValues(alpha: 0.82),
+            accentColor.withValues(alpha: 0.18),
+            const Color(0xFF12303B).withValues(alpha: 0.94),
           ],
         ),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: accentColor.withValues(alpha: 0.28)),
+        border: Border.all(color: accentColor.withValues(alpha: 0.38)),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withValues(alpha: 0.05),
+            color: accentColor.withValues(alpha: 0.04),
             blurRadius: 8,
             spreadRadius: -4,
             offset: const Offset(0, 3),
@@ -420,11 +389,11 @@ class _WeatherMetric extends StatelessWidget {
             height: dense ? 20 : 22,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.10),
+              color: accentColor.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: accentColor.withValues(alpha: 0.16)),
+              border: Border.all(color: accentColor.withValues(alpha: 0.28)),
             ),
-            child: Icon(icon, color: accentColor, size: dense ? 13.5 : 15),
+            child: Icon(icon, color: accentColor, size: dense ? 15 : 16),
           ),
           SizedBox(height: dense ? 2 : 3),
           Text(
@@ -432,8 +401,9 @@ class _WeatherMetric extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTextStyles.caption.copyWith(
-              color: Color.lerp(Colors.white70, accentColor, 0.28),
-              fontSize: dense ? 7 : 8,
+              color: Color.lerp(const Color(0xFFDCECF1), accentColor, 0.18),
+              fontSize: dense ? 7.5 : 8.5,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 1),
@@ -442,10 +412,10 @@ class _WeatherMetric extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: AppTextStyles.caption.copyWith(
-              color: Colors.white,
-              fontSize: dense ? 9 : 11,
-              height: 1.05,
-              fontWeight: FontWeight.w700,
+              color: const Color(0xFFFFFFFF),
+              fontSize: dense ? 10 : 12,
+              height: 1,
+              fontWeight: FontWeight.w800,
             ),
           ),
           if (secondaryValue case final secondary?) ...[
@@ -455,9 +425,10 @@ class _WeatherMetric extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.caption.copyWith(
-                color: Color.lerp(Colors.white60, accentColor, 0.34),
-                fontSize: dense ? 6 : 7,
-                height: 1.05,
+                color: Color.lerp(const Color(0xFFC1D5DB), accentColor, 0.25),
+                fontSize: dense ? 6.5 : 7.5,
+                height: 1,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],

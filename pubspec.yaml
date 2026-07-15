@@ -44,6 +44,7 @@ flutter:
   assets:
     - assets/branding/fluviai_logo.png
     - assets/branding/fluviai_wordmark.png
+    - assets/branding/fluvi_ai_splash_final.png
 
 flutter_launcher_icons:
   android: true
@@ -51,7 +52,7 @@ flutter_launcher_icons:
   image_path: assets/branding/fluviai_logo.png
   adaptive_icon_background: "#0F1115"
   adaptive_icon_foreground: assets/branding/fluviai_logo.png
-  adaptive_icon_foreground_inset: 16
+  adaptive_icon_foreground_inset: 13
   adaptive_icon_monochrome: assets/branding/fluviai_logo.png
 
 flutter_native_splash:
@@ -60,14 +61,7 @@ flutter_native_splash:
   web: false
   color: "#0F1115"
   color_dark: "#0F1115"
-  image: assets/branding/fluviai_logo.png
-  image_dark: assets/branding/fluviai_logo.png
-  android_gravity: center
   fullscreen: true
   android_12:
     color: "#0F1115"
     color_dark: "#0F1115"
-    image: assets/branding/fluviai_logo.png
-    image_dark: assets/branding/fluviai_logo.png
-    icon_background_color: "#0F1115"
-    icon_background_color_dark: "#0F1115"
