@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/formatters/water_freshness_formatter.dart';
@@ -7,9 +8,24 @@ import '../../core/theme/app_text_styles.dart';
 import '../../l10n/l10n.dart';
 import '../../models/station.dart';
 import '../../models/water_level.dart';
+import '../../repositories/water_repository.dart';
 import '../../services/water_service.dart';
 import 'ai_conditions_card.dart' show PremiumLoadingShimmer;
 import 'home_premium_layout.dart';
+
+bool shouldShowWaterLiveBadge({
+  required bool hasRealReading,
+  required bool isStale,
+  required WaterUiStatus status,
+  required bool connectivityKnown,
+  required bool isDefinitelyOffline,
+}) =>
+    hasRealReading &&
+    !isStale &&
+    status != WaterUiStatus.providerError &&
+    status != WaterUiStatus.unavailable &&
+    connectivityKnown &&
+    !isDefinitelyOffline;
 
 class WaterLevelCardPremium extends StatefulWidget {
   const WaterLevelCardPremium({
@@ -27,21 +43,29 @@ class WaterLevelCardPremium extends StatefulWidget {
 
 class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
   final WaterService _waterService = WaterService();
+  final Connectivity _connectivity = Connectivity();
   late Future<Station?> _stationFuture;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   StreamSubscription<Station>? _selectionSubscription;
   WaterUiResult? _waterResult;
   String? _waterResultStationId;
+  String? _activeStationId;
   bool _isWaterResultLoading = false;
+  bool? _isDefinitelyOffline;
   int _stationRequestId = 0;
 
   @override
   void initState() {
     super.initState();
-    _stationFuture = _loadStation(widget.selectedStation);
+    _stationFuture = _startStationLoad(widget.selectedStation);
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
+      _updateConnectivity,
+    );
+    unawaited(_checkInitialConnectivity());
     _selectionSubscription = _waterService.stationSelections.listen((station) {
       if (mounted) {
         setState(() {
-          _stationFuture = _loadStation(station);
+          _stationFuture = _startStationLoad(station);
         });
       }
     });
@@ -51,50 +75,97 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
   void didUpdateWidget(covariant WaterLevelCardPremium oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedStation?.id != widget.selectedStation?.id) {
-      _stationFuture = _loadStation(widget.selectedStation);
+      _stationFuture = _startStationLoad(widget.selectedStation);
     }
   }
 
   @override
   void dispose() {
+    _stationRequestId++;
+    _connectivitySubscription?.cancel();
     _selectionSubscription?.cancel();
     super.dispose();
   }
 
-  Future<Station?> _loadStation(Station? fallbackStation) async {
-    final requestId = ++_stationRequestId;
-    _isWaterResultLoading = true;
+  Future<void> _checkInitialConnectivity() async {
+    try {
+      _updateConnectivity(await _connectivity.checkConnectivity());
+    } on Exception {
+      // Keep the badge hidden while connectivity is unknown.
+    }
+  }
 
+  void _updateConnectivity(List<ConnectivityResult> results) {
+    final isDefinitelyOffline =
+        results.isNotEmpty &&
+        results.every((result) => result == ConnectivityResult.none);
+    if (!mounted || _isDefinitelyOffline == isDefinitelyOffline) return;
+    setState(() => _isDefinitelyOffline = isDefinitelyOffline);
+  }
+
+  Future<Station?> _startStationLoad(Station? fallbackStation) {
+    final requestId = ++_stationRequestId;
+    final requestedStationId = fallbackStation?.id;
+    if (_activeStationId != requestedStationId) {
+      _activeStationId = requestedStationId;
+      _waterResult = null;
+      _waterResultStationId = null;
+    }
+    _isWaterResultLoading = true;
+    return _loadStation(fallbackStation, requestId);
+  }
+
+  Future<Station?> _loadStation(Station? fallbackStation, int requestId) async {
     final station = await _waterService.getNearestStation(
       fallbackStation: fallbackStation,
     );
-    if (requestId != _stationRequestId) return station;
+    if (!mounted || requestId != _stationRequestId) return null;
 
     if (station == null) {
-      if (mounted) setState(() => _isWaterResultLoading = false);
+      setState(() => _isWaterResultLoading = false);
       return null;
     }
 
+    _activeStationId = station.id;
     unawaited(_loadWaterResult(station, requestId));
     return station;
   }
 
   Future<void> _loadWaterResult(Station station, int requestId) async {
-    if (mounted && requestId == _stationRequestId) {
-      setState(() {
-        final hasCurrentResult =
-            _waterResult != null && _waterResultStationId == station.id;
-        if (!hasCurrentResult) _waterResult = null;
-        _waterResultStationId = station.id;
-        _isWaterResultLoading = true;
-      });
+    if (!mounted ||
+        requestId != _stationRequestId ||
+        _activeStationId != station.id) {
+      return;
     }
+    setState(() {
+      final hasCurrentResult =
+          _waterResult != null && _waterResultStationId == station.id;
+      if (!hasCurrentResult) _waterResult = null;
+      _waterResultStationId = station.id;
+      _isWaterResultLoading = true;
+    });
 
-    late final WaterUiResult result;
     try {
-      result = await _waterService.getWaterUiResult(station, limit: 72);
+      await for (final result in _waterService.getProgressiveWaterUiResults(
+        station,
+        limit: 72,
+      )) {
+        if (!mounted ||
+            requestId != _stationRequestId ||
+            _activeStationId != station.id ||
+            _waterResultStationId != station.id) {
+          return;
+        }
+        setState(() => _waterResult = result);
+      }
     } on Exception {
-      result = const WaterUiResult(
+      if (!mounted ||
+          requestId != _stationRequestId ||
+          _activeStationId != station.id ||
+          _waterResultStationId != station.id) {
+        return;
+      }
+      _waterResult ??= const WaterUiResult(
         latestReading: null,
         history: [],
         source: null,
@@ -109,14 +180,12 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
 
     if (!mounted ||
         requestId != _stationRequestId ||
+        _activeStationId != station.id ||
         _waterResultStationId != station.id) {
       return;
     }
 
-    setState(() {
-      _waterResult = result;
-      _isWaterResultLoading = false;
-    });
+    setState(() => _isWaterResultLoading = false);
   }
 
   @override
@@ -124,19 +193,23 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
     return FutureBuilder<Station?>(
       future: _stationFuture,
       builder: (context, snapshot) {
-        final station = snapshot.data;
+        final snapshotStation = snapshot.data;
+        final station = snapshotStation?.id == _activeStationId
+            ? snapshotStation
+            : null;
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
         final waterResult =
             station != null && _waterResultStationId == station.id
             ? _waterResult
             : null;
-        final isInitialLoading =
-            waterResult == null &&
-            !snapshot.hasError &&
-            (isLoading || _isWaterResultLoading);
         final latestReading = waterResult?.latestReading;
         final hasStationReading = station?.hasWaterLevel == true;
         final hasReading = latestReading != null || hasStationReading;
+        final isInitialLoading =
+            !hasReading &&
+            waterResult == null &&
+            !snapshot.hasError &&
+            (isLoading || _isWaterResultLoading);
         final waterValue = latestReading?.value ?? station?.level;
         final waterUnit =
             latestReading?.unit ?? station?.waterLevelUnit ?? 'cm';
@@ -148,11 +221,28 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         final measurementTimestamp =
             waterResult?.measurementTimestamp ??
             (hasStationReading ? station!.lastUpdate : null);
+        final measurementAge = measurementTimestamp == null
+            ? null
+            : DateTime.now().toUtc().difference(measurementTimestamp.toUtc());
+        final isStale =
+            waterResult?.isStale ??
+            (measurementAge != null &&
+                measurementAge > WaterRepository.defaultFreshnessThreshold);
         final reliabilityStatus =
             waterResult?.status ??
             (hasReading
                 ? WaterUiStatus.insufficientHistory
                 : WaterUiStatus.unavailable);
+        final hasProviderError =
+            reliabilityStatus == WaterUiStatus.providerError;
+        final showLiveBadge = shouldShowWaterLiveBadge(
+          hasRealReading: hasReading,
+          isStale: isStale,
+          status: reliabilityStatus,
+          connectivityKnown: _isDefinitelyOffline != null,
+          isDefinitelyOffline: _isDefinitelyOffline ?? false,
+        );
+        final showNonLiveBadge = !hasProviderError && (isStale || !hasReading);
         final stationName =
             station?.name ??
             (snapshot.hasError
@@ -179,7 +269,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
             : WaterFreshnessFormatter.format(
                 measurementTimestamp: measurementTimestamp,
                 now: DateTime.now(),
-                isStale: waterResult?.isStale ?? false,
+                isStale: isStale,
                 locale: Localizations.localeOf(context).languageCode,
               );
         final sourceLabel = hasReading
@@ -205,7 +295,6 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                   ? 7.0
                   : (layout.isTablet ? 10.0 : 8.0);
               final verticalPadding = (compact ? 6.0 : cardPadding) * .80;
-              final isStale = waterResult?.isStale ?? false;
               final trendColor = hasKnownTrend && !isStale
                   ? _colorFor(trend)
                   : const Color(0xFF9AA7B2);
@@ -226,9 +315,11 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                   ? (isRo ? 'Date neactualizate' : 'Stale data')
                   : status;
               final badgeLabel = hasReading
-                  ? (isRo ? 'DATE REALE' : 'LIVE DATA')
+                  ? isStale
+                        ? (isRo ? 'DATE VECHI' : 'STALE DATA')
+                        : (isRo ? 'DATE REALE' : 'LIVE DATA')
                   : (isRo ? 'FĂRĂ DATE' : 'NO DATA');
-              final badgeColor = hasReading
+              final badgeColor = hasReading && !isStale
                   ? const Color(0xFF00BCD4)
                   : Colors.white38;
               final historyTitle = canShowHistory
@@ -372,29 +463,30 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                           ),
                         ),
                         SizedBox(width: compact ? 6 : 8),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: compact ? 6.5 : 7.5,
-                            vertical: compact ? 1.5 : 2.5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: badgeColor.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(9),
-                            border: Border.all(
-                              color: badgeColor.withValues(alpha: 0.46),
+                        if (showLiveBadge || showNonLiveBadge)
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: compact ? 6.5 : 7.5,
+                              vertical: compact ? 1.5 : 2.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: badgeColor.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(9),
+                              border: Border.all(
+                                color: badgeColor.withValues(alpha: 0.46),
+                              ),
+                            ),
+                            child: Text(
+                              badgeLabel,
+                              maxLines: 1,
+                              style: AppTextStyles.caption.copyWith(
+                                color: badgeColor,
+                                fontSize: narrow || compact ? 7.5 : 8.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.48,
+                              ),
                             ),
                           ),
-                          child: Text(
-                            badgeLabel,
-                            maxLines: 1,
-                            style: AppTextStyles.caption.copyWith(
-                              color: badgeColor,
-                              fontSize: narrow || compact ? 7.5 : 8.5,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.48,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                     SizedBox(height: compact ? 2 : 4),

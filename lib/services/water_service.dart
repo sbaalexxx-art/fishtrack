@@ -135,6 +135,8 @@ class WaterService {
       StreamController<Station>.broadcast(sync: true);
   static final TimedCache<List<Station>> _stationsCache =
       TimedCache<List<Station>>(duration: cacheDuration);
+  static final TimedCache<List<Station>> _fastStationsCache =
+      TimedCache<List<Station>>(duration: cacheDuration);
   static final Map<String, TimedCache<List<WaterLevel>>> _historyCache = {};
   static final Map<String, TimedCache<WaterHistoryResult>>
   _stationDetailsHistoryCache = {};
@@ -161,6 +163,7 @@ class WaterService {
 
   static void clearCache() {
     _stationsCache.clear();
+    _fastStationsCache.clear();
     _historyCache.clear();
     _stationDetailsHistoryCache.clear();
     _waterUiCacheEpoch++;
@@ -346,9 +349,11 @@ class WaterService {
   }) {
     final key = _waterUiCacheKey(station, limit, historyWindow);
     final now = DateTime.now();
+    final activeRequest = _waterUiInFlight[key];
+    if (activeRequest != null) return activeRequest;
+
     if (forceRefresh) {
       _waterUiCache.remove(key);
-      _waterUiInFlight.remove(key);
       _waterUiKeyGenerations[key] = (_waterUiKeyGenerations[key] ?? 0) + 1;
     } else {
       final cached = _waterUiCache[key];
@@ -362,8 +367,6 @@ class WaterService {
           _withCurrentFreshness(resolved, now),
         );
       }
-      final activeRequest = _waterUiInFlight[key];
-      if (activeRequest != null) return activeRequest;
     }
 
     final requestEpoch = _waterUiCacheEpoch;
@@ -397,6 +400,55 @@ class WaterService {
     return request;
   }
 
+  Stream<WaterUiResult> getProgressiveWaterUiResults(
+    Station station, {
+    int limit = 72,
+    Duration historyWindow = const Duration(hours: 24),
+    bool forceRefresh = false,
+  }) async* {
+    final now = DateTime.now();
+    final canonicalFuture = getWaterUiResult(
+      station,
+      limit: limit,
+      historyWindow: historyWindow,
+      forceRefresh: forceRefresh,
+    );
+    WaterUiResult? displayed;
+
+    if (!forceRefresh) {
+      final cached = _cachedWaterUiResult(
+        station,
+        limit: limit,
+        historyWindow: historyWindow,
+        now: now,
+      );
+      if (cached != null && _hasValidReading(cached)) {
+        displayed = cached;
+        yield cached;
+      } else {
+        final lastKnownGood = _lastKnownGoodResult(station, now);
+        if (lastKnownGood != null) {
+          displayed = lastKnownGood;
+          yield lastKnownGood;
+        }
+      }
+    }
+
+    final fastResult = _fastResultFromStation(station, now);
+    if (fastResult != null &&
+        (displayed == null ||
+            _shouldReplaceDisplayed(displayed, fastResult, now))) {
+      displayed = fastResult;
+      yield fastResult;
+    }
+
+    final canonical = await canonicalFuture;
+    if (displayed == null ||
+        _shouldReplaceDisplayed(displayed, canonical, DateTime.now())) {
+      yield canonical;
+    }
+  }
+
   Future<WaterUiResult> _loadWaterUiResult(
     Station station, {
     required int limit,
@@ -410,6 +462,10 @@ class WaterService {
         station.id,
         stationName: station.name,
         limit: limit,
+        prefetchedCurrentReading:
+            stationReading?.source == WaterLevelSource.danubeFis
+            ? stationReading
+            : null,
       );
     } on Exception {
       repositoryResult = const WaterHistoryResult(
@@ -431,6 +487,7 @@ class WaterService {
     final selectedReading = _latestReadingByAuthority(
       stationReading,
       validReadings,
+      now,
     );
     final compatibleReadings = selectedReading == null
         ? const <WaterLevel>[]
@@ -843,9 +900,25 @@ class WaterService {
   }
 
   Future<Station?> getNearestStation({Station? fallbackStation}) async {
-    final stations = await getStations();
+    List<Station> stations;
+    try {
+      stations = (await _fastStationsCache.get(
+        () async =>
+            List<Station>.unmodifiable(await _repository.getFastStations()),
+      )).value;
+    } on Exception {
+      stations = await getStations();
+    }
     if (stations.isEmpty) {
       return null;
+    }
+
+    final selected = fallbackStation ?? _selectedStation;
+    if (selected != null) {
+      for (final station in stations) {
+        if (station.id == selected.id) return station;
+      }
+      return selected;
     }
 
     try {
@@ -866,17 +939,7 @@ class WaterService {
         return candidateDistance < nearestDistance ? candidate : nearest;
       });
     } on LocationFailure {
-      final selected = fallbackStation ?? _selectedStation;
-      if (selected == null) {
-        return stations.first;
-      }
-
-      for (final station in stations) {
-        if (station.id == selected.id) {
-          return station;
-        }
-      }
-      return selected;
+      return stations.first;
     }
   }
 
@@ -983,6 +1046,7 @@ class WaterService {
   static WaterLevel? _latestReadingByAuthority(
     WaterLevel? stationReading,
     List<WaterLevel> history,
+    DateTime now,
   ) {
     final candidates = <WaterLevel>[
       if (stationReading != null && _isValidReading(stationReading))
@@ -990,6 +1054,20 @@ class WaterService {
       ...history.where(_isValidReading),
     ];
     if (candidates.isEmpty) return null;
+
+    final freshAfdj = candidates.where(
+      (reading) =>
+          reading.source == WaterLevelSource.afdj &&
+          _isFreshReading(reading, now),
+    );
+    if (freshAfdj.isNotEmpty) {
+      return freshAfdj.reduce(
+        (current, candidate) =>
+            candidate.timestamp.toUtc().isAfter(current.timestamp.toUtc())
+            ? candidate
+            : current,
+      );
+    }
 
     final official = candidates.where(
       (reading) => _isOfficialSource(reading.source),
@@ -999,6 +1077,73 @@ class WaterService {
       (current, candidate) =>
           candidate.timestamp.isAfter(current.timestamp) ? candidate : current,
     );
+  }
+
+  static WaterUiResult? _fastResultFromStation(Station station, DateTime now) {
+    final reading = _readingFromStation(station);
+    if (reading == null ||
+        !_isOfficialSource(reading.source) ||
+        reading.unit.toLowerCase() != 'cm' ||
+        !_isValidReading(reading)) {
+      return null;
+    }
+    final current = reading.hasKnownTrend
+        ? reading
+        : _copyWithTrend(reading, null);
+    return _withCurrentFreshness(
+      WaterUiResult(
+        latestReading: current,
+        history: const <WaterLevel>[],
+        source: current.source,
+        sourceName: current.sourceName,
+        measurementTimestamp: current.timestamp,
+        dataAge: null,
+        isStale: false,
+        status: WaterUiStatus.insufficientHistory,
+        safeDiagnosticMessage: null,
+      ),
+      now,
+    );
+  }
+
+  static bool _shouldReplaceDisplayed(
+    WaterUiResult current,
+    WaterUiResult candidate,
+    DateTime now,
+  ) {
+    if (!_hasValidReading(candidate)) return false;
+    if (!_hasValidReading(current)) return true;
+    final currentReading = current.latestReading!;
+    final candidateReading = candidate.latestReading!;
+    final currentAfdj =
+        currentReading.source == WaterLevelSource.afdj &&
+        _isFreshReading(currentReading, now);
+    final candidateAfdj =
+        candidateReading.source == WaterLevelSource.afdj &&
+        _isFreshReading(candidateReading, now);
+    if (candidateAfdj != currentAfdj) return candidateAfdj;
+
+    final currentTimestamp = currentReading.timestamp.toUtc();
+    final candidateTimestamp = candidateReading.timestamp.toUtc();
+    if (candidateTimestamp.isAfter(currentTimestamp)) return true;
+    if (candidateTimestamp.isBefore(currentTimestamp)) return false;
+
+    return candidate.status != current.status ||
+        candidate.isStale != current.isStale ||
+        candidate.source != current.source ||
+        candidate.sourceName != current.sourceName ||
+        candidateReading.value != currentReading.value ||
+        candidateReading.unit != currentReading.unit ||
+        candidateReading.trend != currentReading.trend ||
+        candidateReading.hasKnownTrend != currentReading.hasKnownTrend ||
+        candidate.history.length != current.history.length ||
+        candidate.safeDiagnosticMessage != current.safeDiagnosticMessage;
+  }
+
+  static bool _isFreshReading(WaterLevel reading, DateTime now) {
+    final age = now.toUtc().difference(reading.timestamp.toUtc());
+    return age >= const Duration(minutes: -5) &&
+        age <= WaterRepository.defaultFreshnessThreshold;
   }
 
   static List<WaterLevel> _withCompatibleTrends(List<WaterLevel> readings) {
@@ -1068,11 +1213,17 @@ class WaterService {
     WaterLevelSource.manualFallback => false,
   };
 
-  static bool _isValidReading(WaterLevel reading) =>
-      reading.value.isFinite && reading.timestamp.millisecondsSinceEpoch > 0;
+  static bool _isValidReading(WaterLevel reading) {
+    final timestamp = reading.timestamp.toUtc();
+    return reading.value.isFinite &&
+        timestamp.millisecondsSinceEpoch > 0 &&
+        !timestamp.isAfter(
+          DateTime.now().toUtc().add(const Duration(minutes: 5)),
+        );
+  }
 
   static Duration _nonNegativeAge(DateTime now, DateTime timestamp) {
-    final age = now.difference(timestamp.toLocal());
+    final age = now.toUtc().difference(timestamp.toUtc());
     return age.isNegative ? Duration.zero : age;
   }
 }

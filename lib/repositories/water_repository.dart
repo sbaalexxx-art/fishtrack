@@ -130,17 +130,7 @@ class WaterRepository implements OfficialWaterDataSource {
   WaterLevelSource get source => WaterLevelSource.manualFallback;
 
   Future<List<Station>> getStations() async {
-    final client = Supabase.instance.client;
-    late final List<Map<String, dynamic>> stationRows;
-    try {
-      stationRows = await client
-          .from('stations')
-          .select()
-          .timeout(const Duration(seconds: 12));
-    } on Exception catch (error, stackTrace) {
-      _logFailure('station metadata', error, stackTrace);
-      rethrow;
-    }
+    final stationRows = await _getStationRows();
     Map<String, List<WaterLevel>> afdjLevels = const {};
     try {
       afdjLevels = await afdjProvider.getLevels(
@@ -170,6 +160,54 @@ class WaterRepository implements OfficialWaterDataSource {
       _logFailure('DanubeFIS levels', error, stackTrace);
     }
 
+    return _stationsFromRows(
+      stationRows,
+      afdjLevels: afdjLevels,
+      danubeHisLevels: danubeHisLevels,
+      danubeFisLevels: danubeFisLevels,
+    );
+  }
+
+  Future<List<Station>> getFastStations() async {
+    final stationRows = await _getStationRows();
+    Map<String, List<WaterLevel>> danubeFisLevels = const {};
+    try {
+      danubeFisLevels = await danubeFisProvider.getLevels(
+        stationRows.map((row) => row['name']?.toString() ?? ''),
+      );
+    } on Exception catch (error, stackTrace) {
+      _logFailure('DanubeFIS fast levels', error, stackTrace);
+    }
+
+    return _stationsFromRows(
+      stationRows,
+      afdjLevels: const {},
+      danubeHisLevels: const {},
+      danubeFisLevels: danubeFisLevels,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _getStationRows() async {
+    final client = Supabase.instance.client;
+    late final List<Map<String, dynamic>> stationRows;
+    try {
+      stationRows = await client
+          .from('stations')
+          .select()
+          .timeout(const Duration(seconds: 12));
+    } on Exception catch (error, stackTrace) {
+      _logFailure('station metadata', error, stackTrace);
+      rethrow;
+    }
+    return stationRows;
+  }
+
+  List<Station> _stationsFromRows(
+    List<Map<String, dynamic>> stationRows, {
+    required Map<String, List<WaterLevel>> afdjLevels,
+    required Map<String, List<WaterLevel>> danubeHisLevels,
+    required Map<String, List<WaterLevel>> danubeFisLevels,
+  }) {
     final stationsByName = stationRows
         .map((row) {
           final data = Map<String, dynamic>.from(row);
@@ -242,6 +280,7 @@ class WaterRepository implements OfficialWaterDataSource {
     String stationId, {
     String? stationName,
     int limit = 30,
+    WaterLevel? prefetchedCurrentReading,
   }) async {
     final failedProviders = <String>[];
     if (stationName != null && stationName.trim().isNotEmpty) {
@@ -267,8 +306,15 @@ class WaterRepository implements OfficialWaterDataSource {
         _logFailure('DanubeHIS history', error, stackTrace);
       }
       try {
-        final result = await danubeFisProvider.getLevels([stationName]);
-        fisReadings = result[normalized] ?? const [];
+        if (prefetchedCurrentReading != null &&
+            prefetchedCurrentReading.source == WaterLevelSource.danubeFis &&
+            _isValidReading(prefetchedCurrentReading) &&
+            prefetchedCurrentReading.unit.toLowerCase() == 'cm') {
+          fisReadings = [prefetchedCurrentReading];
+        } else {
+          final result = await danubeFisProvider.getLevels([stationName]);
+          fisReadings = result[normalized] ?? const [];
+        }
       } on Exception catch (error, stackTrace) {
         failedProviders.add('DanubeFIS');
         _logFailure('DanubeFIS history', error, stackTrace);
@@ -529,11 +575,20 @@ class WaterRepository implements OfficialWaterDataSource {
     return valid;
   }
 
-  static bool _isValidReading(WaterLevel reading) =>
-      reading.value.isFinite && reading.timestamp.millisecondsSinceEpoch > 0;
+  static bool _isValidReading(WaterLevel reading) {
+    final timestamp = reading.timestamp.toUtc();
+    return reading.value.isFinite &&
+        timestamp.millisecondsSinceEpoch > 0 &&
+        !timestamp.isAfter(
+          DateTime.now().toUtc().add(const Duration(minutes: 5)),
+        );
+  }
 
-  static bool _isWithinDefaultFreshness(WaterLevel reading, DateTime now) =>
-      now.difference(reading.timestamp.toLocal()) <= defaultFreshnessThreshold;
+  static bool _isWithinDefaultFreshness(WaterLevel reading, DateTime now) {
+    final age = now.toUtc().difference(reading.timestamp.toUtc());
+    return age >= const Duration(minutes: -5) &&
+        age <= defaultFreshnessThreshold;
+  }
 
   static String? _safeProviderDiagnostic(List<String> failedProviders) =>
       failedProviders.isEmpty

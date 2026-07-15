@@ -100,25 +100,30 @@ void main() {
     expect(result.status, WaterUiStatus.insufficientHistory);
   });
 
-  test('newest reading wins when both readings are official', () async {
-    final now = _now();
-    final afdj = _reading(
-      value: 535,
-      timestamp: now.subtract(const Duration(hours: 2)),
-      source: WaterLevelSource.afdj,
-    );
-    final danubeHis = _reading(
-      value: 540,
-      timestamp: now.subtract(const Duration(hours: 1)),
-      source: WaterLevelSource.danubeHis,
-    );
-    final service = WaterService(repository: _FakeWaterRepository([danubeHis]));
+  test(
+    'fresh AFDJ remains authoritative over newer official reading',
+    () async {
+      final now = _now();
+      final afdj = _reading(
+        value: 535,
+        timestamp: now.subtract(const Duration(hours: 2)),
+        source: WaterLevelSource.afdj,
+      );
+      final danubeHis = _reading(
+        value: 540,
+        timestamp: now.subtract(const Duration(hours: 1)),
+        source: WaterLevelSource.danubeHis,
+      );
+      final service = WaterService(
+        repository: _FakeWaterRepository([danubeHis]),
+      );
 
-    final result = await service.getWaterUiResult(_stationFrom(afdj));
+      final result = await service.getWaterUiResult(_stationFrom(afdj));
 
-    expect(result.latestReading?.value, 540);
-    expect(result.source, WaterLevelSource.danubeHis);
-  });
+      expect(result.latestReading?.value, 535);
+      expect(result.source, WaterLevelSource.afdj);
+    },
+  );
 
   test(
     'Manual remains available and unverified without official data',
@@ -282,6 +287,7 @@ class _FakeWaterRepository extends WaterRepository {
     String stationId, {
     String? stationName,
     int limit = 30,
+    WaterLevel? prefetchedCurrentReading,
   }) async {
     historyRequestCount++;
     final limited = readings.take(limit).toList(growable: false);
