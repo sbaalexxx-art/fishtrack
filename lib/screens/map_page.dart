@@ -436,7 +436,7 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
 
     return ListView.separated(
       itemCount: items.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final result = items[index];
         return ListTile(
