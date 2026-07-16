@@ -212,6 +212,24 @@ abstract class AppLocalizations {
   /// **'Comunitate'**
   String get community;
 
+  /// No description provided for @homeTagline.
+  ///
+  /// In ro, this message translates to:
+  /// **'Pescuit inteligent • Rapoarte live • Comunitate de încredere'**
+  String get homeTagline;
+
+  /// No description provided for @communityEmptyMessage.
+  ///
+  /// In ro, this message translates to:
+  /// **'Liniște pe ape în această zonă.'**
+  String get communityEmptyMessage;
+
+  /// No description provided for @communityEmptyCta.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fii primul care raportează!'**
+  String get communityEmptyCta;
+
   /// No description provided for @retry.
   ///
   /// In ro, this message translates to:

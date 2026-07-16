@@ -66,6 +66,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get community => 'Community';
 
   @override
+  String get homeTagline => 'Smart fishing • Live reports • Trusted community';
+
+  @override
+  String get communityEmptyMessage => 'Quiet on the water in this area.';
+
+  @override
+  String get communityEmptyCta => 'Be the first to report!';
+
+  @override
   String get retry => 'Retry';
 
   @override
