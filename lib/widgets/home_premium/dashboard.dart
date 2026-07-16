@@ -44,6 +44,7 @@ class PremiumDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final geometry = _DashboardGeometry.from(layout);
     final spacing = geometry.spacing;
+    final pairedRowSpacing = geometry.pairedRowSpacing;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -82,7 +83,7 @@ class PremiumDashboard extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(height: spacing),
+            SizedBox(height: pairedRowSpacing),
             if (stackPairedCards) ...[
               SizedBox(
                 width: double.infinity,
@@ -123,6 +124,7 @@ class PremiumDashboard extends StatelessWidget {
 class _DashboardGeometry {
   const _DashboardGeometry({
     required this.spacing,
+    required this.pairedRowSpacing,
     required this.waterHeight,
     required this.weatherHeight,
     required this.standardHeight,
@@ -133,6 +135,7 @@ class _DashboardGeometry {
     if (!compactFirstViewport) {
       return _DashboardGeometry(
         spacing: layout.sectionGap * .78,
+        pairedRowSpacing: layout.sectionGap * .78,
         waterHeight: layout.waterCardHeight * .94,
         weatherHeight: layout.weatherCardHeight * .88,
         standardHeight: layout.standardSectionHeight,
@@ -140,7 +143,8 @@ class _DashboardGeometry {
     }
 
     return _DashboardGeometry(
-      spacing: (layout.sectionGap * .55).clamp(4.0, 7.0).toDouble(),
+      spacing: (layout.sectionGap * .40).clamp(4.0, 5.0).toDouble(),
+      pairedRowSpacing: (layout.sectionGap * .30).clamp(3.0, 4.0).toDouble(),
       waterHeight: (layout.waterCardHeight * .86)
           .clamp(100.0, 112.0)
           .toDouble(),
@@ -154,6 +158,7 @@ class _DashboardGeometry {
   }
 
   final double spacing;
+  final double pairedRowSpacing;
   final double waterHeight;
   final double weatherHeight;
   final double standardHeight;
