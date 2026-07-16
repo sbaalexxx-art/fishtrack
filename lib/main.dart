@@ -1,4 +1,7 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -88,18 +91,88 @@ class _PremiumSplash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      color: const Color(0xFF0F1115),
-      home: Scaffold(
-        backgroundColor: const Color(0xFF0F1115),
-        body: SizedBox.expand(
-          child: Image.asset(
-            'assets/branding/fluvi_ai_splash_final.png',
-            fit: BoxFit.cover,
-            alignment: Alignment.center,
-            filterQuality: FilterQuality.high,
-            gaplessPlayback: true,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Color(0xFF0F1115),
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarDividerColor: Color(0xFF0F1115),
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        color: const Color(0xFF0F1115),
+        home: Scaffold(
+          backgroundColor: const Color(0xFF0F1115),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final isLandscape = constraints.maxWidth > constraints.maxHeight;
+              if (!isLandscape) {
+                return SizedBox.expand(
+                  child: Image.asset(
+                    'assets/branding/fluvi_ai_splash_final.png',
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
+                  ),
+                );
+              }
+
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: Image.asset(
+                      'assets/branding/fluvi_ai_splash_final.png',
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      filterQuality: FilterQuality.high,
+                      gaplessPlayback: true,
+                    ),
+                  ),
+                  const ColoredBox(color: Color(0xB30F1115)),
+                  SafeArea(
+                    child: LayoutBuilder(
+                      builder: (context, safeAreaConstraints) {
+                        final contentWidth = safeAreaConstraints.maxWidth;
+                        final contentHeight = safeAreaConstraints.maxHeight;
+
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: contentWidth * .18,
+                                height: contentHeight * .38,
+                                child: Image.asset(
+                                  'assets/branding/fluviai_logo.png',
+                                  fit: BoxFit.contain,
+                                  filterQuality: FilterQuality.high,
+                                ),
+                              ),
+                              SizedBox(height: contentHeight * .035),
+                              SizedBox(
+                                width: contentWidth * .58,
+                                height: contentHeight * .22,
+                                child: Image.asset(
+                                  'assets/branding/fluviai_wordmark.png',
+                                  fit: BoxFit.contain,
+                                  filterQuality: FilterQuality.high,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
