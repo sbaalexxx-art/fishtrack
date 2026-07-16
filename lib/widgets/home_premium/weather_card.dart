@@ -4,6 +4,7 @@ import '../../core/theme/app_text_styles.dart';
 import '../../l10n/l10n.dart';
 import '../../models/station.dart';
 import '../../models/weather.dart';
+import '../../screens/weather_page.dart';
 import '../../services/weather_service.dart';
 import 'ai_conditions_card.dart' show PremiumLoadingShimmer;
 import 'home_premium_layout.dart';
@@ -13,10 +14,12 @@ class WeatherCardPremium extends StatefulWidget {
     super.key,
     required this.layout,
     this.fallbackStation,
+    this.onMetricPressed,
   });
 
   final HomePremiumLayout layout;
   final Station? fallbackStation;
+  final ValueChanged<WeatherPageSection>? onMetricPressed;
 
   @override
   State<WeatherCardPremium> createState() => _WeatherCardPremiumState();
@@ -197,6 +200,11 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                   secondaryValue: condition,
                   accentColor: const Color(0xFFFFC84A),
                   dense: dense,
+                  onTap: widget.onMetricPressed == null
+                      ? null
+                      : () => widget.onMetricPressed!(
+                          WeatherPageSection.temperature,
+                        ),
                 ),
                 _WeatherMetric(
                   icon: Icons.air_rounded,
@@ -204,6 +212,9 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                   value: wind,
                   accentColor: const Color(0xFF62D7F5),
                   dense: dense,
+                  onTap: widget.onMetricPressed == null
+                      ? null
+                      : () => widget.onMetricPressed!(WeatherPageSection.wind),
                 ),
                 _WeatherMetric(
                   icon: Icons.speed_rounded,
@@ -211,6 +222,11 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                   value: pressure,
                   accentColor: const Color(0xFFA4D96C),
                   dense: dense,
+                  onTap: widget.onMetricPressed == null
+                      ? null
+                      : () => widget.onMetricPressed!(
+                          WeatherPageSection.pressure,
+                        ),
                 ),
                 _WeatherMetric(
                   icon: Icons.water_drop_outlined,
@@ -218,6 +234,11 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                   value: humidity,
                   accentColor: const Color(0xFF54B9FF),
                   dense: dense,
+                  onTap: widget.onMetricPressed == null
+                      ? null
+                      : () => widget.onMetricPressed!(
+                          WeatherPageSection.humidity,
+                        ),
                 ),
                 _WeatherMetric(
                   icon: Icons.umbrella_outlined,
@@ -225,6 +246,11 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                   value: precipitation,
                   accentColor: const Color(0xFF7EA8FF),
                   dense: dense,
+                  onTap: widget.onMetricPressed == null
+                      ? null
+                      : () => widget.onMetricPressed!(
+                          WeatherPageSection.precipitation,
+                        ),
                 ),
                 _WeatherMetric(
                   icon: Icons.nights_stay_outlined,
@@ -232,6 +258,10 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                   value: solunar,
                   accentColor: const Color(0xFFBE9AF7),
                   dense: dense,
+                  onTap: widget.onMetricPressed == null
+                      ? null
+                      : () =>
+                            widget.onMetricPressed!(WeatherPageSection.solunar),
                 ),
               ];
 
@@ -344,6 +374,7 @@ class _WeatherMetric extends StatelessWidget {
     required this.accentColor,
     required this.dense,
     this.secondaryValue,
+    this.onTap,
   });
 
   final IconData icon;
@@ -352,6 +383,7 @@ class _WeatherMetric extends StatelessWidget {
   final String? secondaryValue;
   final Color accentColor;
   final bool dense;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -362,107 +394,112 @@ class _WeatherMetric extends StatelessWidget {
         : value.substring(0, separator);
     final suffix = separator == -1 ? null : value.substring(separator + 1);
 
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: dense ? 3 : 4,
-        vertical: dense ? 1 : 2,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            accentColor.withValues(alpha: 0.18),
-            const Color(0xFF12303B).withValues(alpha: 0.94),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: dense ? 3 : 4,
+          vertical: dense ? 1 : 2,
+        ),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              accentColor.withValues(alpha: 0.18),
+              const Color(0xFF12303B).withValues(alpha: 0.94),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: accentColor.withValues(alpha: 0.38)),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withValues(alpha: 0.04),
+              blurRadius: 8,
+              spreadRadius: -4,
+              offset: const Offset(0, 3),
+            ),
           ],
         ),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: accentColor.withValues(alpha: 0.38)),
-        boxShadow: [
-          BoxShadow(
-            color: accentColor.withValues(alpha: 0.04),
-            blurRadius: 8,
-            spreadRadius: -4,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: dense ? 20 : 22,
-            height: dense ? 20 : 22,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: accentColor.withValues(alpha: 0.28)),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: dense ? 20 : 22,
+              height: dense ? 20 : 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: accentColor.withValues(alpha: 0.28)),
+              ),
+              child: Icon(icon, color: accentColor, size: dense ? 15 : 16),
             ),
-            child: Icon(icon, color: accentColor, size: dense ? 15 : 16),
-          ),
-          SizedBox(height: dense ? 2 : 3),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.caption.copyWith(
-              color: Color.lerp(const Color(0xFFDCECF1), accentColor, 0.18),
-              fontSize: (dense ? 9.5 : 11.5) * layout.bodyFontScale,
-              fontWeight: FontWeight.w600,
+            SizedBox(height: dense ? 2 : 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.caption.copyWith(
+                color: Color.lerp(const Color(0xFFDCECF1), accentColor, 0.18),
+                fontSize: (dense ? 9.5 : 11.5) * layout.bodyFontScale,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-          const SizedBox(height: 1),
-          SizedBox(
-            width: double.infinity,
-            child: FittedBox(
-              alignment: Alignment.centerLeft,
-              fit: BoxFit.scaleDown,
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: primaryValue,
-                      style: AppTextStyles.caption.copyWith(
-                        color: const Color(0xFFFFFFFF),
-                        fontSize: (dense ? 15 : 18) * layout.bodyFontScale,
-                        height: 1,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (suffix != null)
+            const SizedBox(height: 1),
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                alignment: Alignment.centerLeft,
+                fit: BoxFit.scaleDown,
+                child: Text.rich(
+                  TextSpan(
+                    children: [
                       TextSpan(
-                        text: ' $suffix',
+                        text: primaryValue,
                         style: AppTextStyles.caption.copyWith(
-                          color: const Color(0xFFDCECF1),
-                          fontSize: (dense ? 9.5 : 10.5) * layout.bodyFontScale,
+                          color: const Color(0xFFFFFFFF),
+                          fontSize: (dense ? 15 : 18) * layout.bodyFontScale,
                           height: 1,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                  ],
+                      if (suffix != null)
+                        TextSpan(
+                          text: ' $suffix',
+                          style: AppTextStyles.caption.copyWith(
+                            color: const Color(0xFFDCECF1),
+                            fontSize:
+                                (dense ? 9.5 : 10.5) * layout.bodyFontScale,
+                            height: 1,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
                 ),
+              ),
+            ),
+            if (secondaryValue case final secondary?) ...[
+              const SizedBox(height: 1),
+              Text(
+                secondary,
                 maxLines: 1,
-                overflow: TextOverflow.clip,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption.copyWith(
+                  color: Color.lerp(const Color(0xFFDCECF1), accentColor, 0.25),
+                  fontSize: (dense ? 8.5 : 10.5) * layout.bodyFontScale,
+                  height: 1,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-          ),
-          if (secondaryValue case final secondary?) ...[
-            const SizedBox(height: 1),
-            Text(
-              secondary,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.caption.copyWith(
-                color: Color.lerp(const Color(0xFFDCECF1), accentColor, 0.25),
-                fontSize: (dense ? 8.5 : 10.5) * layout.bodyFontScale,
-                height: 1,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

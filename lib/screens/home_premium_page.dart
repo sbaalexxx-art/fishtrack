@@ -259,6 +259,8 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
       layout: layout,
       onWaterLevelPressed: () => _openPage(const WaterLevelPage()),
       onWeatherPressed: () => _openPage(const WeatherPage()),
+      onWeatherMetricPressed: (section) =>
+          _openPage(WeatherPage(initialSection: section)),
       onCommunityPressed: () => widget.onNavigate(3),
       onAiPressed: () => _openPage(const FishingInsightsPage()),
     );

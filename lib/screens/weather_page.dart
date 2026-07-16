@@ -7,8 +7,19 @@ import '../models/weather.dart';
 import '../services/astronomy_service.dart';
 import '../services/weather_service.dart';
 
+enum WeatherPageSection {
+  temperature,
+  wind,
+  pressure,
+  humidity,
+  precipitation,
+  solunar,
+}
+
 class WeatherPage extends StatefulWidget {
-  const WeatherPage({super.key});
+  const WeatherPage({super.key, this.initialSection});
+
+  final WeatherPageSection? initialSection;
 
   @override
   State<WeatherPage> createState() => _WeatherPageState();
@@ -16,8 +27,13 @@ class WeatherPage extends StatefulWidget {
 
 class _WeatherPageState extends State<WeatherPage> {
   final _service = WeatherService();
+  final _scrollController = ScrollController();
+  final _sectionKeys = {
+    for (final section in WeatherPageSection.values) section: GlobalKey(),
+  };
   late Future<_WeatherViewData> _weather;
   bool _fallbackMessageShown = false;
+  bool _didApplyInitialSection = false;
 
   @override
   void initState() {
@@ -42,6 +58,28 @@ class _WeatherPageState extends State<WeatherPage> {
     final weather = _load(forceRefresh: true);
     setState(() => _weather = weather);
     await weather;
+  }
+
+  void _applyInitialSection() {
+    if (_didApplyInitialSection) return;
+    final section = widget.initialSection;
+    final sectionContext = section == null
+        ? null
+        : _sectionKeys[section]?.currentContext;
+    if (sectionContext == null) return;
+
+    _didApplyInitialSection = true;
+    Scrollable.ensureVisible(
+      sectionContext,
+      alignment: 0.12,
+      duration: Duration.zero,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -69,10 +107,15 @@ class _WeatherPageState extends State<WeatherPage> {
                 }
               });
             }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _applyInitialSection();
+            });
             return _WeatherContent(
               weather: snapshot.data!.weather,
               astronomy: snapshot.data!.astronomy,
               onRefresh: _refresh,
+              scrollController: _scrollController,
+              sectionKeys: _sectionKeys,
             );
           },
         ),
@@ -86,280 +129,313 @@ class _WeatherContent extends StatelessWidget {
     required this.weather,
     required this.astronomy,
     required this.onRefresh,
+    required this.scrollController,
+    required this.sectionKeys,
   });
 
   final WeatherData weather;
   final AstronomyContext astronomy;
   final Future<void> Function() onRefresh;
+  final ScrollController scrollController;
+  final Map<WeatherPageSection, GlobalKey> sectionKeys;
 
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
       onRefresh: onRefresh,
-      child: ListView(
+      child: SingleChildScrollView(
+        controller: scrollController,
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-        children: [
-          Card(
-            color: const Color(0xFF17324A),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Card(
+              key: sectionKeys[WeatherPageSection.temperature],
+              color: const Color(0xFF17324A),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.wb_sunny_rounded,
+                      color: Colors.orange,
+                      size: 64,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '${weather.temperature.round()}°C',
+                      style: Theme.of(context).textTheme.displayMedium
+                          ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    Text(
+                      _localizedWeatherCondition(context, weather.condition),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleLarge?.copyWith(color: Colors.white),
+                    ),
+                    if (weather.feelsLike != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        context.l10n.feelsLike(weather.feelsLike!.round()),
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              color: Theme.of(context).colorScheme.surface,
               child: Column(
                 children: [
-                  const Icon(
-                    Icons.wb_sunny_rounded,
-                    color: Colors.orange,
-                    size: 64,
+                  _metric(
+                    Icons.water_drop_outlined,
+                    context.l10n.humidity,
+                    _value(context, weather.humidity, suffix: '%'),
+                    key: sectionKeys[WeatherPageSection.humidity],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '${weather.temperature.round()}°C',
-                    style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    _localizedWeatherCondition(context, weather.condition),
-                    style: Theme.of(
+                  const Divider(height: 1),
+                  _metric(
+                    Icons.air_rounded,
+                    context.l10n.windSpeed,
+                    _value(
                       context,
-                    ).textTheme.titleLarge?.copyWith(color: Colors.white),
-                  ),
-                  if (weather.feelsLike != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      context.l10n.feelsLike(weather.feelsLike!.round()),
-                      style: const TextStyle(color: Colors.white70),
+                      weather.windSpeed,
+                      suffix: ' km/h',
+                      decimals: 1,
                     ),
-                  ],
+                    key: sectionKeys[WeatherPageSection.wind],
+                  ),
+                  const Divider(height: 1),
+                  _metric(
+                    Icons.explore_outlined,
+                    context.l10n.windDirection,
+                    _windDirection(
+                      context,
+                      weather.windDirectionDegrees,
+                      _localizedWindDirectionLabel(
+                        context,
+                        weather.windDirectionLabel,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  _metric(
+                    Icons.air_rounded,
+                    context.l10n.windGusts,
+                    _value(
+                      context,
+                      weather.windGusts,
+                      suffix: ' km/h',
+                      decimals: 1,
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  _metric(
+                    Icons.umbrella_outlined,
+                    context.l10n.precipitationProbability,
+                    _value(
+                      context,
+                      weather.precipitationProbability,
+                      suffix: '%',
+                    ),
+                    key: sectionKeys[WeatherPageSection.precipitation],
+                  ),
+                  const Divider(height: 1),
+                  _metric(
+                    Icons.cloud_outlined,
+                    context.l10n.cloudCover,
+                    _value(context, weather.cloudCover, suffix: '%'),
+                  ),
+                  const Divider(height: 1),
+                  _metric(
+                    Icons.speed_rounded,
+                    context.l10n.pressure,
+                    _value(context, weather.pressure, suffix: ' hPa'),
+                    key: sectionKeys[WeatherPageSection.pressure],
+                  ),
+                  const Divider(height: 1),
+                  _metric(
+                    Icons.schedule_rounded,
+                    context.l10n.lastUpdated,
+                    _time(context, weather.observedAt),
+                  ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            color: Theme.of(context).colorScheme.surface,
-            child: Column(
-              children: [
-                _metric(
-                  Icons.water_drop_outlined,
-                  context.l10n.humidity,
-                  _value(context, weather.humidity, suffix: '%'),
-                ),
-                const Divider(height: 1),
-                _metric(
-                  Icons.air_rounded,
-                  context.l10n.windSpeed,
-                  _value(context, weather.windSpeed, suffix: ' km/h', decimals: 1),
-                ),
-                const Divider(height: 1),
-                _metric(
-                  Icons.explore_outlined,
-                  context.l10n.windDirection,
-                  _windDirection(
-                    context,
-                    weather.windDirectionDegrees,
-                    _localizedWindDirectionLabel(
-                      context,
-                      weather.windDirectionLabel,
-                    ),
-                  ),
-                ),
-                const Divider(height: 1),
-                _metric(
-                  Icons.air_rounded,
-                  context.l10n.windGusts,
-                  _value(context, weather.windGusts, suffix: ' km/h', decimals: 1),
-                ),
-                const Divider(height: 1),
-                _metric(
-                  Icons.umbrella_outlined,
-                  context.l10n.precipitationProbability,
-                  _value(context, weather.precipitationProbability, suffix: '%'),
-                ),
-                const Divider(height: 1),
-                _metric(
-                  Icons.cloud_outlined,
-                  context.l10n.cloudCover,
-                  _value(context, weather.cloudCover, suffix: '%'),
-                ),
-                const Divider(height: 1),
-                _metric(
-                  Icons.speed_rounded,
-                  context.l10n.pressure,
-                  _value(context, weather.pressure, suffix: ' hPa'),
-                ),
-                const Divider(height: 1),
-                _metric(
-                  Icons.schedule_rounded,
-                  context.l10n.lastUpdated,
-                  _time(context, weather.observedAt),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            context.l10n.next24Hours,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (weather.hourlyForecast.isEmpty)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(context.l10n.noData),
+            const SizedBox(height: 16),
+            Text(
+              context.l10n.next24Hours,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.bold,
               ),
-            )
-          else
-            SizedBox(
-              height: 174,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: weather.hourlyForecast.take(24).length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final hour = weather.hourlyForecast[index];
-                  return SizedBox(
-                    width: 166,
-                    child: Card(
-                      color: Theme.of(context).colorScheme.surface,
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _time(context, hour.time),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
+            ),
+            const SizedBox(height: 8),
+            if (weather.hourlyForecast.isEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(context.l10n.noData),
+                ),
+              )
+            else
+              SizedBox(
+                height: 174,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: weather.hourlyForecast.take(24).length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final hour = weather.hourlyForecast[index];
+                    return SizedBox(
+                      width: 166,
+                      child: Card(
+                        color: Theme.of(context).colorScheme.surface,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _time(context, hour.time),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              '${context.l10n.temperature}: '
-                              '${_value(context, hour.temperature, suffix: '°C')}',
-                            ),
-                            Text(
-                              '${context.l10n.wind}: '
-                              '${_value(context, hour.windSpeed, suffix: ' km/h', decimals: 1)}',
-                            ),
-                            Text(
-                              '${context.l10n.direction}: '
-                              '${_windDirection(context, hour.windDirectionDegrees, _localizedWindDirectionLabel(context, hour.windDirectionLabel))}',
-                            ),
-                            Text(
-                              '${context.l10n.precipitation}: '
-                              '${_value(context, hour.precipitationProbability, suffix: '%')}',
-                            ),
-                          ],
+                              const SizedBox(height: 10),
+                              Text(
+                                '${context.l10n.temperature}: '
+                                '${_value(context, hour.temperature, suffix: '°C')}',
+                              ),
+                              Text(
+                                '${context.l10n.wind}: '
+                                '${_value(context, hour.windSpeed, suffix: ' km/h', decimals: 1)}',
+                              ),
+                              Text(
+                                '${context.l10n.direction}: '
+                                '${_windDirection(context, hour.windDirectionDegrees, _localizedWindDirectionLabel(context, hour.windDirectionLabel))}',
+                              ),
+                              Text(
+                                '${context.l10n.precipitation}: '
+                                '${_value(context, hour.precipitationProbability, suffix: '%')}',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 16),
+            Text(
+              context.l10n.threeDayForecast,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...weather.forecast
+                .take(3)
+                .map(
+                  (day) => Card(
+                    color: Theme.of(context).colorScheme.surface,
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.calendar_today_rounded,
+                        color: Color(0xFF1565C0),
+                      ),
+                      title: Text(_dayLabel(context, day.date)),
+                      subtitle: Text(
+                        _localizedWeatherCondition(context, day.condition),
+                      ),
+                      trailing: Text(
+                        '${day.minimumTemperature.round()}° / ${day.maximumTemperature.round()}°',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
-            ),
-          const SizedBox(height: 16),
-          Text(
-            context.l10n.threeDayForecast,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...weather.forecast
-              .take(3)
-              .map(
-                (day) => Card(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: ListTile(
-                    leading: const Icon(
-                      Icons.calendar_today_rounded,
-                      color: Color(0xFF1565C0),
-                    ),
-                    title: Text(_dayLabel(context, day.date)),
-                    subtitle: Text(
-                      _localizedWeatherCondition(context, day.condition),
-                    ),
-                    trailing: Text(
-                      '${day.minimumTemperature.round()}° / ${day.maximumTemperature.round()}°',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
                   ),
                 ),
+            const SizedBox(height: 12),
+            Card(
+              color: Theme.of(context).colorScheme.surface,
+              child: Column(
+                children: [
+                  _metric(
+                    Icons.wb_twilight_rounded,
+                    context.l10n.sunrise,
+                    weather.sunrise == null
+                        ? context.l10n.noData
+                        : _time(context, weather.sunrise!),
+                  ),
+                  const Divider(height: 1),
+                  _metric(
+                    Icons.nights_stay_rounded,
+                    context.l10n.sunset,
+                    weather.sunset == null
+                        ? context.l10n.noData
+                        : _time(context, weather.sunset!),
+                  ),
+                ],
               ),
-          const SizedBox(height: 12),
-          Card(
-            color: Theme.of(context).colorScheme.surface,
-            child: Column(
-              children: [
-                _metric(
-                  Icons.wb_twilight_rounded,
-                  context.l10n.sunrise,
-                  weather.sunrise == null
-                      ? context.l10n.noData
-                      : _time(context, weather.sunrise!),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              key: sectionKeys[WeatherPageSection.solunar],
+              color: const Color(0xFF26334A),
+              child: ListTile(
+                leading: const Icon(
+                  Icons.dark_mode_rounded,
+                  color: Color(0xFFE0E7FF),
                 ),
-                const Divider(height: 1),
-                _metric(
-                  Icons.nights_stay_rounded,
-                  context.l10n.sunset,
-                  weather.sunset == null
-                      ? context.l10n.noData
-                      : _time(context, weather.sunset!),
+                title: Text(
+                  '${_localizedMoonPhase(context, astronomy.moon.name)} • '
+                  '${astronomy.moon.illuminationPercent.round()}% ${context.l10n.illuminated}',
+                  style: const TextStyle(color: Colors.white),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            color: const Color(0xFF26334A),
-            child: ListTile(
-              leading: const Icon(
-                Icons.dark_mode_rounded,
-                color: Color(0xFFE0E7FF),
-              ),
-              title: Text(
-                '${_localizedMoonPhase(context, astronomy.moon.name)} • '
-                '${astronomy.moon.illuminationPercent.round()}% ${context.l10n.illuminated}',
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                context.l10n.moonAge(astronomy.moon.ageDays.toStringAsFixed(1)),
-                style: const TextStyle(color: Colors.white70),
+                subtitle: Text(
+                  context.l10n.moonAge(
+                    astronomy.moon.ageDays.toStringAsFixed(1),
+                  ),
+                  style: const TextStyle(color: Colors.white70),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            color: Theme.of(context).colorScheme.surface,
-            child: ListTile(
-              leading: const Icon(Icons.wb_twilight_rounded),
-              title: Text(context.l10n.goldenHour),
-              subtitle: Text(_goldenHourLabel(context, astronomy)),
+            const SizedBox(height: 12),
+            Card(
+              color: Theme.of(context).colorScheme.surface,
+              child: ListTile(
+                leading: const Icon(Icons.wb_twilight_rounded),
+                title: Text(context.l10n.goldenHour),
+                subtitle: Text(_goldenHourLabel(context, astronomy)),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  static ListTile _metric(IconData icon, String label, String value) =>
-      ListTile(
-        leading: Icon(icon, color: const Color(0xFF1565C0)),
-        title: Text(label),
-        trailing: Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-      );
+  static ListTile _metric(
+    IconData icon,
+    String label,
+    String value, {
+    Key? key,
+  }) => ListTile(
+    key: key,
+    leading: Icon(icon, color: const Color(0xFF1565C0)),
+    title: Text(label),
+    trailing: Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+  );
 
   static String _time(BuildContext context, DateTime dateTime) =>
       TimeOfDay.fromDateTime(dateTime.toLocal()).format(context);
@@ -385,10 +461,7 @@ class _WeatherContent extends StatelessWidget {
     return '$label (${degrees.round()}°)';
   }
 
-  static String _localizedWeatherCondition(
-    BuildContext context,
-    String value,
-  ) {
+  static String _localizedWeatherCondition(BuildContext context, String value) {
     final isRo = Localizations.localeOf(context).languageCode == 'ro';
     if (!isRo) return value;
     return switch (value.trim().toLowerCase()) {
@@ -462,8 +535,7 @@ class _WeatherContent extends StatelessWidget {
     AstronomyContext context,
   ) {
     final golden = context.goldenHour;
-    final isRo =
-        Localizations.localeOf(buildContext).languageCode == 'ro';
+    final isRo = Localizations.localeOf(buildContext).languageCode == 'ro';
     if (context.availability == AstronomyAvailability.locationRequired) {
       return buildContext.l10n.locationRequired;
     }
