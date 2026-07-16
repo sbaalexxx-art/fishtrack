@@ -63,14 +63,16 @@ class _NotificationPreferencesPageState
     }
     return Scaffold(
       appBar: AppBar(title: Text(context.l10n.notificationPreferences)),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-        children: [
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          children: [
           Text(context.l10n.categories, style: Theme.of(context).textTheme.titleLarge),
           for (final category in NotificationCategory.values)
             SwitchListTile(
               value: _preferences.isCategoryEnabled(category),
-              title: Text(category.label),
+              title: Text(_categoryLabel(context, category)),
               onChanged: (enabled) {
                 final categories = {..._preferences.enabledCategories};
                 enabled
@@ -81,20 +83,20 @@ class _NotificationPreferencesPageState
             ),
           const Divider(),
           Text(context.l10n.priority, style: Theme.of(context).textTheme.titleLarge),
-          const ListTile(
+          ListTile(
             leading: Icon(Icons.notifications_off_outlined),
-            title: Text('Silent'),
-            subtitle: Text('Stored only; no popup.'),
+            title: Text(context.l10n.notificationPrioritySilent),
+            subtitle: Text(context.l10n.notificationPrioritySilentDescription),
           ),
-          const ListTile(
+          ListTile(
             leading: Icon(Icons.notifications_active_outlined),
-            title: Text('Important'),
-            subtitle: Text('Normal delivery and respects quiet hours.'),
+            title: Text(context.l10n.notificationPriorityImportant),
+            subtitle: Text(context.l10n.notificationPriorityImportantDescription),
           ),
-          const ListTile(
+          ListTile(
             leading: Icon(Icons.warning_amber_rounded),
-            title: Text('Critical'),
-            subtitle: Text('Delivered immediately, including quiet hours.'),
+            title: Text(context.l10n.notificationPriorityCritical),
+            subtitle: Text(context.l10n.notificationPriorityCriticalDescription),
           ),
           const Divider(),
           SwitchListTile(
@@ -123,9 +125,7 @@ class _NotificationPreferencesPageState
           SwitchListTile(
             value: _preferences.groupingEnabled,
             title: Text(context.l10n.groupSimilarNotifications),
-            subtitle: const Text(
-              'Groups station and event type within 30 minutes.',
-            ),
+            subtitle: Text(context.l10n.notificationGroupingDescription),
             onChanged: (value) =>
                 _save(_preferences.copyWith(groupingEnabled: value)),
           ),
@@ -150,9 +150,30 @@ class _NotificationPreferencesPageState
               },
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  static String _categoryLabel(
+    BuildContext context,
+    NotificationCategory category,
+  ) {
+    final l10n = context.l10n;
+    return switch (category) {
+      NotificationCategory.waterAlerts => l10n.notificationWaterAlerts,
+      NotificationCategory.favoriteStations =>
+        l10n.notificationFavouriteStations,
+      NotificationCategory.communityReports =>
+        l10n.notificationCommunityReports,
+      NotificationCategory.dangerousReports =>
+        l10n.notificationDangerousReports,
+      NotificationCategory.aiFishingInsights => l10n.notificationFluviAiRadar,
+      NotificationCategory.reputationTrust => l10n.notificationReputationTrust,
+      NotificationCategory.achievements => l10n.notificationAchievements,
+      NotificationCategory.catchActivity => l10n.notificationCatchActivity,
+    };
   }
 
   static String _time(int minutes) =>
