@@ -27,6 +27,25 @@ bool shouldShowWaterLiveBadge({
     connectivityKnown &&
     !isDefinitelyOffline;
 
+String formatWaterCardDelta(double? deltaCm, String unit) {
+  if (deltaCm == null || !deltaCm.isFinite) return '—';
+  final value = deltaCm == deltaCm.roundToDouble()
+      ? deltaCm.toStringAsFixed(0)
+      : deltaCm.toStringAsFixed(1);
+  final sign = deltaCm > 0 ? '+' : '';
+  return '$sign$value $unit';
+}
+
+Color waterCardTrendColor(WaterTrend? trend) => switch (trend) {
+  WaterTrend.rising => const Color(0xFF2196F3),
+  WaterTrend.stable => const Color(0xFF43A047),
+  WaterTrend.falling => const Color(0xFFE53935),
+  null => const Color(0xFF9AA7B2),
+};
+
+bool shouldShowWaterHistoryChart(List<WaterLevel> history) =>
+    history.length >= 2;
+
 class WaterLevelCardPremium extends StatefulWidget {
   const WaterLevelCardPremium({
     super.key,
@@ -214,10 +233,8 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         final waterUnit =
             latestReading?.unit ?? station?.waterLevelUnit ?? 'cm';
         final trend =
-            latestReading?.trend ?? station?.trend ?? WaterTrend.stable;
-        final hasKnownTrend =
-            latestReading?.hasKnownTrend ??
-            (hasStationReading && station!.hasKnownTrend);
+            waterResult?.trend ?? latestReading?.trend ?? station?.trend;
+        final hasKnownTrend = trend != null;
         final measurementTimestamp =
             waterResult?.measurementTimestamp ??
             (hasStationReading ? station!.lastUpdate : null);
@@ -295,25 +312,24 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                   ? 7.0
                   : (layout.isTablet ? 10.0 : 8.0);
               final verticalPadding = (compact ? 6.0 : cardPadding) * .80;
-              final trendColor = hasKnownTrend && !isStale
-                  ? _colorFor(trend)
-                  : const Color(0xFF9AA7B2);
-              final history = waterResult?.history ?? const <WaterLevel>[];
+              final trendColor = waterCardTrendColor(trend);
+              final fullHistory = waterResult?.history ?? const <WaterLevel>[];
+              final history = fullHistory.length > 7
+                  ? fullHistory.sublist(fullHistory.length - 7)
+                  : fullHistory;
               final historyLoading =
                   station != null &&
                   _waterResultStationId == station.id &&
                   _isWaterResultLoading;
-              final hasEnoughHistory = history.length >= 2;
-              final canShowHistory =
-                  reliabilityStatus == WaterUiStatus.availableHistory &&
-                  hasEnoughHistory;
-              final historyDelta = canShowHistory
-                  ? _historyDeltaLabel(history, waterUnit)
-                  : null;
+              final canShowHistory = shouldShowWaterHistoryChart(history);
+              final deltaLabel = formatWaterCardDelta(
+                waterResult?.deltaCm,
+                waterUnit,
+              );
               final isRo = Localizations.localeOf(context).languageCode == 'ro';
-              final trendStatus = isStale
-                  ? (isRo ? 'Date neactualizate' : 'Stale data')
-                  : status;
+              final trendStatus = hasProviderError
+                  ? context.l10n.updateFailed
+                  : (isStale ? lastUpdate : status);
               final badgeLabel = hasReading
                   ? isStale
                         ? (isRo ? 'DATE VECHI' : 'STALE DATA')
@@ -322,9 +338,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
               final badgeColor = hasReading && !isStale
                   ? const Color(0xFF00BCD4)
                   : Colors.white38;
-              final historyTitle = canShowHistory
-                  ? (isRo ? 'ISTORIC REAL' : 'REAL HISTORY')
-                  : (isRo ? 'ISTORIC' : 'HISTORY');
+              final historyTitle = context.l10n.waterLevelHistory.toUpperCase();
 
               if (isInitialLoading) {
                 return Container(
@@ -501,19 +515,19 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  waterLevel,
+                                  deltaLabel,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize:
-                                        (narrow ? 22 : 29) *
+                                        (compact ? 22 : (narrow ? 22 : 29)) *
                                         layout.titleFontScale,
                                     height: 1,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                    color: trendColor,
                                   ),
                                 ),
-                                SizedBox(height: compact ? 1.5 : 3),
+                                SizedBox(height: compact ? 0 : 3),
                                 Row(
                                   children: [
                                     Icon(
@@ -521,7 +535,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                           ? _iconFor(trend)
                                           : Icons.help_outline_rounded,
                                       color: trendColor,
-                                      size: compact ? 14 : 16,
+                                      size: compact ? 13 : 16,
                                     ),
                                     const SizedBox(width: 3),
                                     Flexible(
@@ -531,12 +545,23 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: trendColor,
-                                          fontSize: narrow || compact ? 10 : 12,
+                                          fontSize: narrow || compact ? 9 : 12,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ),
                                   ],
+                                ),
+                                SizedBox(height: compact ? 0 : 3),
+                                Text(
+                                  waterLevel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: Colors.white70,
+                                    fontSize: narrow || compact ? 8.5 : 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ],
                             ),
@@ -608,7 +633,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                             child: Text(
                                               _historyStatusLabel(
                                                 reliabilityStatus,
-                                                isRo: isRo,
+                                                context: context,
                                               ),
                                               maxLines: 2,
                                               overflow: TextOverflow.ellipsis,
@@ -623,19 +648,6 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                             ),
                                           ),
                                   ),
-                                  if (historyDelta != null) ...[
-                                    SizedBox(height: compact ? 1 : 2),
-                                    Text(
-                                      historyDelta,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: AppTextStyles.caption.copyWith(
-                                        color: trendColor,
-                                        fontSize: narrow || compact ? 7 : 9,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
                                 ],
                               ),
                             ),
@@ -648,7 +660,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                       children: [
                         Expanded(
                           child: Text(
-                            '${isRo ? 'Sursă' : 'Source'}: $sourceLabel',
+                            sourceLabel,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: AppTextStyles.caption.copyWith(
@@ -660,7 +672,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                         SizedBox(width: compact ? 6 : 10),
                         Flexible(
                           child: Text(
-                            '${isRo ? 'Actualizat' : 'Updated'}: $lastUpdate',
+                            lastUpdate,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.end,
@@ -682,12 +694,6 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
     );
   }
 
-  static Color _colorFor(WaterTrend trend) => switch (trend) {
-    WaterTrend.rising => const Color(0xFF2196F3),
-    WaterTrend.stable => const Color(0xFF43A047),
-    WaterTrend.falling => const Color(0xFFE53935),
-  };
-
   static IconData _iconFor(WaterTrend trend) => switch (trend) {
     WaterTrend.rising => Icons.arrow_upward_rounded,
     WaterTrend.stable => Icons.remove_rounded,
@@ -701,19 +707,6 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         WaterTrend.falling => context.l10n.falling,
       };
 
-  static String _historyDeltaLabel(List<WaterLevel> history, String unit) {
-    final first = history.first;
-    final last = history.last;
-    final difference = (last.value - first.value).round();
-    final sign = difference > 0 ? '+' : '';
-    final elapsedHours = last.timestamp.difference(first.timestamp).inHours;
-    final periodLabel = elapsedHours > 0
-        ? ' / ${elapsedHours >= 24 ? 24 : elapsedHours} h'
-        : '';
-
-    return '$sign$difference $unit$periodLabel';
-  }
-
   static String? _compactSourceName(WaterLevelSource? source) =>
       switch (source) {
         WaterLevelSource.afdj => 'AFDJ',
@@ -724,21 +717,14 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         null => null,
       };
 
-  // TODO(l10n): Move beta reliability labels into ARB in the localization sprint.
   static String _historyStatusLabel(
     WaterUiStatus status, {
-    required bool isRo,
+    required BuildContext context,
   }) => switch (status) {
-    WaterUiStatus.availableHistory =>
-      isRo ? 'Istoric 24h disponibil' : '24h history available',
-    WaterUiStatus.insufficientHistory =>
-      isRo ? 'Istoric 24h insuficient' : 'Insufficient 24h history',
-    WaterUiStatus.providerError =>
-      isRo
-          ? 'Istoric temporar indisponibil'
-          : 'History temporarily unavailable',
-    WaterUiStatus.unavailable =>
-      isRo ? 'Date temporar indisponibile' : 'Data temporarily unavailable',
+    WaterUiStatus.availableHistory => context.l10n.waterLevelHistory,
+    WaterUiStatus.insufficientHistory => context.l10n.unknown,
+    WaterUiStatus.providerError => context.l10n.updateFailed,
+    WaterUiStatus.unavailable => context.l10n.waterUnavailable,
   };
 }
 
@@ -825,6 +811,18 @@ class _WaterSparklinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _WaterSparklinePainter oldDelegate) {
-    return oldDelegate.readings != readings || oldDelegate.color != color;
+    if (oldDelegate.color != color ||
+        oldDelegate.readings.length != readings.length) {
+      return true;
+    }
+    for (var index = 0; index < readings.length; index++) {
+      final current = readings[index];
+      final previous = oldDelegate.readings[index];
+      if (current.value != previous.value ||
+          current.timestamp != previous.timestamp) {
+        return true;
+      }
+    }
+    return false;
   }
 }

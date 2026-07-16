@@ -5,11 +5,44 @@ import 'package:fishtrack/models/water_level.dart';
 import 'package:fishtrack/repositories/water_repository.dart';
 import 'package:fishtrack/services/water_service.dart';
 import 'package:fishtrack/widgets/home_premium/water_level_card.dart'
-    show shouldShowWaterLiveBadge;
+    show
+        formatWaterCardDelta,
+        shouldShowWaterHistoryChart,
+        shouldShowWaterLiveBadge,
+        waterCardTrendColor;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   setUp(WaterService.clearCache);
+
+  test('Water card formats real deltas without inventing zero', () {
+    expect(formatWaterCardDelta(41, 'cm'), '+41 cm');
+    expect(formatWaterCardDelta(-12, 'cm'), '-12 cm');
+    expect(formatWaterCardDelta(0, 'cm'), '0 cm');
+    expect(formatWaterCardDelta(null, 'cm'), '—');
+    expect(formatWaterCardDelta(.4, 'cm'), '+0.4 cm');
+  });
+
+  test('Water card maps each real trend to its official color', () {
+    expect(waterCardTrendColor(WaterTrend.rising), const Color(0xFF2196F3));
+    expect(waterCardTrendColor(WaterTrend.stable), const Color(0xFF43A047));
+    expect(waterCardTrendColor(WaterTrend.falling), const Color(0xFFE53935));
+    expect(waterCardTrendColor(null), const Color(0xFF9AA7B2));
+  });
+
+  test('Water card does not draw a chart without two real points', () {
+    final reading = _reading(
+      stationId: 'station-a',
+      value: 500,
+      timestamp: DateTime.utc(2026, 7, 16),
+      source: WaterLevelSource.danubeFis,
+    );
+
+    expect(shouldShowWaterHistoryChart(const <WaterLevel>[]), isFalse);
+    expect(shouldShowWaterHistoryChart([reading]), isFalse);
+    expect(shouldShowWaterHistoryChart([reading, reading]), isTrue);
+  });
 
   test('station metadata preserves missing dynamic Water fields', () {
     final station = Station.tryFromJson({
