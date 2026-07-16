@@ -12,9 +12,14 @@ import 'package:fishtrack/widgets/home_premium/water_level_card.dart'
         waterCardTrendColor;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  setUp(WaterService.clearCache);
+  setUp(() {
+    WaterService.clearCache();
+    WaterService.resetStationSelectionForTest();
+    SharedPreferences.setMockInitialValues({});
+  });
 
   test('Water card formats real deltas without inventing zero', () {
     expect(formatWaterCardDelta(41, 'cm'), '+41 cm');
@@ -43,6 +48,87 @@ void main() {
     expect(shouldShowWaterHistoryChart([reading]), isFalse);
     expect(shouldShowWaterHistoryChart([reading, reading]), isTrue);
   });
+
+  test(
+    'automatic candidates choose the nearest eligible canonical station',
+    () {
+      final candidates = WaterService.rankHomeCandidates(
+        [
+          _homeStation('afdj-bazias', 'Bazias', 44.8167, 21.3833),
+          _homeStation('afdj-tulcea', 'Tulcea', 45.1786, 28.8059),
+          _homeStation('afdj-galati', 'Galati', 45.4353, 28.0080),
+        ],
+        latitude: 45.17,
+        longitude: 28.81,
+      );
+
+      expect(candidates.first.id, 'afdj-tulcea');
+    },
+  );
+
+  test('automatic fallback does not pin Bazias merely because it is first', () {
+    final candidates = WaterService.rankHomeCandidates([
+      _homeStation('afdj-bazias', 'Bazias', 44.8167, 21.3833),
+      _homeStation('afdj-moldova-veche', 'Moldova Veche', 44.7383, 21.6333),
+    ]);
+
+    expect(candidates.first.id, 'afdj-moldova-veche');
+  });
+
+  test('automatic candidates exclude invalid and noncanonical stations', () {
+    final candidates = WaterService.rankHomeCandidates([
+      _homeStation('afdj-bazias', 'Bazias', 44.8167, 21.3833),
+      _homeStation('afdj-chilia', 'Chilia Veche', 45.4167, 29.3),
+      _homeStation(
+        'afdj-tulcea',
+        'Tulcea',
+        45.1786,
+        28.8059,
+        hasReading: false,
+      ),
+    ]);
+
+    expect(candidates.map((station) => station.id), ['afdj-bazias']);
+  });
+
+  test('automatic candidates are capped at five stations', () {
+    final candidates = WaterService.rankHomeCandidates([
+      _homeStation('afdj-bazias', 'Bazias', 44.8167, 21.3833),
+      _homeStation('afdj-moldova', 'Moldova Veche', 44.7383, 21.6333),
+      _homeStation('afdj-drencova', 'Drencova', 44.6377, 21.9723),
+      _homeStation('afdj-orsova', 'Orsova', 44.725, 22.396),
+      _homeStation('afdj-drobeta', 'Drobeta Turnu Severin', 44.631, 22.656),
+      _homeStation('afdj-gruia', 'Gruia', 44.2665, 22.7046),
+    ]);
+
+    expect(candidates, hasLength(5));
+  });
+
+  test(
+    'manual selection persists pinned mode and automatic clears it',
+    () async {
+      final service = WaterService();
+      final station = _homeStation('afdj-tulcea', 'Tulcea', 45.1786, 28.8059);
+
+      service.selectStation(station);
+      await Future<void>.delayed(Duration.zero);
+      final preferences = await SharedPreferences.getInstance();
+      expect(service.selectionMode, WaterStationSelectionMode.pinned);
+      expect(
+        preferences.getString('water_home_station_selection_mode'),
+        'pinned',
+      );
+      expect(preferences.getString('water_home_pinned_station_id'), station.id);
+
+      await service.setAutomatic();
+      expect(service.selectionMode, WaterStationSelectionMode.automatic);
+      expect(
+        preferences.getString('water_home_station_selection_mode'),
+        'automatic',
+      );
+      expect(preferences.containsKey('water_home_pinned_station_id'), isFalse);
+    },
+  );
 
   test('station metadata preserves missing dynamic Water fields', () {
     final station = Station.tryFromJson({
@@ -1074,4 +1160,23 @@ Station _stationWithoutReading() => Station(
   longitude: 21.3833,
   lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
   hasWaterLevel: false,
+);
+
+Station _homeStation(
+  String id,
+  String name,
+  double latitude,
+  double longitude, {
+  bool hasReading = true,
+}) => Station(
+  id: id,
+  name: name,
+  river: 'Dunarea',
+  level: hasReading ? 300 : 0,
+  trend: WaterTrend.stable,
+  latitude: latitude,
+  longitude: longitude,
+  lastUpdate: DateTime.utc(2026, 7, 16),
+  hasWaterLevel: hasReading,
+  waterLevelSource: 'DanubeFIS',
 );

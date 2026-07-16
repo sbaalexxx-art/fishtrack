@@ -60,7 +60,8 @@ class WaterLevelCardPremium extends StatefulWidget {
   State<WaterLevelCardPremium> createState() => _WaterLevelCardPremiumState();
 }
 
-class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
+class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
+    with WidgetsBindingObserver {
   final WaterService _waterService = WaterService();
   final Connectivity _connectivity = Connectivity();
   late Future<Station?> _stationFuture;
@@ -72,38 +73,148 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
   bool _isWaterResultLoading = false;
   bool? _isDefinitelyOffline;
   int _stationRequestId = 0;
+  WaterStationSelectionMode _selectionMode =
+      WaterStationSelectionMode.automatic;
+  List<Station> _rotationCandidates = const <Station>[];
+  Timer? _rotationTimer;
+  bool _homeIsActive = true;
 
   @override
   void initState() {
     super.initState();
-    _stationFuture = _startStationLoad(widget.selectedStation);
+    WidgetsBinding.instance.addObserver(this);
+    _stationFuture = Future<Station?>.value(null);
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
       _updateConnectivity,
     );
     unawaited(_checkInitialConnectivity());
     _selectionSubscription = _waterService.stationSelections.listen((station) {
-      if (mounted) {
-        setState(() {
-          _stationFuture = _startStationLoad(station);
-        });
-      }
+      if (mounted) unawaited(_handlePinnedSelection(station));
     });
+    unawaited(_initializeStationSelection());
   }
 
   @override
   void didUpdateWidget(covariant WaterLevelCardPremium oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedStation?.id != widget.selectedStation?.id) {
-      _stationFuture = _startStationLoad(widget.selectedStation);
+      final station = widget.selectedStation;
+      if (station != null) unawaited(_handlePinnedSelection(station));
     }
   }
 
   @override
   void dispose() {
     _stationRequestId++;
+    WidgetsBinding.instance.removeObserver(this);
+    _stopRotation();
     _connectivitySubscription?.cancel();
     _selectionSubscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _homeIsActive = state == AppLifecycleState.resumed;
+    if (_homeIsActive) {
+      _startRotationIfNeeded();
+    } else {
+      _stopRotation();
+    }
+  }
+
+  Future<void> _initializeStationSelection() async {
+    final selection = await _waterService.resolveHomeStationSelection();
+    if (!mounted) return;
+    setState(() {
+      _selectionMode = selection.mode;
+      _rotationCandidates = selection.candidates;
+      _stationFuture = selection.station == null
+          ? Future<Station?>.value(null)
+          : _startStationLoad(selection.station);
+      if (selection.station == null) _isWaterResultLoading = false;
+    });
+    _startRotationIfNeeded();
+  }
+
+  Future<void> _handlePinnedSelection(Station station) async {
+    _stopRotation();
+    setState(() => _selectionMode = WaterStationSelectionMode.pinned);
+    await _switchStationWhenReady(station);
+  }
+
+  Future<void> _setAutomatic() async {
+    _stopRotation();
+    await _waterService.setAutomatic();
+    final selection = await _waterService.resolveHomeStationSelection();
+    if (!mounted) return;
+    setState(() {
+      _selectionMode = selection.mode;
+      _rotationCandidates = selection.candidates;
+    });
+    final station = selection.station;
+    if (station != null) await _switchStationWhenReady(station);
+    _startRotationIfNeeded();
+  }
+
+  void _startRotationIfNeeded() {
+    if (!_homeIsActive ||
+        _selectionMode != WaterStationSelectionMode.automatic ||
+        _rotationCandidates.length < 2 ||
+        _rotationTimer != null) {
+      return;
+    }
+    _rotationTimer = Timer.periodic(
+      WaterService.homeRotationInterval,
+      (_) => unawaited(_rotateStation()),
+    );
+  }
+
+  void _stopRotation() {
+    _rotationTimer?.cancel();
+    _rotationTimer = null;
+  }
+
+  Future<void> _rotateStation() async {
+    if (!_homeIsActive ||
+        _selectionMode != WaterStationSelectionMode.automatic ||
+        _rotationCandidates.length < 2 ||
+        _isWaterResultLoading) {
+      return;
+    }
+    final currentIndex = _rotationCandidates.indexWhere(
+      (station) => station.id == _activeStationId,
+    );
+    final next =
+        _rotationCandidates[(currentIndex < 0 ? 0 : currentIndex + 1) %
+            _rotationCandidates.length];
+    await _switchStationWhenReady(next);
+  }
+
+  Future<void> _switchStationWhenReady(Station station) async {
+    if (_activeStationId == station.id) return;
+    final requestId = ++_stationRequestId;
+    setState(() => _isWaterResultLoading = true);
+    try {
+      await for (final result in _waterService.getProgressiveWaterUiResults(
+        station,
+        limit: 72,
+      )) {
+        if (!mounted || requestId != _stationRequestId) return;
+        setState(() {
+          _activeStationId = station.id;
+          _waterResultStationId = station.id;
+          _waterResult = result;
+          _stationFuture = Future<Station?>.value(station);
+        });
+      }
+    } on Exception {
+      // Preserve the current card until a later automatic attempt succeeds.
+    } finally {
+      if (mounted && requestId == _stationRequestId) {
+        setState(() => _isWaterResultLoading = false);
+      }
+    }
   }
 
   Future<void> _checkInitialConnectivity() async {
@@ -464,14 +575,41 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                       layout.titleFontScale,
                                 ),
                               ),
-                              Text(
-                                stationName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppTextStyles.caption.copyWith(
-                                  color: Colors.white70,
-                                  fontSize: narrow || compact ? 8 : 10,
-                                ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      stationName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.caption.copyWith(
+                                        color: Colors.white70,
+                                        fontSize: narrow || compact ? 8 : 10,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: compact ? 2 : 4),
+                                  Tooltip(
+                                    message: context.l10n.waterStations,
+                                    child:
+                                        _selectionMode ==
+                                            WaterStationSelectionMode.pinned
+                                        ? InkResponse(
+                                            onTap: _setAutomatic,
+                                            radius: 12,
+                                            child: Icon(
+                                              Icons.push_pin_rounded,
+                                              color: const Color(0xFF00BCD4),
+                                              size: compact ? 12 : 14,
+                                            ),
+                                          )
+                                        : Icon(
+                                            Icons.my_location_rounded,
+                                            color: Colors.white54,
+                                            size: compact ? 12 : 14,
+                                          ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

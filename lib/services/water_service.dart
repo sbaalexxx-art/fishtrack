@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/station.dart';
 import '../core/cache/timed_cache.dart';
@@ -13,6 +14,20 @@ enum WaterUiStatus {
   insufficientHistory,
   providerError,
   unavailable,
+}
+
+enum WaterStationSelectionMode { automatic, pinned }
+
+class WaterHomeStationSelection {
+  const WaterHomeStationSelection({
+    required this.mode,
+    required this.station,
+    required this.candidates,
+  });
+
+  final WaterStationSelectionMode mode;
+  final Station? station;
+  final List<Station> candidates;
 }
 
 enum WaterStationDetailsRange {
@@ -142,7 +157,10 @@ class WaterService {
       _locationService = locationService ?? const LocationService();
 
   static const cacheDuration = Duration(minutes: 30);
+  static const homeRotationInterval = Duration(seconds: 12);
   static const _maxBatchConcurrency = 4;
+  static const _selectionModeKey = 'water_home_station_selection_mode';
+  static const _pinnedStationIdKey = 'water_home_pinned_station_id';
   static final StreamController<Station> _stationSelectionController =
       StreamController<Station>.broadcast(sync: true);
   static final TimedCache<List<Station>> _stationsCache =
@@ -157,6 +175,10 @@ class WaterService {
   static int _waterUiCacheEpoch = 0;
   static int _progressiveBatchGeneration = 0;
   static Station? _selectedStation;
+  static WaterStationSelectionMode _selectionMode =
+      WaterStationSelectionMode.automatic;
+  static Future<void>? _selectionRestore;
+  static bool _selectionWasExplicitlySet = false;
 
   final WaterRepository _repository;
   final LocationService _locationService;
@@ -184,11 +206,187 @@ class WaterService {
 
   Stream<Station> get stationSelections => _stationSelectionController.stream;
   Station? get selectedStation => _selectedStation;
+  WaterStationSelectionMode get selectionMode => _selectionMode;
 
   void selectStation(Station station) {
     _selectedStation = station;
+    _selectionMode = WaterStationSelectionMode.pinned;
+    _selectionWasExplicitlySet = true;
+    unawaited(_persistPinnedStation(station.id));
     _stationSelectionController.add(station);
   }
+
+  Future<void> setAutomatic() async {
+    _selectedStation = null;
+    _selectionMode = WaterStationSelectionMode.automatic;
+    _selectionWasExplicitlySet = true;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_selectionModeKey, 'automatic');
+    await preferences.remove(_pinnedStationIdKey);
+  }
+
+  Future<void> clearSelection() => setAutomatic();
+
+  Future<WaterHomeStationSelection> resolveHomeStationSelection() async {
+    await _restoreSelection();
+    final stations = await getStations();
+    final candidates = await _rankHomeCandidates(stations);
+
+    if (_selectionMode == WaterStationSelectionMode.pinned) {
+      final pinned = _selectedStation;
+      final restored = pinned == null
+          ? null
+          : candidates.where((station) => station.id == pinned.id).firstOrNull;
+      if (restored != null) {
+        _selectedStation = restored;
+        return WaterHomeStationSelection(
+          mode: _selectionMode,
+          station: restored,
+          candidates: candidates,
+        );
+      }
+      await setAutomatic();
+    }
+
+    return WaterHomeStationSelection(
+      mode: WaterStationSelectionMode.automatic,
+      station: candidates.firstOrNull,
+      candidates: candidates,
+    );
+  }
+
+  static List<Station> eligibleHomeStations(Iterable<Station> stations) {
+    final canonicalNames = WaterRepository.officialAfdjStationOrder
+        .map(_normalizeStationName)
+        .toSet();
+    final seenIds = <String>{};
+    return stations
+        .where(
+          (station) =>
+              station.id.trim().isNotEmpty &&
+              seenIds.add(station.id) &&
+              canonicalNames.contains(_normalizeStationName(station.name)) &&
+              station.latitude.isFinite &&
+              station.longitude.isFinite &&
+              station.latitude.abs() <= 90 &&
+              station.longitude.abs() <= 180 &&
+              station.hasWaterLevel &&
+              station.level.isFinite,
+        )
+        .toList(growable: false);
+  }
+
+  static List<Station> rankHomeCandidates(
+    Iterable<Station> stations, {
+    double? latitude,
+    double? longitude,
+  }) {
+    final candidates = eligibleHomeStations(stations).toList();
+    final canonicalOrder = WaterRepository.officialAfdjStationOrder
+        .map(_normalizeStationName)
+        .toList();
+    candidates.sort((left, right) {
+      if (latitude != null && longitude != null) {
+        final leftDistance = Geolocator.distanceBetween(
+          latitude,
+          longitude,
+          left.latitude,
+          left.longitude,
+        );
+        final rightDistance = Geolocator.distanceBetween(
+          latitude,
+          longitude,
+          right.latitude,
+          right.longitude,
+        );
+        final byDistance = leftDistance.compareTo(rightDistance);
+        if (byDistance != 0) return byDistance;
+      }
+      final leftOrder = canonicalOrder.indexOf(
+        _normalizeStationName(left.name),
+      );
+      final rightOrder = canonicalOrder.indexOf(
+        _normalizeStationName(right.name),
+      );
+      return leftOrder != rightOrder
+          ? leftOrder.compareTo(rightOrder)
+          : left.name.compareTo(right.name);
+    });
+
+    if (latitude == null || longitude == null) {
+      final baziasIndex = candidates.indexWhere(
+        (station) => _normalizeStationName(station.name) == 'bazias',
+      );
+      if (baziasIndex == 0 && candidates.length > 1) {
+        candidates.add(candidates.removeAt(0));
+      }
+    }
+    return List<Station>.unmodifiable(candidates.take(5));
+  }
+
+  static void resetStationSelectionForTest() {
+    _selectedStation = null;
+    _selectionMode = WaterStationSelectionMode.automatic;
+    _selectionRestore = null;
+    _selectionWasExplicitlySet = false;
+  }
+
+  Future<List<Station>> _rankHomeCandidates(List<Station> stations) async {
+    try {
+      final position = await _locationService.determinePosition();
+      return rankHomeCandidates(
+        stations,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+    } on LocationFailure {
+      return rankHomeCandidates(stations);
+    } on Exception {
+      return rankHomeCandidates(stations);
+    }
+  }
+
+  Future<void> _restoreSelection() {
+    return _selectionRestore ??= () async {
+      final preferences = await SharedPreferences.getInstance();
+      if (_selectionWasExplicitlySet) return;
+      final savedMode = preferences.getString(_selectionModeKey);
+      final pinnedId = preferences.getString(_pinnedStationIdKey);
+      if (savedMode == 'pinned' && pinnedId != null && pinnedId.isNotEmpty) {
+        _selectionMode = WaterStationSelectionMode.pinned;
+        _selectedStation = Station(
+          id: pinnedId,
+          name: '',
+          river: '',
+          level: double.nan,
+          trend: WaterTrend.stable,
+          latitude: 0,
+          longitude: 0,
+          lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+        );
+      } else {
+        _selectionMode = WaterStationSelectionMode.automatic;
+        _selectedStation = null;
+      }
+    }();
+  }
+
+  Future<void> _persistPinnedStation(String stationId) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_selectionModeKey, 'pinned');
+    await preferences.setString(_pinnedStationIdKey, stationId);
+  }
+
+  static String _normalizeStationName(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll('ă', 'a')
+      .replaceAll('â', 'a')
+      .replaceAll('î', 'i')
+      .replaceAll('ș', 's')
+      .replaceAll('ş', 's')
+      .replaceAll('ț', 't')
+      .replaceAll('ţ', 't');
 
   Future<List<WaterLevel>> getHistory(
     String stationId, {
