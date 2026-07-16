@@ -73,6 +73,12 @@ class WaterUiResult {
     required this.isStale,
     required this.status,
     required this.safeDiagnosticMessage,
+    this.previousReading,
+    this.deltaCm,
+    this.comparisonDuration,
+    this.trend,
+    this.hasEnoughHistory = false,
+    this.providerError = false,
   });
 
   final WaterLevel? latestReading;
@@ -84,6 +90,12 @@ class WaterUiResult {
   final bool isStale;
   final WaterUiStatus status;
   final String? safeDiagnosticMessage;
+  final WaterLevel? previousReading;
+  final double? deltaCm;
+  final Duration? comparisonDuration;
+  final WaterTrend? trend;
+  final bool hasEnoughHistory;
+  final bool providerError;
 }
 
 class WaterStationBatchResult {
@@ -138,8 +150,6 @@ class WaterService {
   static final TimedCache<List<Station>> _fastStationsCache =
       TimedCache<List<Station>>(duration: cacheDuration);
   static final Map<String, TimedCache<List<WaterLevel>>> _historyCache = {};
-  static final Map<String, TimedCache<WaterHistoryResult>>
-  _stationDetailsHistoryCache = {};
   static final Map<String, _WaterUiCacheEntry> _waterUiCache = {};
   static final Map<String, WaterUiResult> _lastKnownGoodByStation = {};
   static final Map<String, Future<WaterUiResult>> _waterUiInFlight = {};
@@ -165,7 +175,6 @@ class WaterService {
     _stationsCache.clear();
     _fastStationsCache.clear();
     _historyCache.clear();
-    _stationDetailsHistoryCache.clear();
     _waterUiCacheEpoch++;
     _waterUiCache.clear();
     _lastKnownGoodByStation.clear();
@@ -238,16 +247,12 @@ class WaterService {
       );
     }
 
-    final historyResult = await _getStationDetailsHistory(
-      station,
-      source: source,
-      range: range,
-      forceRefresh: forceRefresh,
-    );
+    final rangeStart = current.timestamp.subtract(range.duration);
     final currentTimestamp = current.timestamp.toUtc().microsecondsSinceEpoch;
     final readingsByTimestamp = <int, WaterLevel>{};
-    for (final reading in historyResult.readings) {
+    for (final reading in currentResult.history) {
       if (!_isValidReading(reading) || reading.source != source) continue;
+      if (reading.timestamp.isBefore(rangeStart)) continue;
       if (reading.timestamp.isAfter(current.timestamp)) continue;
       readingsByTimestamp[reading.timestamp.toUtc().microsecondsSinceEpoch] =
           reading;
@@ -256,19 +261,13 @@ class WaterService {
     final history = readingsByTimestamp.values.toList(growable: false)
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     final hasTrend = history.length >= 2;
-    final dailyDeltaCm =
-        hasTrend &&
-            history[history.length - 2].unit.toLowerCase() == 'cm' &&
-            history.last.unit.toLowerCase() == 'cm'
-        ? history.last.value - history[history.length - 2].value
-        : null;
-    final trend = dailyDeltaCm == null
+    final previous = hasTrend ? history[history.length - 2] : null;
+    final dailyDeltaCm = previous == null
         ? null
-        : dailyDeltaCm > 0
-        ? WaterTrend.rising
-        : dailyDeltaCm < 0
-        ? WaterTrend.falling
-        : WaterTrend.stable;
+        : current.value - previous.value;
+    final trend = previous == null
+        ? null
+        : _copyWithTrend(current, previous).trend;
 
     return WaterStationDetailsResult(
       currentReading: current,
@@ -280,48 +279,20 @@ class WaterService {
       history: List<WaterLevel>.unmodifiable(history),
       selectedRange: range,
       historyStatus: _stationDetailsHistoryStatus(
-        historyResult,
+        currentResult,
         pointCount: history.length,
       ),
       dailyDeltaCm: dailyDeltaCm,
       trend: trend,
-      safeDiagnosticMessage:
-          historyResult.safeDiagnosticMessage ??
-          currentResult.safeDiagnosticMessage,
+      safeDiagnosticMessage: currentResult.safeDiagnosticMessage,
     );
-  }
-
-  Future<WaterHistoryResult> _getStationDetailsHistory(
-    Station station, {
-    required WaterLevelSource source,
-    required WaterStationDetailsRange range,
-    required bool forceRefresh,
-  }) async {
-    final key =
-        '${identityHashCode(_repository)}:${station.id}:'
-        '${source.name}:${range.name}:${range.historyLimit}';
-    final cache = _stationDetailsHistoryCache.putIfAbsent(
-      key,
-      () => TimedCache<WaterHistoryResult>(duration: cacheDuration),
-    );
-    return (await cache.get(() {
-      final rangeEnd = DateTime.now();
-      return _repository.getCanonicalSourceHistory(
-        station.id,
-        stationName: station.name,
-        source: source,
-        rangeStart: rangeEnd.subtract(range.duration),
-        rangeEnd: rangeEnd,
-        limit: range.historyLimit,
-      );
-    }, forceRefresh: forceRefresh)).value;
   }
 
   static WaterStationDetailsHistoryStatus _stationDetailsHistoryStatus(
-    WaterHistoryResult result, {
+    WaterUiResult result, {
     required int pointCount,
   }) {
-    if (result.status == WaterHistoryResultStatus.providerError) {
+    if (result.providerError || result.status == WaterUiStatus.providerError) {
       return WaterStationDetailsHistoryStatus.providerError;
     }
     if (pointCount < 2) {
@@ -477,7 +448,6 @@ class WaterService {
       );
     }
 
-    final cutoff = now.subtract(historyWindow);
     final validReadings =
         repositoryResult.readings
             .where(_isValidReading)
@@ -493,12 +463,20 @@ class WaterService {
         ? const <WaterLevel>[]
         : validReadings
               .where((reading) => reading.source == selectedReading.source)
-              .where((reading) => !reading.timestamp.isBefore(cutoff))
               .toList(growable: false);
     final history = _withCompatibleTrends(compatibleReadings);
     final latestReading = selectedReading == null
         ? null
         : _withCompatibleTrend(selectedReading, compatibleReadings);
+    final previousReading = latestReading == null
+        ? null
+        : _previousCompatibleReading(latestReading, history);
+    final deltaCm = latestReading == null || previousReading == null
+        ? null
+        : latestReading.value - previousReading.value;
+    final comparisonDuration = latestReading == null || previousReading == null
+        ? null
+        : latestReading.timestamp.difference(previousReading.timestamp);
     final measurementTimestamp = latestReading?.timestamp;
 
     final status = history.length >= 2
@@ -519,7 +497,27 @@ class WaterService {
       isStale: false,
       status: status,
       safeDiagnosticMessage: repositoryResult.safeDiagnosticMessage,
+      previousReading: previousReading,
+      deltaCm: deltaCm,
+      comparisonDuration: comparisonDuration,
+      trend: latestReading?.hasKnownTrend == true ? latestReading?.trend : null,
+      hasEnoughHistory: previousReading != null,
+      providerError: repositoryResult.hadProviderError,
     );
+  }
+
+  static WaterLevel? _previousCompatibleReading(
+    WaterLevel latest,
+    List<WaterLevel> history,
+  ) {
+    for (final candidate in history.reversed) {
+      if (candidate.source == latest.source &&
+          candidate.unit.toLowerCase() == 'cm' &&
+          candidate.timestamp.isBefore(latest.timestamp)) {
+        return candidate;
+      }
+    }
+    return null;
   }
 
   Future<List<Station>> getStations({bool forceRefresh = false}) async =>
@@ -992,6 +990,12 @@ class WaterService {
       status: WaterUiStatus.providerError,
       safeDiagnosticMessage:
           result.safeDiagnosticMessage ?? 'Water update temporarily failed',
+      previousReading: previous.previousReading,
+      deltaCm: previous.deltaCm,
+      comparisonDuration: previous.comparisonDuration,
+      trend: previous.trend,
+      hasEnoughHistory: previous.hasEnoughHistory,
+      providerError: true,
     );
   }
 
@@ -1021,6 +1025,12 @@ class WaterService {
       isStale: isStale,
       status: result.status,
       safeDiagnosticMessage: result.safeDiagnosticMessage,
+      previousReading: result.previousReading,
+      deltaCm: result.deltaCm,
+      comparisonDuration: result.comparisonDuration,
+      trend: result.trend,
+      hasEnoughHistory: result.hasEnoughHistory,
+      providerError: result.providerError,
     );
   }
 

@@ -18,6 +18,36 @@ abstract interface class OfficialWaterDataSource {
   });
 }
 
+abstract interface class DailyWaterSnapshotReader {
+  Future<List<Map<String, Object?>>> readStationHistory(
+    String stationId, {
+    required int limit,
+  });
+}
+
+class SupabaseDailyWaterSnapshotReader implements DailyWaterSnapshotReader {
+  const SupabaseDailyWaterSnapshotReader();
+
+  @override
+  Future<List<Map<String, Object?>>> readStationHistory(
+    String stationId, {
+    required int limit,
+  }) async {
+    final rows = await Supabase.instance.client
+        .from('daily_water_snapshots')
+        .select(
+          'station_id,observation_date,level_cm,level_source,'
+          'level_measured_at,quality',
+        )
+        .eq('station_id', stationId)
+        .order('level_measured_at', ascending: false)
+        .limit(limit);
+    return rows
+        .map((row) => Map<String, Object?>.from(row))
+        .toList(growable: false);
+  }
+}
+
 enum WaterHistoryResultStatus {
   success,
   insufficientHistory,
@@ -46,13 +76,16 @@ class WaterRepository implements OfficialWaterDataSource {
     this.afdjProvider = const AfdjWaterProvider(),
     this.danubeHisProvider = const DanubeHisWaterProvider(),
     this.danubeFisProvider = const DanubeFisWaterProvider(),
+    this.snapshotReader = const SupabaseDailyWaterSnapshotReader(),
   });
 
   final AfdjWaterProvider afdjProvider;
   final DanubeHisWaterProvider danubeHisProvider;
   final DanubeFisWaterProvider danubeFisProvider;
+  final DailyWaterSnapshotReader snapshotReader;
 
   static const defaultFreshnessThreshold = Duration(hours: 36);
+  static const maxSnapshotHistoryPoints = 30;
 
   static const officialAfdjStationOrder = <String>[
     'Bazias',
@@ -276,13 +309,88 @@ class WaterRepository implements OfficialWaterDataSource {
     limit: limit,
   )).readings;
 
+  Future<WaterHistoryResult> getSnapshotHistoryResult(
+    String stationId, {
+    int limit = maxSnapshotHistoryPoints,
+  }) async {
+    final requestedLimit = limit <= 0
+        ? 0
+        : limit > maxSnapshotHistoryPoints
+        ? maxSnapshotHistoryPoints
+        : limit;
+    if (stationId.trim().isEmpty || requestedLimit == 0) {
+      return const WaterHistoryResult(
+        status: WaterHistoryResultStatus.unavailable,
+        readings: <WaterLevel>[],
+        source: null,
+        hadProviderError: false,
+      );
+    }
+
+    try {
+      final rows = await snapshotReader.readStationHistory(
+        stationId,
+        limit: requestedLimit,
+      );
+      final readingsByObservationDate = <String, WaterLevel>{};
+      for (final row in rows) {
+        final reading = _snapshotReading(row, expectedStationId: stationId);
+        if (reading == null) continue;
+        final observationDate = row['observation_date']?.toString().trim();
+        if (observationDate == null || observationDate.isEmpty) continue;
+        final existing = readingsByObservationDate[observationDate];
+        if (existing == null || reading.timestamp.isAfter(existing.timestamp)) {
+          readingsByObservationDate[observationDate] = reading;
+        }
+      }
+
+      final chronological = readingsByObservationDate.values.toList()
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      final limited = chronological.length <= requestedLimit
+          ? chronological
+          : chronological.sublist(chronological.length - requestedLimit);
+      final readings = _withCalculatedTrends(limited, stationId);
+      if (readings.isEmpty) {
+        return const WaterHistoryResult(
+          status: WaterHistoryResultStatus.unavailable,
+          readings: <WaterLevel>[],
+          source: null,
+          hadProviderError: false,
+        );
+      }
+
+      return WaterHistoryResult(
+        status: readings.length >= 2
+            ? WaterHistoryResultStatus.success
+            : WaterHistoryResultStatus.insufficientHistory,
+        readings: List<WaterLevel>.unmodifiable(readings),
+        source: readings.last.source,
+        hadProviderError: false,
+      );
+    } on Exception catch (error, stackTrace) {
+      _logFailure('daily water snapshots', error, stackTrace);
+      return const WaterHistoryResult(
+        status: WaterHistoryResultStatus.unavailable,
+        readings: <WaterLevel>[],
+        source: null,
+        hadProviderError: false,
+        safeDiagnosticMessage: 'Daily water snapshot history is unavailable',
+      );
+    }
+  }
+
   Future<WaterHistoryResult> getHistoryResult(
     String stationId, {
     String? stationName,
     int limit = 30,
     WaterLevel? prefetchedCurrentReading,
   }) async {
+    final snapshotResult = await getSnapshotHistoryResult(
+      stationId,
+      limit: limit,
+    );
     final failedProviders = <String>[];
+    WaterLevel? liveReading;
     if (stationName != null && stationName.trim().isNotEmpty) {
       final normalized = DanubeHisWaterProvider.normalizedName(stationName);
       List<WaterLevel> afdjReadings = const [];
@@ -325,25 +433,32 @@ class WaterRepository implements OfficialWaterDataSource {
         hisReadings,
         fisReadings,
       );
-      if (selectedReadings.isNotEmpty) {
-        final readings = _chronologicalValidReadings(
-          _withCalculatedTrends(selectedReadings, stationId),
-        );
-        if (readings.isNotEmpty) {
-          final status = readings.length >= 2
-              ? WaterHistoryResultStatus.success
-              : WaterHistoryResultStatus.insufficientHistory;
-          return WaterHistoryResult(
-            status: status,
-            readings: List<WaterLevel>.unmodifiable(readings),
-            source: readings.last.source,
-            hadProviderError: failedProviders.isNotEmpty,
-            safeDiagnosticMessage: _safeProviderDiagnostic(failedProviders),
-          );
-        }
-      }
+      liveReading = selectedReadings.isEmpty ? null : selectedReadings.first;
     }
-    _logProviderFallback(stationName ?? stationId, 'no provider history');
+
+    final readings = _mergeSnapshotHistoryWithLiveReading(
+      stationId,
+      snapshotResult.readings,
+      liveReading,
+    );
+    if (readings.isNotEmpty) {
+      return WaterHistoryResult(
+        status: readings.length >= 2
+            ? WaterHistoryResultStatus.success
+            : WaterHistoryResultStatus.insufficientHistory,
+        readings: List<WaterLevel>.unmodifiable(readings),
+        source: liveReading?.source ?? readings.last.source,
+        hadProviderError: failedProviders.isNotEmpty,
+        safeDiagnosticMessage:
+            _safeProviderDiagnostic(failedProviders) ??
+            snapshotResult.safeDiagnosticMessage,
+      );
+    }
+
+    _logProviderFallback(
+      stationName ?? stationId,
+      'no live or snapshot history',
+    );
     return WaterHistoryResult(
       status: failedProviders.isNotEmpty
           ? WaterHistoryResultStatus.providerError
@@ -443,6 +558,88 @@ class WaterRepository implements OfficialWaterDataSource {
     );
   }
 
+  static WaterLevel? _snapshotReading(
+    Map<String, Object?> row, {
+    required String expectedStationId,
+  }) {
+    if (row['station_id']?.toString() != expectedStationId ||
+        !_snapshotQualityIsUsable(row['quality'])) {
+      return null;
+    }
+    final level = row['level_cm'] is num
+        ? (row['level_cm'] as num).toDouble()
+        : double.tryParse(row['level_cm']?.toString() ?? '');
+    final measuredAt = DateTime.tryParse(
+      row['level_measured_at']?.toString() ?? '',
+    );
+    final source = _snapshotSource(row['level_source']);
+    if (level == null ||
+        !level.isFinite ||
+        measuredAt == null ||
+        measuredAt.millisecondsSinceEpoch <= 0 ||
+        source == null) {
+      return null;
+    }
+    return WaterLevel(
+      stationId: expectedStationId,
+      value: level,
+      timestamp: measuredAt,
+      trend: WaterTrend.stable,
+      source: source,
+      unit: 'cm',
+      sourceName: _sourceLabel(source),
+    );
+  }
+
+  static bool _snapshotQualityIsUsable(Object? value) =>
+      switch (value?.toString().trim().toLowerCase()) {
+        'valid' || 'partial' || 'stale' => true,
+        _ => false,
+      };
+
+  static WaterLevelSource? _snapshotSource(Object? value) {
+    final source = WaterLevelSource.parse(value);
+    return source == WaterLevelSource.manualFallback ? null : source;
+  }
+
+  static List<WaterLevel> _mergeSnapshotHistoryWithLiveReading(
+    String stationId,
+    List<WaterLevel> snapshots,
+    WaterLevel? liveReading,
+  ) {
+    final readingsByDate = <String, WaterLevel>{};
+    for (final reading in [...snapshots, ?liveReading]) {
+      if (!_isValidReading(reading)) continue;
+      final dateKey = reading.timestamp.toUtc().toIso8601String().substring(
+        0,
+        10,
+      );
+      final existing = readingsByDate[dateKey];
+      if (existing == null || reading.timestamp.isAfter(existing.timestamp)) {
+        readingsByDate[dateKey] = WaterLevel(
+          stationId: stationId,
+          value: reading.value,
+          timestamp: reading.timestamp,
+          trend: reading.trend,
+          source: reading.source,
+          unit: reading.unit,
+          sourceName: reading.sourceName,
+          hasKnownTrend: reading.hasKnownTrend,
+        );
+      }
+    }
+    final chronological = readingsByDate.values.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final limited = chronological.length <= maxSnapshotHistoryPoints
+        ? chronological
+        : chronological.sublist(
+            chronological.length - maxSnapshotHistoryPoints,
+          );
+    return List<WaterLevel>.unmodifiable(
+      _withCalculatedTrends(limited, stationId),
+    );
+  }
+
   static List<WaterLevel> _withCalculatedTrends(
     List<WaterLevel> readings,
     String stationId,
@@ -451,8 +648,8 @@ class WaterRepository implements OfficialWaterDataSource {
       final reading = readings[index];
       final trend = reading.hasKnownTrend
           ? reading.trend
-          : index + 1 < readings.length
-          ? _trendFromHistory([reading, readings[index + 1]])
+          : index > 0 && readings[index - 1].source == reading.source
+          ? _trendFromHistory([reading, readings[index - 1]])
           : null;
       return WaterLevel(
         stationId: stationId,
@@ -556,22 +753,6 @@ class WaterRepository implements OfficialWaterDataSource {
   static List<WaterLevel> _validNewestFirst(List<WaterLevel> readings) {
     final valid = readings.where(_isValidReading).toList(growable: false);
     valid.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return valid;
-  }
-
-  static List<WaterLevel> _chronologicalValidReadings(
-    List<WaterLevel> readings,
-  ) {
-    final valid = readings.where(_isValidReading).toList(growable: false);
-    valid.sort((a, b) {
-      final timestampComparison = a.timestamp.compareTo(b.timestamp);
-      if (timestampComparison != 0) return timestampComparison;
-      final sourceComparison = a.source.index.compareTo(b.source.index);
-      if (sourceComparison != 0) return sourceComparison;
-      final stationComparison = a.stationId.compareTo(b.stationId);
-      if (stationComparison != 0) return stationComparison;
-      return a.value.compareTo(b.value);
-    });
     return valid;
   }
 

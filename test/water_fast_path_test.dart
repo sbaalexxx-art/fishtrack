@@ -61,6 +61,198 @@ void main() {
   });
 
   test(
+    'daily snapshots keep real chronological readings once per day',
+    () async {
+      final reader = _FakeSnapshotReader([
+        _snapshotRow(
+          stationId: 'station-a',
+          observationDate: '2026-07-14',
+          level: 500,
+          measuredAt: DateTime.utc(2026, 7, 14, 8),
+        ),
+        _snapshotRow(
+          stationId: 'station-a',
+          observationDate: '2026-07-15',
+          level: 505,
+          measuredAt: DateTime.utc(2026, 7, 15, 8),
+        ),
+        _snapshotRow(
+          stationId: 'station-a',
+          observationDate: '2026-07-15',
+          level: 512,
+          measuredAt: DateTime.utc(2026, 7, 15, 12),
+        ),
+        _snapshotRow(
+          stationId: 'station-b',
+          observationDate: '2026-07-16',
+          level: 999,
+          measuredAt: DateTime.utc(2026, 7, 16),
+        ),
+        _snapshotRow(
+          stationId: 'station-a',
+          observationDate: '2026-07-16',
+          level: null,
+          measuredAt: DateTime.utc(2026, 7, 16),
+        ),
+      ]);
+      final result = await WaterRepository(
+        snapshotReader: reader,
+      ).getSnapshotHistoryResult('station-a', limit: 30);
+
+      expect(reader.stationIds, ['station-a']);
+      expect(reader.limits, [30]);
+      expect(result.status, WaterHistoryResultStatus.success);
+      expect(result.readings.map((reading) => reading.value), [500, 512]);
+      expect(result.readings.last.trend, WaterTrend.rising);
+      expect(result.readings.last.hasKnownTrend, isTrue);
+      expect(
+        result.readings.every((reading) => reading.stationId == 'station-a'),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'daily snapshot history caps the requested series at thirty points',
+    () async {
+      final rows = List.generate(
+        35,
+        (index) => _snapshotRow(
+          stationId: 'station-a',
+          observationDate: '2026-06-${(index + 1).toString().padLeft(2, '0')}',
+          level: index.toDouble(),
+          measuredAt: DateTime.utc(2026, 6, index + 1),
+        ),
+      );
+      final result = await WaterRepository(
+        snapshotReader: _FakeSnapshotReader(rows),
+      ).getSnapshotHistoryResult('station-a', limit: 99);
+
+      expect(result.readings, hasLength(30));
+      expect(result.readings.first.value, 5);
+      expect(result.readings.last.value, 34);
+    },
+  );
+
+  test('snapshot history exposes a positive delta and real interval', () async {
+    final result = await WaterService(
+      repository: _StaticHistoryRepository(
+        _history([
+          _reading(
+            stationId: 'station-a',
+            value: 500,
+            timestamp: DateTime.utc(2026, 7, 10),
+            source: WaterLevelSource.danubeFis,
+          ),
+          _reading(
+            stationId: 'station-a',
+            value: 512,
+            timestamp: DateTime.utc(2026, 7, 13),
+            source: WaterLevelSource.danubeFis,
+          ),
+        ]),
+      ),
+    ).getWaterUiResult(_stationWithoutReading());
+
+    expect(result.deltaCm, 12);
+    expect(result.trend, WaterTrend.rising);
+    expect(result.comparisonDuration, const Duration(days: 3));
+    expect(result.hasEnoughHistory, isTrue);
+  });
+
+  test(
+    'snapshot history exposes negative and stable deltas without invention',
+    () async {
+      final falling = await WaterService(
+        repository: _StaticHistoryRepository(
+          _history([
+            _reading(
+              stationId: 'bazias',
+              value: 520,
+              timestamp: DateTime.utc(2026, 7, 10),
+              source: WaterLevelSource.danubeFis,
+            ),
+            _reading(
+              stationId: 'bazias',
+              value: 508,
+              timestamp: DateTime.utc(2026, 7, 11),
+              source: WaterLevelSource.danubeFis,
+            ),
+          ]),
+        ),
+      ).getWaterUiResult(_stationWithoutReading());
+      final stable = await WaterService(
+        repository: _StaticHistoryRepository(
+          _history([
+            _reading(
+              stationId: 'bazias',
+              value: 508,
+              timestamp: DateTime.utc(2026, 7, 10),
+              source: WaterLevelSource.danubeFis,
+            ),
+            _reading(
+              stationId: 'bazias',
+              value: 508,
+              timestamp: DateTime.utc(2026, 7, 11),
+              source: WaterLevelSource.danubeFis,
+            ),
+          ]),
+        ),
+      ).getWaterUiResult(_stationWithoutReading());
+
+      expect(falling.deltaCm, -12);
+      expect(falling.trend, WaterTrend.falling);
+      expect(stable.deltaCm, 0);
+      expect(stable.trend, WaterTrend.stable);
+    },
+  );
+
+  test('one snapshot leaves delta and trend unavailable', () async {
+    final result = await WaterService(
+      repository: _StaticHistoryRepository(
+        _history([
+          _reading(
+            stationId: 'bazias',
+            value: 508,
+            timestamp: DateTime.utc(2026, 7, 11),
+            source: WaterLevelSource.danubeFis,
+          ),
+        ]),
+      ),
+    ).getWaterUiResult(_stationWithoutReading());
+
+    expect(result.deltaCm, isNull);
+    expect(result.trend, isNull);
+    expect(result.comparisonDuration, isNull);
+    expect(result.hasEnoughHistory, isFalse);
+  });
+
+  test('a newer live reading is not replaced by an older snapshot', () async {
+    final now = _now();
+    final live = _reading(
+      stationId: 'bazias',
+      value: 530,
+      timestamp: now.subtract(const Duration(minutes: 5)),
+      source: WaterLevelSource.danubeFis,
+    );
+    final result = await WaterService(
+      repository: _StaticHistoryRepository(
+        _history([
+          _reading(
+            stationId: 'bazias',
+            value: 500,
+            timestamp: now.subtract(const Duration(days: 2)),
+            source: WaterLevelSource.danubeFis,
+          ),
+        ]),
+      ),
+    ).getWaterUiResult(_stationFrom(live));
+
+    expect(result.latestReading?.value, 530);
+    expect(result.latestReading?.timestamp, live.timestamp);
+  });
+
+  test(
     'FIS current value is emitted before delayed canonical result',
     () async {
       final repository = _ControlledWaterRepository();
@@ -736,6 +928,63 @@ class _PerStationWaterRepository extends WaterRepository {
     return request.future;
   }
 }
+
+class _StaticHistoryRepository extends WaterRepository {
+  _StaticHistoryRepository(this.result);
+
+  final WaterHistoryResult result;
+
+  @override
+  Future<WaterHistoryResult> getHistoryResult(
+    String stationId, {
+    String? stationName,
+    int limit = 30,
+    WaterLevel? prefetchedCurrentReading,
+  }) async => result;
+}
+
+class _FakeSnapshotReader implements DailyWaterSnapshotReader {
+  _FakeSnapshotReader(this.rows);
+
+  final List<Map<String, Object?>> rows;
+  final List<String> stationIds = <String>[];
+  final List<int> limits = <int>[];
+
+  @override
+  Future<List<Map<String, Object?>>> readStationHistory(
+    String stationId, {
+    required int limit,
+  }) async {
+    stationIds.add(stationId);
+    limits.add(limit);
+    return rows;
+  }
+}
+
+WaterHistoryResult _history(List<WaterLevel> readings) => WaterHistoryResult(
+  status: readings.length >= 2
+      ? WaterHistoryResultStatus.success
+      : WaterHistoryResultStatus.insufficientHistory,
+  readings: readings,
+  source: readings.isEmpty ? null : readings.last.source,
+  hadProviderError: false,
+);
+
+Map<String, Object?> _snapshotRow({
+  required String stationId,
+  required String observationDate,
+  required Object? level,
+  required DateTime measuredAt,
+  String source = 'DanubeFIS',
+  String quality = 'valid',
+}) => {
+  'station_id': stationId,
+  'observation_date': observationDate,
+  'level_cm': level,
+  'level_source': source,
+  'level_measured_at': measuredAt.toIso8601String(),
+  'quality': quality,
+};
 
 WaterHistoryResult _result(List<WaterLevel> readings) => WaterHistoryResult(
   status: readings.length >= 2
