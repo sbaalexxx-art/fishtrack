@@ -14,13 +14,65 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   final _service = NotificationService();
-  late Future<List<AppNotification>> _notifications = _service
-      .getNotifications();
+  late List<AppNotification> _notifications;
+  Object? _loadError;
+  bool _isLoading = false;
+  Future<void>? _refreshInFlight;
+
+  @override
+  void initState() {
+    super.initState();
+    try {
+      _notifications = _service.cachedNotifications();
+    } on NotificationException catch (error) {
+      _notifications = const [];
+      _loadError = error;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refresh();
+    });
+  }
 
   Future<void> _refresh() async {
-    final notifications = _service.getNotifications();
-    setState(() => _notifications = notifications);
-    await notifications;
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+
+    final hadCachedNotifications = _notifications.isNotEmpty;
+    if (!hadCachedNotifications) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+      });
+    }
+
+    final refresh = _service.getNotifications();
+    late final Future<void> operation;
+    operation = refresh
+        .then(
+          (notifications) {
+            if (mounted) {
+              setState(() {
+                _notifications = notifications;
+                _loadError = null;
+              });
+            }
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (mounted && !hadCachedNotifications) {
+              setState(() => _loadError = error);
+            }
+          },
+        )
+        .whenComplete(() {
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+          if (identical(_refreshInFlight, operation)) {
+            _refreshInFlight = null;
+          }
+        });
+    _refreshInFlight = operation;
+    return operation;
   }
 
   Future<void> _markRead(AppNotification notification) async {
@@ -28,9 +80,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     try {
       await _service.markAsRead(notification.id);
       if (mounted) {
-        setState(
-          () => _notifications = Future.value(_service.cachedNotifications()),
-        );
+        setState(() => _notifications = _service.cachedNotifications());
       }
     } on NotificationException catch (error) {
       if (mounted) {
@@ -45,9 +95,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     try {
       await _service.clearRead();
       if (mounted) {
-        setState(
-          () => _notifications = Future.value(_service.cachedNotifications()),
-        );
+        setState(() => _notifications = _service.cachedNotifications());
       }
     } on NotificationException catch (error) {
       if (mounted) {
@@ -62,25 +110,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: FutureBuilder<List<AppNotification>>(
-          future: _notifications,
-          builder: (context, snapshot) {
-            final unread =
-                snapshot.data
-                    ?.where((notification) => !notification.isRead)
-                    .length ??
-                0;
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(context.l10n.notifications),
-                if (unread > 0) ...[
-                  const SizedBox(width: 8),
-                  Badge(label: Text('$unread')),
-                ],
-              ],
-            );
-          },
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(context.l10n.notifications),
+            if (_notifications.any((notification) => !notification.isRead)) ...[
+              const SizedBox(width: 8),
+              Badge(
+                label: Text(
+                  '${_notifications.where((notification) => !notification.isRead).length}',
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           IconButton(
@@ -100,73 +142,66 @@ class _NotificationsPageState extends State<NotificationsPage> {
         ],
       ),
       body: SafeArea(
-        child: FutureBuilder<List<AppNotification>>(
-          future: _notifications,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const LoadingListSkeleton();
-            }
-            if (snapshot.hasError) {
-              final message = snapshot.error is NotificationException
-                  ? (snapshot.error! as NotificationException).message
-                  : context.l10n.notificationsUnavailable;
-              return _NotificationMessage(message: message, onRetry: _refresh);
-            }
-            final notifications = snapshot.data ?? const [];
-            if (notifications.isEmpty) {
-              return _NotificationMessage(
+        child: _isLoading && _notifications.isEmpty
+            ? const LoadingListSkeleton()
+            : _loadError != null && _notifications.isEmpty
+            ? _NotificationMessage(
+                message: _loadError is NotificationException
+                    ? (_loadError! as NotificationException).message
+                    : context.l10n.notificationsUnavailable,
+                onRetry: _refresh,
+              )
+            : _notifications.isEmpty
+            ? _NotificationMessage(
                 message: context.l10n.noNotifications,
                 onRetry: _refresh,
-              );
-            }
-            return RefreshIndicator(
-              onRefresh: _refresh,
-              child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-                itemCount: notifications.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final notification = notifications[index];
-                  return Card(
-                    child: ListTile(
-                      onTap: () => _markRead(notification),
-                      leading: Icon(
-                        _icon(notification.type),
-                        color: _color(notification.priority),
-                      ),
-                      title: Text(
-                        notification.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: notification.isRead
-                              ? FontWeight.normal
-                              : FontWeight.bold,
+              )
+            : RefreshIndicator(
+                onRefresh: _refresh,
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                  itemCount: _notifications.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final notification = _notifications[index];
+                    return Card(
+                      child: ListTile(
+                        onTap: () => _markRead(notification),
+                        leading: Icon(
+                          _icon(notification.type),
+                          color: _color(notification.priority),
+                        ),
+                        title: Text(
+                          notification.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: notification.isRead
+                                ? FontWeight.normal
+                                : FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${notification.message}\n'
+                          '${_relativeTime(context, notification.createdAt)}',
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        isThreeLine: true,
+                        trailing: Icon(
+                          notification.isRead
+                              ? Icons.mark_email_read_outlined
+                              : Icons.circle,
+                          size: notification.isRead ? 22 : 10,
+                          color: notification.isRead
+                              ? Theme.of(context).colorScheme.onSurfaceVariant
+                              : Theme.of(context).colorScheme.primary,
                         ),
                       ),
-                      subtitle: Text(
-                        '${notification.message}\n'
-                        '${_relativeTime(context, notification.createdAt)}',
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      isThreeLine: true,
-                      trailing: Icon(
-                        notification.isRead
-                            ? Icons.mark_email_read_outlined
-                            : Icons.circle,
-                        size: notification.isRead ? 22 : 10,
-                        color: notification.isRead
-                            ? Theme.of(context).colorScheme.onSurfaceVariant
-                            : Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            );
-          },
-        ),
       ),
     );
   }

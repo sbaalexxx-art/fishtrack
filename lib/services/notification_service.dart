@@ -216,6 +216,7 @@ class NotificationService {
            preferencesService ?? NotificationPreferencesService();
 
   static final MemoryNotificationStore _sharedStore = MemoryNotificationStore();
+  static Future<List<AppNotification>>? _inFlightNotifications;
   static final Map<String, int> _lastReputation = {};
   static final Map<String, TrustLevel> _lastTrustLevel = {};
   static final Map<String, Set<String>> _lastFavorites = {};
@@ -231,7 +232,21 @@ class NotificationService {
 
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
-  Future<List<AppNotification>> getNotifications() async {
+  Future<List<AppNotification>> getNotifications() {
+    final inFlight = _inFlightNotifications;
+    if (inFlight != null) return inFlight;
+
+    late final Future<List<AppNotification>> refresh;
+    refresh = _loadNotifications().whenComplete(() {
+      if (identical(_inFlightNotifications, refresh)) {
+        _inFlightNotifications = null;
+      }
+    });
+    _inFlightNotifications = refresh;
+    return refresh;
+  }
+
+  Future<List<AppNotification>> _loadNotifications() async {
     final userId = _requireUserId();
     await Future.wait([
       _generateWaterNotifications(userId),
