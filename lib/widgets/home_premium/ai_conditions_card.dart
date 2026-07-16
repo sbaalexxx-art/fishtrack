@@ -21,21 +21,60 @@ class AIConditionsCardPremium extends StatefulWidget {
 class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
   final FishingScoreService _scoreService = FishingScoreService();
   final WaterService _waterService = WaterService();
-  late Future<FishingScoreResult> _scoreFuture;
+  FishingScoreResult? _visibleResult;
+  Station? _selectedStation;
+  String _scoreKey = 'nearest';
+  String? _refreshingKey;
+  bool _isLoading = true;
   StreamSubscription<Station>? _stationSubscription;
 
   @override
   void initState() {
     super.initState();
-    _scoreFuture = _scoreService.calculate();
-    _stationSubscription = _waterService.stationSelections.listen((station) {
-      if (mounted) {
-        setState(
-          () =>
-              _scoreFuture = _scoreService.calculate(fallbackStation: station),
-        );
-      }
+    _visibleResult = _scoreService.cachedResult();
+    _isLoading = _visibleResult == null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refreshScore();
     });
+    _stationSubscription = _waterService.stationSelections.listen((station) {
+      if (!mounted) return;
+      _selectedStation = station;
+      _refreshScore();
+    });
+  }
+
+  void _refreshScore() {
+    final station = _selectedStation;
+    final key = station?.id ?? 'nearest';
+    if (_refreshingKey == key) return;
+
+    final cached = _scoreService.cachedResult(fallbackStation: station);
+    setState(() {
+      _scoreKey = key;
+      _visibleResult = cached;
+      _isLoading = cached == null;
+      _refreshingKey = key;
+    });
+
+    _scoreService
+        .calculate(fallbackStation: station)
+        .then((result) {
+          if (!mounted || _scoreKey != key) return;
+          setState(() {
+            if (result.hasEnoughData || _visibleResult == null) {
+              _visibleResult = result;
+            }
+            _isLoading = false;
+            if (_refreshingKey == key) _refreshingKey = null;
+          });
+        })
+        .onError((Object _, StackTrace _) {
+          if (!mounted || _scoreKey != key) return;
+          setState(() {
+            _isLoading = false;
+            if (_refreshingKey == key) _refreshingKey = null;
+          });
+        });
   }
 
   @override
@@ -46,32 +85,21 @@ class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<FishingScoreResult>(
-      future: _scoreFuture,
-      builder: (context, snapshot) {
-        final isRomanian = Localizations.localeOf(context).languageCode == 'ro';
-        final result = snapshot.data;
-        final rating = _rating(result?.rating);
-        final isLoading = snapshot.connectionState == ConnectionState.waiting;
-        return PremiumLoadingShimmer(
-          isLoading: isLoading,
-          child: _AIConditionsCardView(
-            score: result?.score,
-            rating: rating,
-            recommendation: snapshot.hasError
-                ? isRomanian
-                      ? 'Nu există încă date disponibile'
-                      : 'No data available yet'
-                : _localizedStatus(
-                    result?.recommendation ?? 'Calculating...',
-                    isRomanian,
-                  ),
-            bestTime: result?.bestTime ?? '--:--',
-            confidence: result?.confidence,
-            isLoading: isLoading,
-          ),
-        );
-      },
+    final isRomanian = Localizations.localeOf(context).languageCode == 'ro';
+    final result = _visibleResult;
+    return PremiumLoadingShimmer(
+      isLoading: _isLoading,
+      child: _AIConditionsCardView(
+        score: result?.score,
+        rating: _rating(result?.rating),
+        recommendation: _localizedStatus(
+          result?.recommendation ?? 'Calculating...',
+          isRomanian,
+        ),
+        bestTime: result?.bestTime ?? '--:--',
+        confidence: result?.confidence,
+        isLoading: _isLoading,
+      ),
     );
   }
 

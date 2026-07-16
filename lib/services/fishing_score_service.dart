@@ -76,6 +76,12 @@ class FishingScoreService implements FishingDecisionProvider {
   static const cacheDuration = Duration(minutes: 20);
   static final Map<String, TimedCache<FishingScoreResult>> _cache = {};
 
+  FishingScoreResult? cachedResult({Station? fallbackStation}) =>
+      _cache[fallbackStation?.id ?? 'nearest']?.lastKnownValue;
+
+  bool isCachedResultStale({Station? fallbackStation}) =>
+      _cache[fallbackStation?.id ?? 'nearest']?.isStale ?? false;
+
   @override
   Future<FishingScoreResult> calculate({
     Station? fallbackStation,

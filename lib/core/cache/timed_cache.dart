@@ -16,10 +16,12 @@ class TimedCache<T> {
   Future<CacheResult<T>>? _activeRequest;
 
   bool get hasValue => _value != null;
+  T? get lastKnownValue => _value;
   bool get isFresh =>
       _value != null &&
       _savedAt != null &&
       _clock().difference(_savedAt!) < duration;
+  bool get isStale => hasValue && !isFresh;
 
   Future<CacheResult<T>> get(
     Future<T> Function() loader, {

@@ -57,4 +57,17 @@ void main() {
     expect(result.value, 7);
     expect(result.isStaleFallback, isTrue);
   });
+
+  test('exposes the last known value while a refresh is in flight', () async {
+    final cache = TimedCache<int>(duration: Duration.zero);
+    await cache.get(() async => 7);
+    final completer = Completer<int>();
+
+    final refresh = cache.get(() => completer.future);
+
+    expect(cache.lastKnownValue, 7);
+    expect(cache.isStale, isTrue);
+    completer.complete(8);
+    expect((await refresh).value, 8);
+  });
 }
