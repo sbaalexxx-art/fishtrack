@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import '../../l10n/l10n.dart';
 import '../../models/station.dart';
 import '../../services/fishing_score_service.dart';
 import '../../services/water_service.dart';
@@ -189,7 +190,7 @@ class _AIConditionsCardView extends StatelessWidget {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        isRomanian ? 'Indice FluviAI' : 'FluviAI Fishing Index',
+                        context.l10n.fishingInsights,
                         maxLines: 1,
                         style: AppTextStyles.cardTitle.copyWith(
                           fontSize: (dense ? 14 : 16) * layout.titleFontScale,
@@ -198,6 +199,16 @@ class _AIConditionsCardView extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+              SizedBox(height: dense ? 1 : 2),
+              Text(
+                context.l10n.fluviScoreSubtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.caption.copyWith(
+                  fontSize: dense ? 9 : 11,
+                  height: 1,
+                ),
               ),
               SizedBox(height: dense ? 4 : 6),
               Row(

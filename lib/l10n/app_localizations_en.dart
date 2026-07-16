@@ -33,7 +33,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get weather => 'Weather';
 
   @override
-  String get fishingInsights => 'FluviAI Radar';
+  String get fishingInsights => 'FluviScore';
+
+  @override
+  String get fluviScoreSubtitle => 'Fishing conditions now';
 
   @override
   String get reports => 'Reports';
@@ -69,7 +72,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notificationDangerousReports => 'Dangerous Reports';
 
   @override
-  String get notificationFluviAiRadar => 'FluviAI Fishing Index';
+  String get notificationFluviAiRadar => 'FluviScore';
 
   @override
   String get notificationReputationTrust => 'Reputation & Trust';
@@ -510,7 +513,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get youAreHere => 'You are here';
 
   @override
-  String get fluviAiRadar => 'FluviAI Radar';
+  String get fluviAiRadar => 'FluviScore';
 
   @override
   String get askFluviAI => 'Ask FluviAI';
@@ -691,7 +694,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get developer => 'Developer';
 
   @override
-  String get aiFishingInsights => 'FluviAI Radar';
+  String get aiFishingInsights => 'FluviScore';
 
   @override
   String get myCatches => 'My Catches';

@@ -33,7 +33,10 @@ class AppLocalizationsRo extends AppLocalizations {
   String get weather => 'Vreme';
 
   @override
-  String get fishingInsights => 'FluviAI Radar';
+  String get fishingInsights => 'FluviScore';
+
+  @override
+  String get fluviScoreSubtitle => 'Șanse de pescuit acum';
 
   @override
   String get reports => 'Rapoarte';
@@ -69,7 +72,7 @@ class AppLocalizationsRo extends AppLocalizations {
   String get notificationDangerousReports => 'Alerte de pericol';
 
   @override
-  String get notificationFluviAiRadar => 'Indice FluviAI';
+  String get notificationFluviAiRadar => 'FluviScore';
 
   @override
   String get notificationReputationTrust => 'Reputație și încredere';
@@ -514,7 +517,7 @@ class AppLocalizationsRo extends AppLocalizations {
   String get youAreHere => 'Locația ta';
 
   @override
-  String get fluviAiRadar => 'FluviAI Radar';
+  String get fluviAiRadar => 'FluviScore';
 
   @override
   String get askFluviAI => 'Întreabă FluviAI';
@@ -695,7 +698,7 @@ class AppLocalizationsRo extends AppLocalizations {
   String get developer => 'Dezvoltator';
 
   @override
-  String get aiFishingInsights => 'FluviAI Radar';
+  String get aiFishingInsights => 'FluviScore';
 
   @override
   String get myCatches => 'Capturile mele';

@@ -149,8 +149,14 @@ abstract class AppLocalizations {
   /// No description provided for @fishingInsights.
   ///
   /// In ro, this message translates to:
-  /// **'FluviAI Radar'**
+  /// **'FluviScore'**
   String get fishingInsights;
+
+  /// No description provided for @fluviScoreSubtitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Șanse de pescuit acum'**
+  String get fluviScoreSubtitle;
 
   /// No description provided for @reports.
   ///
@@ -221,7 +227,7 @@ abstract class AppLocalizations {
   /// No description provided for @notificationFluviAiRadar.
   ///
   /// In ro, this message translates to:
-  /// **'Indice FluviAI'**
+  /// **'FluviScore'**
   String get notificationFluviAiRadar;
 
   /// No description provided for @notificationReputationTrust.
@@ -1019,7 +1025,7 @@ abstract class AppLocalizations {
   /// No description provided for @fluviAiRadar.
   ///
   /// In ro, this message translates to:
-  /// **'FluviAI Radar'**
+  /// **'FluviScore'**
   String get fluviAiRadar;
 
   /// No description provided for @askFluviAI.
@@ -1355,7 +1361,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiFishingInsights.
   ///
   /// In ro, this message translates to:
-  /// **'FluviAI Radar'**
+  /// **'FluviScore'**
   String get aiFishingInsights;
 
   /// No description provided for @myCatches.
