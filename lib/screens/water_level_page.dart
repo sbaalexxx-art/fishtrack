@@ -4,11 +4,97 @@ import 'package:flutter/material.dart';
 
 import '../core/formatters/water_freshness_formatter.dart';
 import '../l10n/l10n.dart';
-
 import '../models/station.dart';
+import '../models/water_level.dart';
 import '../services/water_service.dart';
-import '../widgets/station_card.dart';
-import 'station_details_page.dart';
+
+enum WaterDetailsPeriod {
+  sevenDays(Duration(days: 7)),
+  fourteenDays(Duration(days: 14)),
+  thirtyDays(Duration(days: 30));
+
+  const WaterDetailsPeriod(this.duration);
+
+  final Duration duration;
+}
+
+class WaterDetailsSummary {
+  const WaterDetailsSummary._({
+    required this.readings,
+    required this.minimum,
+    required this.maximum,
+    required this.change,
+    required this.coverage,
+  });
+
+  final List<WaterLevel> readings;
+  final double? minimum;
+  final double? maximum;
+  final double? change;
+  final Duration? coverage;
+
+  bool get hasChart => readings.length >= 2;
+
+  static WaterDetailsSummary fromHistory(
+    List<WaterLevel> history,
+    WaterDetailsPeriod period,
+  ) {
+    final valid =
+        history
+            .where(
+              (reading) =>
+                  reading.value.isFinite &&
+                  reading.timestamp.millisecondsSinceEpoch > 0,
+            )
+            .toList(growable: false)
+          ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    if (valid.isEmpty) {
+      return const WaterDetailsSummary._(
+        readings: <WaterLevel>[],
+        minimum: null,
+        maximum: null,
+        change: null,
+        coverage: null,
+      );
+    }
+
+    final latestTimestamp = valid.last.timestamp;
+    final cutoff = latestTimestamp.subtract(period.duration);
+    final byTimestamp = <int, WaterLevel>{};
+    for (final reading in valid) {
+      if (reading.timestamp.isBefore(cutoff)) continue;
+      byTimestamp[reading.timestamp.toUtc().microsecondsSinceEpoch] = reading;
+    }
+    final readings = byTimestamp.values.toList(growable: false)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    if (readings.isEmpty) {
+      return const WaterDetailsSummary._(
+        readings: <WaterLevel>[],
+        minimum: null,
+        maximum: null,
+        change: null,
+        coverage: null,
+      );
+    }
+
+    final values = readings.map((reading) => reading.value);
+    final minimum = values.reduce((a, b) => a < b ? a : b);
+    final maximum = readings
+        .map((reading) => reading.value)
+        .reduce((a, b) => a > b ? a : b);
+    return WaterDetailsSummary._(
+      readings: List<WaterLevel>.unmodifiable(readings),
+      minimum: minimum,
+      maximum: maximum,
+      change: readings.length < 2
+          ? null
+          : readings.last.value - readings.first.value,
+      coverage: readings.length < 2
+          ? null
+          : readings.last.timestamp.difference(readings.first.timestamp),
+    );
+  }
+}
 
 class WaterLevelPage extends StatefulWidget {
   const WaterLevelPage({super.key});
@@ -19,480 +105,584 @@ class WaterLevelPage extends StatefulWidget {
 
 class _WaterLevelPageState extends State<WaterLevelPage> {
   final WaterService _waterService = WaterService();
-  StreamSubscription<WaterStationBatchResult>? _batchSubscription;
-  Completer<void>? _loadCompletion;
-  WaterStationBatchResult? _visibleBatch;
-  WaterStationBatchResult? _refreshBaseBatch;
-  bool _fallbackMessageShown = false;
-  bool _unexpectedLoadFailed = false;
-  int _loadGeneration = 0;
+  StreamSubscription<WaterUiResult>? _resultSubscription;
+
+  WaterHomeStationSelection? _selection;
+  Station? _station;
+  WaterUiResult? _result;
+  WaterDetailsPeriod _period = WaterDetailsPeriod.sevenDays;
+  bool _loadingStation = true;
+  bool _loadingResult = false;
+  bool _loadFailed = false;
+  int _requestId = 0;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_startProgressiveLoad());
+    unawaited(_loadHomeStation());
   }
 
   @override
   void dispose() {
-    _loadGeneration++;
-    _completeActiveLoad();
-    unawaited(_batchSubscription?.cancel());
+    _requestId++;
+    unawaited(_resultSubscription?.cancel());
     super.dispose();
   }
 
-  Future<void> _startProgressiveLoad({bool forceRefresh = false}) {
-    final generation = ++_loadGeneration;
-    _completeActiveLoad();
-    unawaited(_batchSubscription?.cancel());
-    final completion = Completer<void>();
-    _loadCompletion = completion;
-    _refreshBaseBatch = forceRefresh && _isUsable(_visibleBatch)
-        ? _visibleBatch
-        : null;
+  Future<void> _loadHomeStation({bool forceRefresh = false}) async {
+    final requestId = ++_requestId;
+    await _resultSubscription?.cancel();
+    if (mounted) {
+      setState(() {
+        _loadingStation = true;
+        _loadingResult = false;
+        _loadFailed = false;
+      });
+    }
 
-    _batchSubscription = _waterService
-        .getProgressiveStationBatch(forceRefresh: forceRefresh)
+    try {
+      final selection = await _waterService.resolveHomeStationSelection();
+      if (!mounted || requestId != _requestId) return;
+      final station = selection.station;
+      setState(() {
+        _selection = selection;
+        _station = station;
+        _loadingStation = false;
+        _loadingResult = station != null;
+        _loadFailed = station == null;
+      });
+      if (station != null) _listenForResult(station, requestId, forceRefresh);
+    } on Exception {
+      if (!mounted || requestId != _requestId) return;
+      setState(() {
+        _loadingStation = false;
+        _loadingResult = false;
+        _loadFailed = _result == null;
+      });
+    }
+  }
+
+  void _listenForResult(Station station, int requestId, bool forceRefresh) {
+    _resultSubscription = _waterService
+        .getProgressiveWaterUiResults(
+          station,
+          limit: 30,
+          forceRefresh: forceRefresh,
+        )
         .listen(
-          (incomingBatch) {
-            if (!mounted || generation != _loadGeneration) return;
-            if (incomingBatch.stationListLoadFailed &&
-                _isUsable(_visibleBatch)) {
-              _showProviderUnavailable();
-              return;
-            }
-
-            final displayedBatch = _refreshBaseBatch == null
-                ? incomingBatch
-                : _mergeWithPrevious(_refreshBaseBatch!, incomingBatch);
+          (result) {
+            if (!mounted || requestId != _requestId) return;
             setState(() {
-              _visibleBatch = displayedBatch;
-              _unexpectedLoadFailed = false;
+              _result = result;
+              _loadingResult = false;
+              _loadFailed = false;
             });
-            _showFallbackMessageIfNeeded(incomingBatch);
           },
           onError: (Object _) {
-            if (!mounted || generation != _loadGeneration) return;
-            if (_isUsable(_visibleBatch)) {
-              _showProviderUnavailable();
-            } else {
-              setState(() => _unexpectedLoadFailed = true);
-            }
+            if (!mounted || requestId != _requestId) return;
+            setState(() {
+              _loadingResult = false;
+              _loadFailed = _result == null;
+            });
           },
           onDone: () {
-            if (generation != _loadGeneration) return;
-            _refreshBaseBatch = null;
-            _completeActiveLoad();
+            if (!mounted || requestId != _requestId) return;
+            setState(() => _loadingResult = false);
           },
           cancelOnError: false,
         );
-    return completion.future;
   }
 
-  void _completeActiveLoad() {
-    final completion = _loadCompletion;
-    if (completion != null && !completion.isCompleted) completion.complete();
-    _loadCompletion = null;
+  Future<void> _refresh() => _loadHomeStation(forceRefresh: true);
+
+  Future<void> _useAutomaticSelection() async {
+    await _waterService.setAutomatic();
+    if (mounted) await _loadHomeStation();
   }
 
-  void _showProviderUnavailable() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.waterProviderUnavailable)),
-      );
-    });
-  }
-
-  void _showFallbackMessageIfNeeded(WaterStationBatchResult batch) {
-    if (!batch.isStationListStaleFallback || _fallbackMessageShown) return;
-    _fallbackMessageShown = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(context.l10n.cachedDataFallback)));
-    });
-  }
-
-  static bool _isUsable(WaterStationBatchResult? batch) =>
-      batch != null && !batch.stationListLoadFailed;
-
-  Future<void> _refresh() {
-    final activeLoad = _loadCompletion;
-    final batch = _visibleBatch;
-    if (activeLoad != null &&
-        !activeLoad.isCompleted &&
-        (batch == null || !batch.isComplete || _refreshBaseBatch != null)) {
-      return activeLoad.future;
-    }
-    return _startProgressiveLoad(forceRefresh: true);
-  }
-
-  static WaterStationBatchResult _mergeWithPrevious(
-    WaterStationBatchResult previous,
-    WaterStationBatchResult incoming,
-  ) {
-    final mergedResults = <String, WaterUiResult>{};
-    var stationWithReadingCount = 0;
-    var stationWithoutDataCount = 0;
-    var providerErrorCount = 0;
-    DateTime? latestMeasurementTimestamp;
-    for (final station in incoming.stations) {
-      final result = _mergeStationResult(
-        previous.resultsByStationId[station.id],
-        incoming.resultsByStationId[station.id],
-      );
-      if (result == null) continue;
-      mergedResults[station.id] = result;
-      final reading = result.latestReading;
-      if (reading != null &&
-          reading.value.isFinite &&
-          reading.timestamp.millisecondsSinceEpoch > 0) {
-        stationWithReadingCount++;
-        final timestamp = result.measurementTimestamp;
-        if (timestamp != null &&
-            timestamp.millisecondsSinceEpoch > 0 &&
-            (latestMeasurementTimestamp == null ||
-                timestamp.isAfter(latestMeasurementTimestamp))) {
-          latestMeasurementTimestamp = timestamp;
-        }
-      } else {
-        stationWithoutDataCount++;
-      }
-      if (result.status == WaterUiStatus.providerError) providerErrorCount++;
-    }
-
-    return WaterStationBatchResult(
-      stations: incoming.stations,
-      resultsByStationId: Map<String, WaterUiResult>.unmodifiable(
-        mergedResults,
-      ),
-      totalStationCount: incoming.totalStationCount,
-      stationWithReadingCount: stationWithReadingCount,
-      stationWithoutDataCount: stationWithoutDataCount,
-      providerErrorCount: providerErrorCount,
-      latestMeasurementTimestamp: latestMeasurementTimestamp,
-      isStationListStaleFallback: incoming.isStationListStaleFallback,
-      stationListLoadFailed: false,
-      safeDiagnosticMessage: incoming.safeDiagnosticMessage,
-      isComplete: incoming.isComplete,
-    );
-  }
-
-  static WaterUiResult? _mergeStationResult(
-    WaterUiResult? previous,
-    WaterUiResult? incoming,
-  ) {
-    if (incoming == null) return previous;
-    if (_hasValidReading(incoming) || !_hasValidReading(previous)) {
-      return incoming;
-    }
-    if (incoming.status != WaterUiStatus.providerError &&
-        incoming.status != WaterUiStatus.unavailable) {
-      return incoming;
-    }
-
-    return WaterUiResult(
-      latestReading: previous!.latestReading,
-      history: previous.history,
-      source: previous.source,
-      sourceName: previous.sourceName,
-      measurementTimestamp: previous.measurementTimestamp,
-      dataAge: previous.dataAge,
-      isStale: previous.isStale,
-      status: WaterUiStatus.providerError,
-      safeDiagnosticMessage:
-          incoming.safeDiagnosticMessage ??
-          'Water update temporarily unavailable',
-    );
-  }
-
-  static bool _hasValidReading(WaterUiResult? result) {
-    if (result == null) return false;
-    final reading = result.latestReading;
-    return reading != null &&
-        reading.value.isFinite &&
-        reading.timestamp.millisecondsSinceEpoch > 0 &&
-        result.measurementTimestamp != null &&
-        result.measurementTimestamp!.millisecondsSinceEpoch > 0;
-  }
-
-  Future<void> _openStation(Station station) async {
-    _waterService.selectStation(station);
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (context) => StationDetailsPage(station: station),
-      ),
-    );
+  void _selectPeriod(WaterDetailsPeriod period) {
+    if (_period == period) return;
+    setState(() => _period = period);
   }
 
   @override
   Widget build(BuildContext context) {
-    final batch = _visibleBatch;
+    final station = _station;
+    final result = _result;
+    final summary = result == null
+        ? null
+        : WaterDetailsSummary.fromHistory(result.history, _period);
+
     return Scaffold(
       appBar: AppBar(title: Text(context.l10n.waterLevels), centerTitle: true),
       body: SafeArea(
-        child: _unexpectedLoadFailed || batch?.stationListLoadFailed == true
-            ? _WaterMessage(
-                icon: Icons.cloud_off_outlined,
-                message: context.l10n.waterProviderUnavailable,
-                onRefresh: _refresh,
-              )
-            : batch?.isComplete == true && batch!.stations.isEmpty
-            ? _WaterMessage(
-                icon: Icons.water_drop_outlined,
-                message: context.l10n.noWaterData,
-                onRefresh: _refresh,
-              )
+        child: _loadingStation
+            ? const _WaterDetailsSkeleton()
+            : station == null || (_loadFailed && result == null)
+            ? _WaterDetailsMessage(onRefresh: _refresh)
             : RefreshIndicator(
                 onRefresh: _refresh,
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
                   children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          children: [
-                            const Icon(
-                              Icons.water_drop,
-                              color: Colors.blue,
-                              size: 60,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _officialWaterLevelsTitle(context),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              batch == null
-                                  ? _loadingStationsLabel(context)
-                                  : _stationSummaryLabel(
-                                      context,
-                                      total: batch.totalStationCount,
-                                      withReading:
-                                          batch.stationWithReadingCount,
-                                    ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              batch == null ||
-                                      (!batch.isComplete &&
-                                          batch.latestMeasurementTimestamp ==
-                                              null)
-                                  ? _latestMeasurementLoadingLabel(context)
-                                  : _latestMeasurementLabel(
-                                      context,
-                                      batch.latestMeasurementTimestamp,
-                                      isStale: _latestMeasurementIsStale(batch),
-                                    ),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            if (batch != null &&
-                                batch.providerErrorCount > 0) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                _partialResultLabel(
-                                  context,
-                                  batch.providerErrorCount,
-                                ),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      context.l10n.monitoredStationsTitle,
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                    _WaterDetailsHero(
+                      station: station,
+                      selection: _selection,
+                      result: result,
+                      isLoading: _loadingResult && result == null,
+                      onUseAutomatic: _useAutomaticSelection,
                     ),
                     const SizedBox(height: 16),
-                    if (batch == null)
-                      for (var index = 0; index < 4; index++)
-                        const _StationCardSkeleton()
-                    else
-                      for (final station in batch.stations)
-                        KeyedSubtree(
-                          key: ValueKey<String>('water-${station.id}'),
-                          child: batch.resultsByStationId[station.id] == null
-                              ? const _StationCardSkeleton()
-                              : StationCard(
-                                  station: station,
-                                  waterResult:
-                                      batch.resultsByStationId[station.id],
-                                  onTap: () => _openStation(station),
-                                ),
-                        ),
-                    const SizedBox(height: 20),
+                    _WaterHistorySection(
+                      result: result,
+                      summary: summary,
+                      period: _period,
+                      onPeriodSelected: _selectPeriod,
+                    ),
                   ],
                 ),
               ),
       ),
     );
   }
-
-  static bool _isRomanian(BuildContext context) =>
-      Localizations.localeOf(context).languageCode == 'ro';
-
-  static String _officialWaterLevelsTitle(BuildContext context) =>
-      _isRomanian(context)
-      ? 'Niveluri oficiale ale apei'
-      : 'Official water levels';
-
-  static String _loadingStationsLabel(BuildContext context) =>
-      _isRomanian(context)
-      ? 'Se \u00eencarc\u0103 sta\u021biile\u2026'
-      : 'Loading stations\u2026';
-
-  static String _latestMeasurementLoadingLabel(BuildContext context) =>
-      _isRomanian(context)
-      ? 'Cea mai recent\u0103: se \u00eencarc\u0103\u2026'
-      : 'Latest: loading\u2026';
-
-  static String _stationSummaryLabel(
-    BuildContext context, {
-    required int total,
-    required int withReading,
-  }) => _isRomanian(context)
-      ? '$total sta\u021bii \u2022 $withReading cu date'
-      : '$total stations \u2022 $withReading with data';
-
-  static String _latestMeasurementLabel(
-    BuildContext context,
-    DateTime? timestamp, {
-    required bool isStale,
-  }) {
-    final isRo = _isRomanian(context);
-    final prefix = isRo ? 'Cea mai recent\u0103' : 'Latest';
-    if (timestamp == null || timestamp.millisecondsSinceEpoch <= 0) {
-      return '$prefix: ${isRo ? 'indisponibil\u0103' : 'unavailable'}';
-    }
-
-    final freshness = WaterFreshnessFormatter.format(
-      measurementTimestamp: timestamp,
-      now: DateTime.now(),
-      isStale: isStale,
-      locale: Localizations.localeOf(context).languageCode,
-    );
-    return '$prefix: $freshness';
-  }
-
-  static bool _latestMeasurementIsStale(WaterStationBatchResult batch) {
-    final latestTimestamp = batch.latestMeasurementTimestamp;
-    if (latestTimestamp == null) return false;
-    for (final result in batch.resultsByStationId.values) {
-      if (result.measurementTimestamp?.millisecondsSinceEpoch ==
-          latestTimestamp.millisecondsSinceEpoch) {
-        return result.isStale;
-      }
-    }
-    return false;
-  }
-
-  static String _partialResultLabel(BuildContext context, int errorCount) =>
-      _isRomanian(context)
-      ? '$errorCount ${errorCount == 1 ? 'sta\u021bie nu s-a putut actualiza' : 'sta\u021bii nu s-au putut actualiza'}'
-      : '$errorCount ${errorCount == 1 ? 'station could not be updated' : 'stations could not be updated'}';
 }
 
-class _StationCardSkeleton extends StatelessWidget {
-  const _StationCardSkeleton();
+class _WaterDetailsHero extends StatelessWidget {
+  const _WaterDetailsHero({
+    required this.station,
+    required this.selection,
+    required this.result,
+    required this.isLoading,
+    required this.onUseAutomatic,
+  });
+
+  final Station station;
+  final WaterHomeStationSelection? selection;
+  final WaterUiResult? result;
+  final bool isLoading;
+  final Future<void> Function() onUseAutomatic;
 
   @override
-  Widget build(BuildContext context) => ExcludeSemantics(
-    child: Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: const SizedBox(
-        height: 88,
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              _SkeletonBlock(width: 40, height: 40, isCircular: true),
-              SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    FractionallySizedBox(
-                      widthFactor: .62,
-                      child: _SkeletonBlock(height: 14),
+  Widget build(BuildContext context) {
+    final result = this.result;
+    final reading = result?.latestReading;
+    final trend = result?.trend;
+    final color = _trendColor(trend);
+    final hasReading = reading != null && reading.value.isFinite;
+    final freshness = result?.measurementTimestamp == null
+        ? context.l10n.updateTimeUnavailable
+        : WaterFreshnessFormatter.format(
+            measurementTimestamp: result!.measurementTimestamp!,
+            now: DateTime.now(),
+            isStale: result.isStale,
+            locale: Localizations.localeOf(context).languageCode,
+          );
+    final hasProviderError =
+        result?.providerError == true ||
+        result?.status == WaterUiStatus.providerError;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        station.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        station.river,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: context.l10n.waterStations,
+                  onPressed: selection?.mode == WaterStationSelectionMode.pinned
+                      ? onUseAutomatic
+                      : null,
+                  icon: Icon(
+                    selection?.mode == WaterStationSelectionMode.pinned
+                        ? Icons.push_pin_rounded
+                        : Icons.my_location_rounded,
+                    color: selection?.mode == WaterStationSelectionMode.pinned
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            if (isLoading)
+              const Center(child: CircularProgressIndicator())
+            else if (!hasReading)
+              Center(
+                child: Text(
+                  context.l10n.waterUnavailable,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              )
+            else ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Text(
+                      _formatDelta(result!.deltaCm, reading.unit),
+                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                    SizedBox(height: 10),
-                    FractionallySizedBox(
-                      widthFactor: .88,
-                      child: _SkeletonBlock(height: 11),
-                    ),
-                  ],
+                  ),
+                  Icon(_trendIcon(trend), color: color, size: 30),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _trendLabel(context, trend),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              SizedBox(width: 12),
-              _SkeletonBlock(width: 54, height: 18),
+              if (result.comparisonDuration case final duration?) ...[
+                const SizedBox(height: 2),
+                Text(
+                  _formatComparisonInterval(context, duration),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              Text(
+                '${reading.value.toStringAsFixed(0)} ${reading.unit}',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
-          ),
+            const SizedBox(height: 16),
+            Text(
+              _sourceLabel(
+                    result?.source,
+                    result?.sourceName ?? reading?.sourceName,
+                  ) ??
+                  context.l10n.noSource,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '${context.l10n.lastUpdated}: $freshness',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (hasProviderError || result?.isStale == true) ...[
+              const SizedBox(height: 12),
+              _DataStatus(
+                isError: hasProviderError,
+                message: hasProviderError
+                    ? context.l10n.waterProviderUnavailable
+                    : context.l10n.waterUnavailable,
+              ),
+            ],
+          ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
-class _SkeletonBlock extends StatelessWidget {
-  const _SkeletonBlock({
-    required this.height,
-    this.width,
-    this.isCircular = false,
+class _WaterHistorySection extends StatelessWidget {
+  const _WaterHistorySection({
+    required this.result,
+    required this.summary,
+    required this.period,
+    required this.onPeriodSelected,
   });
 
-  final double? width;
-  final double height;
-  final bool isCircular;
+  final WaterUiResult? result;
+  final WaterDetailsSummary? summary;
+  final WaterDetailsPeriod period;
+  final ValueChanged<WaterDetailsPeriod> onPeriodSelected;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: width,
-    height: height,
-    decoration: BoxDecoration(
-      color: Theme.of(
-        context,
-      ).colorScheme.onSurfaceVariant.withValues(alpha: .14),
-      borderRadius: BorderRadius.circular(isCircular ? height / 2 : 7),
-    ),
+  Widget build(BuildContext context) {
+    final resolvedSummary = summary;
+    final trendColor = _trendColor(result?.trend);
+    final hasHistory =
+        resolvedSummary != null && resolvedSummary.readings.isNotEmpty;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              context.l10n.waterLevelHistory,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<WaterDetailsPeriod>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(
+                  value: WaterDetailsPeriod.sevenDays,
+                  label: Text('7'),
+                ),
+                ButtonSegment(
+                  value: WaterDetailsPeriod.fourteenDays,
+                  label: Text('14'),
+                ),
+                ButtonSegment(
+                  value: WaterDetailsPeriod.thirtyDays,
+                  label: Text('30'),
+                ),
+              ],
+              selected: {period},
+              onSelectionChanged: (selection) {
+                if (selection.isNotEmpty) onPeriodSelected(selection.first);
+              },
+            ),
+            const SizedBox(height: 16),
+            if (!hasHistory)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: Text(context.l10n.noWaterData),
+                ),
+              )
+            else ...[
+              SizedBox(
+                height: 180,
+                width: double.infinity,
+                child: CustomPaint(
+                  painter: _WaterDetailsHistoryPainter(
+                    resolvedSummary.readings,
+                    trendColor,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _HistorySummary(summary: resolvedSummary, color: trendColor),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HistorySummary extends StatelessWidget {
+  const _HistorySummary({required this.summary, required this.color});
+
+  final WaterDetailsSummary summary;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final unit = summary.readings.first.unit;
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      alignment: WrapAlignment.spaceBetween,
+      children: [
+        _SummaryValue(
+          icon: Icons.south_rounded,
+          value: _formatValue(summary.minimum, unit),
+        ),
+        _SummaryValue(
+          icon: Icons.north_rounded,
+          value: _formatValue(summary.maximum, unit),
+        ),
+        _SummaryValue(
+          icon: _trendIconFromDelta(summary.change),
+          value: _formatDelta(summary.change, unit),
+          color: color,
+        ),
+        _SummaryValue(
+          icon: Icons.data_usage_rounded,
+          value: '${summary.readings.length}',
+        ),
+        if (summary.coverage case final coverage?)
+          _SummaryValue(
+            icon: Icons.schedule_rounded,
+            value: coverage.toString(),
+          ),
+      ],
+    );
+  }
+}
+
+class _SummaryValue extends StatelessWidget {
+  const _SummaryValue({required this.icon, required this.value, this.color});
+
+  final IconData icon;
+  final String value;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 16, color: color),
+      const SizedBox(width: 4),
+      Text(
+        value,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    ],
   );
 }
 
-class _WaterMessage extends StatelessWidget {
-  const _WaterMessage({
-    required this.icon,
-    required this.message,
-    required this.onRefresh,
-  });
+class _DataStatus extends StatelessWidget {
+  const _DataStatus({required this.isError, required this.message});
 
-  final IconData icon;
+  final bool isError;
   final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isError
+        ? Theme.of(context).colorScheme.error
+        : Theme.of(context).colorScheme.tertiary;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          children: [
+            Icon(
+              isError ? Icons.cloud_off_outlined : Icons.schedule_outlined,
+              size: 18,
+              color: color,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: color),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WaterDetailsHistoryPainter extends CustomPainter {
+  const _WaterDetailsHistoryPainter(this.readings, this.color);
+
+  final List<WaterLevel> readings;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (readings.isEmpty || size.isEmpty) return;
+    final values = readings.map((reading) => reading.value);
+    final minimum = values.reduce((a, b) => a < b ? a : b);
+    final maximum = readings
+        .map((reading) => reading.value)
+        .reduce((a, b) => a > b ? a : b);
+    final valueRange = maximum - minimum;
+    final firstTimestamp = readings.first.timestamp;
+    final lastTimestamp = readings.last.timestamp;
+    final timeRange = lastTimestamp.difference(firstTimestamp).inMilliseconds;
+    final top = 12.0;
+    final bottom = 18.0;
+    final chartHeight = size.height - top - bottom;
+    final points = <Offset>[];
+
+    for (final reading in readings) {
+      final elapsed = reading.timestamp
+          .difference(firstTimestamp)
+          .inMilliseconds;
+      final x = timeRange <= 0
+          ? size.width / 2
+          : size.width * elapsed / timeRange;
+      final normalized = valueRange == 0
+          ? .5
+          : (reading.value - minimum) / valueRange;
+      final y = top + chartHeight - normalized * chartHeight;
+      points.add(Offset(x, y));
+    }
+
+    if (points.length >= 2) {
+      final path = Path()..moveTo(points.first.dx, points.first.dy);
+      for (final point in points.skip(1)) {
+        path.lineTo(point.dx, point.dy);
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = color
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+
+    final pointPaint = Paint()..color = color;
+    for (final point in points) {
+      canvas.drawCircle(point, 3.5, pointPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WaterDetailsHistoryPainter oldDelegate) =>
+      oldDelegate.readings != readings || oldDelegate.color != color;
+}
+
+class _WaterDetailsSkeleton extends StatelessWidget {
+  const _WaterDetailsSkeleton();
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.all(16),
+    children: const [
+      Card(child: SizedBox(height: 300)),
+      SizedBox(height: 16),
+      Card(child: SizedBox(height: 280)),
+    ],
+  );
+}
+
+class _WaterDetailsMessage extends StatelessWidget {
+  const _WaterDetailsMessage({required this.onRefresh});
+
   final Future<void> Function() onRefresh;
 
   @override
@@ -506,11 +696,11 @@ class _WaterMessage extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 48),
+              const Icon(Icons.water_drop_outlined, size: 48),
               const SizedBox(height: 12),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(message, textAlign: TextAlign.center),
+                child: Text(context.l10n.waterUnavailable),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
@@ -524,4 +714,71 @@ class _WaterMessage extends StatelessWidget {
       ],
     ),
   );
+}
+
+Color _trendColor(WaterTrend? trend) => switch (trend) {
+  WaterTrend.rising => const Color(0xFF2196F3),
+  WaterTrend.stable => const Color(0xFF43A047),
+  WaterTrend.falling => const Color(0xFFE53935),
+  null => const Color(0xFF9AA7B2),
+};
+
+IconData _trendIcon(WaterTrend? trend) => switch (trend) {
+  WaterTrend.rising => Icons.trending_up_rounded,
+  WaterTrend.stable => Icons.trending_flat_rounded,
+  WaterTrend.falling => Icons.trending_down_rounded,
+  null => Icons.help_outline_rounded,
+};
+
+IconData _trendIconFromDelta(double? delta) => delta == null
+    ? Icons.remove_rounded
+    : _trendIcon(
+        delta > .01
+            ? WaterTrend.rising
+            : delta < -.01
+            ? WaterTrend.falling
+            : WaterTrend.stable,
+      );
+
+String _trendLabel(BuildContext context, WaterTrend? trend) => switch (trend) {
+  WaterTrend.rising => context.l10n.rising,
+  WaterTrend.stable => context.l10n.stable,
+  WaterTrend.falling => context.l10n.falling,
+  null => context.l10n.unknown,
+};
+
+String? _sourceLabel(WaterLevelSource? source, String? sourceName) {
+  if (sourceName != null &&
+      sourceName.trim().isNotEmpty &&
+      sourceName != source?.name) {
+    return sourceName;
+  }
+  return switch (source) {
+    WaterLevelSource.afdj => 'AFDJ',
+    WaterLevelSource.danubeHis => 'DanubeHIS',
+    WaterLevelSource.danubeFis => 'DanubeFIS',
+    WaterLevelSource.inhga => 'INHGA',
+    WaterLevelSource.manualFallback => 'Manual',
+    null => null,
+  };
+}
+
+String _formatComparisonInterval(BuildContext context, Duration duration) {
+  final days = duration.inDays;
+  final remainder = duration - Duration(days: days);
+  final clock = '${remainder.inHours.toString().padLeft(2, '0')}:'
+      '${(remainder.inMinutes % 60).toString().padLeft(2, '0')}';
+  if (days == 0) return clock;
+  return remainder.inMinutes == 0
+      ? context.l10n.days(days)
+      : '${context.l10n.days(days)} · $clock';
+}
+
+String _formatValue(double? value, String unit) =>
+    value == null ? '—' : '${value.toStringAsFixed(0)} $unit';
+
+String _formatDelta(double? value, String unit) {
+  if (value == null) return '—';
+  final sign = value > 0 ? '+' : '';
+  return '$sign${value.toStringAsFixed(0)} $unit';
 }

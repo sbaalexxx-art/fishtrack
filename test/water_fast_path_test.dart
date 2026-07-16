@@ -4,6 +4,8 @@ import 'package:fishtrack/models/station.dart';
 import 'package:fishtrack/models/water_level.dart';
 import 'package:fishtrack/repositories/water_repository.dart';
 import 'package:fishtrack/services/water_service.dart';
+import 'package:fishtrack/screens/water_level_page.dart'
+    show WaterDetailsPeriod, WaterDetailsSummary;
 import 'package:fishtrack/widgets/home_premium/water_level_card.dart'
     show
         formatWaterCardDelta,
@@ -48,6 +50,55 @@ void main() {
     expect(shouldShowWaterHistoryChart([reading]), isFalse);
     expect(shouldShowWaterHistoryChart([reading, reading]), isTrue);
   });
+
+  test(
+    'Water details periods filter and summarize only real history locally',
+    () {
+      final latest = DateTime.utc(2026, 7, 16, 12);
+      final history = [
+        _reading(
+          value: 480,
+          timestamp: latest.subtract(const Duration(days: 31)),
+          source: WaterLevelSource.danubeFis,
+        ),
+        _reading(
+          value: 500,
+          timestamp: latest.subtract(const Duration(days: 13)),
+          source: WaterLevelSource.danubeFis,
+        ),
+        _reading(
+          value: 512,
+          timestamp: latest.subtract(const Duration(days: 2)),
+          source: WaterLevelSource.danubeFis,
+        ),
+        _reading(
+          value: 520,
+          timestamp: latest,
+          source: WaterLevelSource.danubeFis,
+        ),
+      ];
+
+      final sevenDays = WaterDetailsSummary.fromHistory(
+        history,
+        WaterDetailsPeriod.sevenDays,
+      );
+      final fourteenDays = WaterDetailsSummary.fromHistory(
+        history,
+        WaterDetailsPeriod.fourteenDays,
+      );
+
+      expect(sevenDays.readings.map((reading) => reading.value), [512, 520]);
+      expect(sevenDays.minimum, 512);
+      expect(sevenDays.maximum, 520);
+      expect(sevenDays.change, 8);
+      expect(sevenDays.coverage, const Duration(days: 2));
+      expect(fourteenDays.readings.map((reading) => reading.value), [
+        500,
+        512,
+        520,
+      ]);
+    },
+  );
 
   test(
     'automatic candidates choose the nearest eligible canonical station',
