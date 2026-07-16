@@ -194,6 +194,96 @@ abstract class AppLocalizations {
   /// **'Preferințe notificări'**
   String get notificationPreferences;
 
+  /// No description provided for @notificationWaterAlerts.
+  ///
+  /// In ro, this message translates to:
+  /// **'Alerte nivel apă'**
+  String get notificationWaterAlerts;
+
+  /// No description provided for @notificationFavouriteStations.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stații favorite'**
+  String get notificationFavouriteStations;
+
+  /// No description provided for @notificationCommunityReports.
+  ///
+  /// In ro, this message translates to:
+  /// **'Rapoarte comunitate'**
+  String get notificationCommunityReports;
+
+  /// No description provided for @notificationDangerousReports.
+  ///
+  /// In ro, this message translates to:
+  /// **'Alerte de pericol'**
+  String get notificationDangerousReports;
+
+  /// No description provided for @notificationFluviAiRadar.
+  ///
+  /// In ro, this message translates to:
+  /// **'Indice FluviAI'**
+  String get notificationFluviAiRadar;
+
+  /// No description provided for @notificationReputationTrust.
+  ///
+  /// In ro, this message translates to:
+  /// **'Reputație și încredere'**
+  String get notificationReputationTrust;
+
+  /// No description provided for @notificationAchievements.
+  ///
+  /// In ro, this message translates to:
+  /// **'Realizări'**
+  String get notificationAchievements;
+
+  /// No description provided for @notificationCatchActivity.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activitate capturi'**
+  String get notificationCatchActivity;
+
+  /// No description provided for @notificationPrioritySilent.
+  ///
+  /// In ro, this message translates to:
+  /// **'Silențios'**
+  String get notificationPrioritySilent;
+
+  /// No description provided for @notificationPrioritySilentDescription.
+  ///
+  /// In ro, this message translates to:
+  /// **'Salvată doar în aplicație, fără notificare pop-up.'**
+  String get notificationPrioritySilentDescription;
+
+  /// No description provided for @notificationPriorityImportant.
+  ///
+  /// In ro, this message translates to:
+  /// **'Important'**
+  String get notificationPriorityImportant;
+
+  /// No description provided for @notificationPriorityImportantDescription.
+  ///
+  /// In ro, this message translates to:
+  /// **'Livrare normală, respectând intervalul silențios.'**
+  String get notificationPriorityImportantDescription;
+
+  /// No description provided for @notificationPriorityCritical.
+  ///
+  /// In ro, this message translates to:
+  /// **'Critic'**
+  String get notificationPriorityCritical;
+
+  /// No description provided for @notificationPriorityCriticalDescription.
+  ///
+  /// In ro, this message translates to:
+  /// **'Livrată imediat, inclusiv în intervalul silențios.'**
+  String get notificationPriorityCriticalDescription;
+
+  /// No description provided for @notificationGroupingDescription.
+  ///
+  /// In ro, this message translates to:
+  /// **'Grupează aceeași stație și același tip de eveniment în 30 de minute.'**
+  String get notificationGroupingDescription;
+
   /// No description provided for @profile.
   ///
   /// In ro, this message translates to:

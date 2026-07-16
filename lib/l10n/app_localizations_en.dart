@@ -57,6 +57,54 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notificationPreferences => 'Notification Preferences';
 
   @override
+  String get notificationWaterAlerts => 'Water Alerts';
+
+  @override
+  String get notificationFavouriteStations => 'Favourite Stations';
+
+  @override
+  String get notificationCommunityReports => 'Community Reports';
+
+  @override
+  String get notificationDangerousReports => 'Dangerous Reports';
+
+  @override
+  String get notificationFluviAiRadar => 'FluviAI Fishing Index';
+
+  @override
+  String get notificationReputationTrust => 'Reputation & Trust';
+
+  @override
+  String get notificationAchievements => 'Achievements';
+
+  @override
+  String get notificationCatchActivity => 'Catch Activity';
+
+  @override
+  String get notificationPrioritySilent => 'Silent';
+
+  @override
+  String get notificationPrioritySilentDescription => 'Stored only; no popup.';
+
+  @override
+  String get notificationPriorityImportant => 'Important';
+
+  @override
+  String get notificationPriorityImportantDescription =>
+      'Normal delivery and respects quiet hours.';
+
+  @override
+  String get notificationPriorityCritical => 'Critical';
+
+  @override
+  String get notificationPriorityCriticalDescription =>
+      'Delivered immediately, including quiet hours.';
+
+  @override
+  String get notificationGroupingDescription =>
+      'Groups station and event type within 30 minutes.';
+
+  @override
   String get profile => 'Profile';
 
   @override

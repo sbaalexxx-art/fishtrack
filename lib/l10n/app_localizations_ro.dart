@@ -57,6 +57,55 @@ class AppLocalizationsRo extends AppLocalizations {
   String get notificationPreferences => 'Preferințe notificări';
 
   @override
+  String get notificationWaterAlerts => 'Alerte nivel apă';
+
+  @override
+  String get notificationFavouriteStations => 'Stații favorite';
+
+  @override
+  String get notificationCommunityReports => 'Rapoarte comunitate';
+
+  @override
+  String get notificationDangerousReports => 'Alerte de pericol';
+
+  @override
+  String get notificationFluviAiRadar => 'Indice FluviAI';
+
+  @override
+  String get notificationReputationTrust => 'Reputație și încredere';
+
+  @override
+  String get notificationAchievements => 'Realizări';
+
+  @override
+  String get notificationCatchActivity => 'Activitate capturi';
+
+  @override
+  String get notificationPrioritySilent => 'Silențios';
+
+  @override
+  String get notificationPrioritySilentDescription =>
+      'Salvată doar în aplicație, fără notificare pop-up.';
+
+  @override
+  String get notificationPriorityImportant => 'Important';
+
+  @override
+  String get notificationPriorityImportantDescription =>
+      'Livrare normală, respectând intervalul silențios.';
+
+  @override
+  String get notificationPriorityCritical => 'Critic';
+
+  @override
+  String get notificationPriorityCriticalDescription =>
+      'Livrată imediat, inclusiv în intervalul silențios.';
+
+  @override
+  String get notificationGroupingDescription =>
+      'Grupează aceeași stație și același tip de eveniment în 30 de minute.';
+
+  @override
   String get profile => 'Profil';
 
   @override
