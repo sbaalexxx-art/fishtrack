@@ -2101,6 +2101,90 @@ abstract class AppLocalizations {
   /// In ro, this message translates to:
   /// **'Afișăm ultimele date salvate local.'**
   String get cachedDataFallback;
+
+  /// No description provided for @waterComparedWithYesterday.
+  ///
+  /// In ro, this message translates to:
+  /// **'Față de ieri'**
+  String get waterComparedWithYesterday;
+
+  /// No description provided for @waterComparedWithLastReading.
+  ///
+  /// In ro, this message translates to:
+  /// **'Față de ultima citire'**
+  String get waterComparedWithLastReading;
+
+  /// No description provided for @waterHistoryMinimum.
+  ///
+  /// In ro, this message translates to:
+  /// **'Minim'**
+  String get waterHistoryMinimum;
+
+  /// No description provided for @waterHistoryMaximum.
+  ///
+  /// In ro, this message translates to:
+  /// **'Maxim'**
+  String get waterHistoryMaximum;
+
+  /// No description provided for @waterHistoryCoverage.
+  ///
+  /// In ro, this message translates to:
+  /// **'Perioadă acoperită'**
+  String get waterHistoryCoverage;
+
+  /// No description provided for @waterHistoryObservations.
+  ///
+  /// In ro, this message translates to:
+  /// **'Observații'**
+  String get waterHistoryObservations;
+
+  /// No description provided for @waterAutomatic.
+  ///
+  /// In ro, this message translates to:
+  /// **'Automat'**
+  String get waterAutomatic;
+
+  /// No description provided for @waterPinned.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fixată'**
+  String get waterPinned;
+
+  /// No description provided for @waterNotEnoughHistoryInsight.
+  ///
+  /// In ro, this message translates to:
+  /// **'Istoric insuficient pentru o analiză a apei.'**
+  String get waterNotEnoughHistoryInsight;
+
+  /// No description provided for @addToFavourites.
+  ///
+  /// In ro, this message translates to:
+  /// **'Adaugă la favorite'**
+  String get addToFavourites;
+
+  /// No description provided for @removeFromFavourites.
+  ///
+  /// In ro, this message translates to:
+  /// **'Elimină din favorite'**
+  String get removeFromFavourites;
+
+  /// No description provided for @dataUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Date indisponibile'**
+  String get dataUnavailable;
+
+  /// No description provided for @source.
+  ///
+  /// In ro, this message translates to:
+  /// **'Sursă'**
+  String get source;
+
+  /// No description provided for @notEnoughHistory.
+  ///
+  /// In ro, this message translates to:
+  /// **'Istoric insuficient'**
+  String get notEnoughHistory;
 }
 
 class _AppLocalizationsDelegate

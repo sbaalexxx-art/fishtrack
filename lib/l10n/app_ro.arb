@@ -445,5 +445,19 @@
   },
   "catches": "Capturi",
   "reputation": "Reputație",
-  "cachedDataFallback": "Afișăm ultimele date salvate local."
+  "cachedDataFallback": "Afișăm ultimele date salvate local.",
+  "waterComparedWithYesterday": "Față de ieri",
+  "waterComparedWithLastReading": "Față de ultima citire",
+  "waterHistoryMinimum": "Minim",
+  "waterHistoryMaximum": "Maxim",
+  "waterHistoryCoverage": "Perioadă acoperită",
+  "waterHistoryObservations": "Observații",
+  "waterAutomatic": "Automat",
+  "waterPinned": "Fixată",
+  "waterNotEnoughHistoryInsight": "Istoric insuficient pentru o analiză a apei.",
+  "addToFavourites": "Adaugă la favorite",
+  "removeFromFavourites": "Elimină din favorite",
+  "dataUnavailable": "Date indisponibile",
+  "source": "Sursă",
+  "notEnoughHistory": "Istoric insuficient"
 }

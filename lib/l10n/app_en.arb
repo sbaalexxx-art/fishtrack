@@ -334,6 +334,20 @@
   "catches": "Catches",
   "reputation": "Reputation",
   "cachedDataFallback": "Showing the latest locally saved data.",
+  "waterComparedWithYesterday": "Compared with yesterday",
+  "waterComparedWithLastReading": "Compared with last reading",
+  "waterHistoryMinimum": "Minimum",
+  "waterHistoryMaximum": "Maximum",
+  "waterHistoryCoverage": "Period covered",
+  "waterHistoryObservations": "Observations",
+  "waterAutomatic": "Automatic",
+  "waterPinned": "Pinned",
+  "waterNotEnoughHistoryInsight": "Not enough history for a water insight.",
+  "addToFavourites": "Add to favourites",
+  "removeFromFavourites": "Remove from favourites",
+  "dataUnavailable": "Data unavailable",
+  "source": "Source",
+  "notEnoughHistory": "Not enough history",
   "@reportsToday": {
     "placeholders": {
       "count": {

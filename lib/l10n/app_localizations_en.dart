@@ -1124,4 +1124,47 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cachedDataFallback => 'Showing the latest locally saved data.';
+
+  @override
+  String get waterComparedWithYesterday => 'Compared with yesterday';
+
+  @override
+  String get waterComparedWithLastReading => 'Compared with last reading';
+
+  @override
+  String get waterHistoryMinimum => 'Minimum';
+
+  @override
+  String get waterHistoryMaximum => 'Maximum';
+
+  @override
+  String get waterHistoryCoverage => 'Period covered';
+
+  @override
+  String get waterHistoryObservations => 'Observations';
+
+  @override
+  String get waterAutomatic => 'Automatic';
+
+  @override
+  String get waterPinned => 'Pinned';
+
+  @override
+  String get waterNotEnoughHistoryInsight =>
+      'Not enough history for a water insight.';
+
+  @override
+  String get addToFavourites => 'Add to favourites';
+
+  @override
+  String get removeFromFavourites => 'Remove from favourites';
+
+  @override
+  String get dataUnavailable => 'Data unavailable';
+
+  @override
+  String get source => 'Source';
+
+  @override
+  String get notEnoughHistory => 'Not enough history';
 }

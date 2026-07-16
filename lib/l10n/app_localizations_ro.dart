@@ -1129,4 +1129,47 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get cachedDataFallback => 'Afișăm ultimele date salvate local.';
+
+  @override
+  String get waterComparedWithYesterday => 'Față de ieri';
+
+  @override
+  String get waterComparedWithLastReading => 'Față de ultima citire';
+
+  @override
+  String get waterHistoryMinimum => 'Minim';
+
+  @override
+  String get waterHistoryMaximum => 'Maxim';
+
+  @override
+  String get waterHistoryCoverage => 'Perioadă acoperită';
+
+  @override
+  String get waterHistoryObservations => 'Observații';
+
+  @override
+  String get waterAutomatic => 'Automat';
+
+  @override
+  String get waterPinned => 'Fixată';
+
+  @override
+  String get waterNotEnoughHistoryInsight =>
+      'Istoric insuficient pentru o analiză a apei.';
+
+  @override
+  String get addToFavourites => 'Adaugă la favorite';
+
+  @override
+  String get removeFromFavourites => 'Elimină din favorite';
+
+  @override
+  String get dataUnavailable => 'Date indisponibile';
+
+  @override
+  String get source => 'Sursă';
+
+  @override
+  String get notEnoughHistory => 'Istoric insuficient';
 }
