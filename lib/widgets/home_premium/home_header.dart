@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_localizations.dart';
 import 'home_premium_layout.dart';
 
 class HomePremiumHeader extends StatelessWidget {
@@ -43,7 +44,7 @@ class HomePremiumHeader extends StatelessWidget {
                   _FluviAiWordmarkAsset(height: 21.5 * layout.titleFontScale),
                   const SizedBox(height: 1),
                   Text(
-                    'Acolo unde pasiunea întâlnește firul apei.',
+                    AppLocalizations.of(context).homeTagline,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

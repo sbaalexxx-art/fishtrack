@@ -115,8 +115,13 @@ class AppLocalizationsRo extends AppLocalizations {
   String get community => 'Comunitate';
 
   @override
-  String get homeTagline =>
-      'Pescuit inteligent • Rapoarte live • Comunitate de încredere';
+  String get homeTagline => 'Acolo unde pasiunea întâlnește firul apei.';
+
+  @override
+  String get weatherHomeDegrees => 'Grade';
+
+  @override
+  String get weatherHomeRain => 'Ploaie';
 
   @override
   String get communityEmptyMessage => 'Liniște pe ape în această zonă.';

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_text_styles.dart';
+import '../../l10n/app_localizations.dart';
 import '../../services/community_service.dart';
 import 'ai_conditions_card.dart' show PremiumLoadingShimmer;
 import 'home_premium_layout.dart';
@@ -44,6 +45,12 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
             .take(3)
             .toList();
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final isEmptyState =
+            !isLoading &&
+            !snapshot.hasError &&
+            activeReports == 0 &&
+            reportsToday == 0;
+        final localizations = AppLocalizations.of(context);
 
         return PremiumLoadingShimmer(
           isLoading: isLoading,
@@ -62,15 +69,19 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                   ? (isRo
                         ? 'Nu există încă actualizări din comunitate'
                         : 'No community updates available yet')
+                  : isEmptyState
+                  ? localizations.communityEmptyMessage
                   : (isRo
                         ? '$activeReports rapoarte active'
                         : '$activeReports active reports');
               final statusText = Text(
                 status,
-                maxLines: dense ? 3 : 2,
+                maxLines: isEmptyState ? 2 : (dense ? 3 : 2),
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: (dense ? 11.5 : 17) * layout.titleFontScale,
+                  fontSize:
+                      (isEmptyState ? (dense ? 11 : 13) : (dense ? 11.5 : 17)) *
+                      layout.titleFontScale,
                   height: 1.04,
                   fontWeight: FontWeight.bold,
                 ),
@@ -155,13 +166,17 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
                     ],
                     SizedBox(height: dense ? 2 : 3),
                     Text(
-                      isRo
-                          ? '$reportsToday rapoarte astăzi'
-                          : '$reportsToday reports today',
+                      isEmptyState
+                          ? localizations.communityEmptyCta
+                          : (isRo
+                                ? '$reportsToday rapoarte astăzi'
+                                : '$reportsToday reports today'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.caption.copyWith(
                         fontSize: dense ? 10.5 : 13,
+                        color: isEmptyState ? const Color(0xFFB8F5C7) : null,
+                        fontWeight: isEmptyState ? FontWeight.w700 : null,
                       ),
                     ),
                     const Spacer(),

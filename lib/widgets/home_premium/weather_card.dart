@@ -192,7 +192,7 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
               final metrics = [
                 _WeatherMetric(
                   icon: Icons.thermostat_rounded,
-                  label: context.l10n.temperature,
+                  label: context.l10n.weatherHomeDegrees,
                   value: temperature ?? neutralValue,
                   secondaryValue: condition,
                   accentColor: const Color(0xFFFFC84A),
@@ -221,7 +221,7 @@ class _WeatherCardPremiumState extends State<WeatherCardPremium> {
                 ),
                 _WeatherMetric(
                   icon: Icons.umbrella_outlined,
-                  label: context.l10n.precipitation,
+                  label: context.l10n.weatherHomeRain,
                   value: precipitation,
                   accentColor: const Color(0xFF7EA8FF),
                   dense: dense,
@@ -355,10 +355,17 @@ class _WeatherMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final layout = HomePremiumLayout.of(context);
+    final separator = value.indexOf(' ');
+    final primaryValue = separator == -1
+        ? value
+        : value.substring(0, separator);
+    final suffix = separator == -1 ? null : value.substring(separator + 1);
+
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: dense ? 3 : 4,
-        vertical: dense ? 1 : 5,
+        vertical: dense ? 1 : 2,
       ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -402,31 +409,54 @@ class _WeatherMetric extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: AppTextStyles.caption.copyWith(
               color: Color.lerp(const Color(0xFFDCECF1), accentColor, 0.18),
-              fontSize: dense ? 7.5 : 8.5,
+              fontSize: (dense ? 9.5 : 11.5) * layout.bodyFontScale,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 1),
-          Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.caption.copyWith(
-              color: const Color(0xFFFFFFFF),
-              fontSize: dense ? 10 : 12,
-              height: 1,
-              fontWeight: FontWeight.w800,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: primaryValue,
+                      style: AppTextStyles.caption.copyWith(
+                        color: const Color(0xFFFFFFFF),
+                        fontSize: (dense ? 15 : 18) * layout.bodyFontScale,
+                        height: 1,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (suffix != null)
+                      TextSpan(
+                        text: ' $suffix',
+                        style: AppTextStyles.caption.copyWith(
+                          color: const Color(0xFFDCECF1),
+                          fontSize: (dense ? 9.5 : 10.5) * layout.bodyFontScale,
+                          height: 1,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+              ),
             ),
           ),
           if (secondaryValue case final secondary?) ...[
             const SizedBox(height: 1),
             Text(
               secondary,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.caption.copyWith(
-                color: Color.lerp(const Color(0xFFC1D5DB), accentColor, 0.25),
-                fontSize: dense ? 6.5 : 7.5,
+                color: Color.lerp(const Color(0xFFDCECF1), accentColor, 0.25),
+                fontSize: (dense ? 8.5 : 10.5) * layout.bodyFontScale,
                 height: 1,
                 fontWeight: FontWeight.w500,
               ),

@@ -92,7 +92,7 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
   Widget _buildHeader(HomePremiumLayout layout) {
     final avatarSize = 26 * layout.iconScale;
     return SizedBox(
-      height: layout.headerHeight * .70,
+      height: layout.headerHeight * .62,
       child: Row(
         children: [
           Expanded(
@@ -163,6 +163,18 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
         isRo ? 'Loca\u021bie indisponibil\u0103' : 'Location unavailable',
       ),
     };
+    final separatorIndex = label.indexOf(',');
+    final cityLabel = separatorIndex == -1
+        ? label
+        : label.substring(0, separatorIndex).trim();
+    final regionLabel = separatorIndex == -1
+        ? ''
+        : label.substring(separatorIndex + 1).trim();
+    final primaryLabel = cityLabel.isEmpty ? label : cityLabel;
+    final hasRegion =
+        _locationAvailability == HomeMapLocationAvailability.available &&
+        cityLabel.isNotEmpty &&
+        regionLabel.isNotEmpty;
     return SizedBox(
       height: 18,
       child: LayoutBuilder(
@@ -196,8 +208,21 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
                   constraints: BoxConstraints(
                     maxWidth: textMaxWidth.clamp(48.0, contentWidth).toDouble(),
                   ),
-                  child: Text(
-                    label,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: primaryLabel),
+                        if (hasRegion)
+                          TextSpan(
+                            text: ', $regionLabel',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: .70),
+                              fontSize: 8.8 * layout.bodyFontScale,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                      ],
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
@@ -206,10 +231,10 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
                           _locationAvailability ==
                               HomeMapLocationAvailability.unavailable
                           ? Colors.white54
-                          : const Color(0xFFF4FBFD),
+                          : Colors.white,
                       fontSize: 9.5 * layout.bodyFontScale,
                       height: 1,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       letterSpacing: .08,
                     ),
                   ),
@@ -240,7 +265,7 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
   }
 
   Widget _buildLandscapePhone(HomePremiumLayout layout) {
-    final contentHorizontalPadding = layout.horizontalPadding * .60;
+    final contentHorizontalPadding = layout.horizontalPadding;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: contentHorizontalPadding),
       child: Column(
@@ -299,27 +324,19 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
               systemSafeArea: MediaQuery.viewPaddingOf(context),
               bottomNavigationOverlaysBody: false,
             );
-            final compactFirstViewport = layout.isPortrait && !layout.isTablet;
-            final contentHorizontalPadding = layout.horizontalPadding * .60;
+            final contentHorizontalPadding = layout.horizontalPadding;
             const topSpacing = 0.0;
-            final headerMapSpacing = layout.sectionGap * .04;
-            const locationBridgeHeight = 18.0;
+            final headerMapSpacing = (layout.sectionGap * .40)
+                .clamp(4.0, 6.0)
+                .toDouble();
             final mapDashboardSpacing = PremiumDashboard.sectionSpacingFor(
               layout,
             );
-            final desiredMapHeight = layout.heroMapHeight * 1.20;
-            final reservedFirstViewportHeight =
-                topSpacing +
-                (layout.headerHeight * .70) +
-                locationBridgeHeight +
-                headerMapSpacing +
-                mapDashboardSpacing +
-                PremiumDashboard.primaryViewportHeightFor(layout) +
-                (layout.sectionGap * .20);
-            final availableMapHeight =
-                layout.usableHeight - reservedFirstViewportHeight;
-            final heroMapHeight = compactFirstViewport
-                ? availableMapHeight.clamp(0.0, desiredMapHeight).toDouble()
+            final portraitMapHeightFactor = layout.isSmallPhone
+                ? .38
+                : (layout.isTablet ? .42 : .40);
+            final heroMapHeight = layout.isPortrait
+                ? layout.usableHeight * portraitMapHeightFactor
                 : layout.heroMapHeight * 1.08;
 
             if (layout.isLandscapePhone) {

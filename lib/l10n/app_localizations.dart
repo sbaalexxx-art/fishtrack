@@ -305,8 +305,20 @@ abstract class AppLocalizations {
   /// No description provided for @homeTagline.
   ///
   /// In ro, this message translates to:
-  /// **'Pescuit inteligent • Rapoarte live • Comunitate de încredere'**
+  /// **'Acolo unde pasiunea întâlnește firul apei.'**
   String get homeTagline;
+
+  /// No description provided for @weatherHomeDegrees.
+  ///
+  /// In ro, this message translates to:
+  /// **'Grade'**
+  String get weatherHomeDegrees;
+
+  /// No description provided for @weatherHomeRain.
+  ///
+  /// In ro, this message translates to:
+  /// **'Ploaie'**
+  String get weatherHomeRain;
 
   /// No description provided for @communityEmptyMessage.
   ///

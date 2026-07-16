@@ -114,7 +114,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get community => 'Community';
 
   @override
-  String get homeTagline => 'Smart fishing • Live reports • Trusted community';
+  String get homeTagline => 'Where passion meets the water\'s flow.';
+
+  @override
+  String get weatherHomeDegrees => 'Degrees';
+
+  @override
+  String get weatherHomeRain => 'Rain';
 
   @override
   String get communityEmptyMessage => 'Quiet on the water in this area.';
