@@ -164,7 +164,7 @@ class DailyWaterSnapshotBuilder {
       ..sort(_compareReadings);
     final selectedLevel = _selectLevel(validReadings, normalizedNow);
     final delta = _selectDelta(validReadings, reportedDeltas);
-    final quality = _quality(
+    final quality = _qualityFor(
       selectedLevel: selectedLevel,
       delta: delta,
       failures: failures,
@@ -245,7 +245,7 @@ class DailyWaterSnapshotBuilder {
     return candidates.first;
   }
 
-  SnapshotQuality _quality({
+  SnapshotQuality _qualityFor({
     required ProviderReading? selectedLevel,
     required _DeltaSelection delta,
     required Iterable<ProviderFailure> failures,
@@ -276,6 +276,255 @@ class DailyWaterSnapshotBuilder {
     if (source != 0) return source;
     return a.levelCm.compareTo(b.levelCm);
   }
+}
+
+enum DailyWaterSnapshotMergeOutcome {
+  identicalNoOp,
+  improvedUpdate,
+  conflictRefused,
+}
+
+class DailyWaterSnapshotMergeResult {
+  const DailyWaterSnapshotMergeResult._({
+    required this.outcome,
+    required this.payload,
+    this.conflictingFields = const [],
+  });
+
+  const DailyWaterSnapshotMergeResult.identicalNoOp(
+    DailyWaterSnapshotPayload payload,
+  ) : this._(
+        outcome: DailyWaterSnapshotMergeOutcome.identicalNoOp,
+        payload: payload,
+      );
+
+  const DailyWaterSnapshotMergeResult.improvedUpdate(
+    DailyWaterSnapshotPayload payload,
+  ) : this._(
+        outcome: DailyWaterSnapshotMergeOutcome.improvedUpdate,
+        payload: payload,
+      );
+
+  const DailyWaterSnapshotMergeResult.conflictRefused({
+    required DailyWaterSnapshotPayload payload,
+    required List<String> conflictingFields,
+  }) : this._(
+         outcome: DailyWaterSnapshotMergeOutcome.conflictRefused,
+         payload: payload,
+         conflictingFields: conflictingFields,
+       );
+
+  final DailyWaterSnapshotMergeOutcome outcome;
+  final DailyWaterSnapshotPayload payload;
+  final List<String> conflictingFields;
+}
+
+/// Merges compatible same-day snapshots without combining fields from distinct
+/// level or delta observations. It is deliberately independent of provider
+/// ordering and has no side effects.
+class DailyWaterSnapshotMerger {
+  const DailyWaterSnapshotMerger();
+
+  DailyWaterSnapshotMergeResult merge({
+    required DailyWaterSnapshotPayload existing,
+    required DailyWaterSnapshotPayload incoming,
+    required DateTime nowUtc,
+  }) {
+    final immutableConflicts = <String>[];
+    if (existing.stationId != incoming.stationId) {
+      immutableConflicts.add('station_id');
+    }
+    if (existing.observationDate != incoming.observationDate) {
+      immutableConflicts.add('observation_date');
+    }
+    if (immutableConflicts.isNotEmpty) {
+      return DailyWaterSnapshotMergeResult.conflictRefused(
+        payload: existing,
+        conflictingFields: immutableConflicts,
+      );
+    }
+
+    final level = _mergeLevel(existing, incoming);
+    if (level.conflict) {
+      return DailyWaterSnapshotMergeResult.conflictRefused(
+        payload: existing,
+        conflictingFields: const [
+          'level_cm',
+          'level_source',
+          'level_measured_at',
+        ],
+      );
+    }
+    final delta = _mergeDelta(existing, incoming);
+    if (delta.conflict) {
+      return DailyWaterSnapshotMergeResult.conflictRefused(
+        payload: existing,
+        conflictingFields: const [
+          'daily_delta_cm',
+          'delta_source',
+          'delta_measured_at',
+          'delta_base_measured_at',
+          'delta_method',
+        ],
+      );
+    }
+    if (!level.changed && !delta.changed) {
+      return DailyWaterSnapshotMergeResult.identicalNoOp(existing);
+    }
+
+    final merged = DailyWaterSnapshotPayload(
+      stationId: existing.stationId,
+      observationDate: existing.observationDate,
+      levelCm: level.payload.levelCm,
+      levelSource: level.payload.levelSource,
+      levelMeasuredAt: level.payload.levelMeasuredAt,
+      dailyDeltaCm: delta.payload.dailyDeltaCm,
+      deltaSource: delta.payload.deltaSource,
+      deltaMeasuredAt: delta.payload.deltaMeasuredAt,
+      deltaBaseMeasuredAt: delta.payload.deltaBaseMeasuredAt,
+      deltaMethod: delta.payload.deltaMethod,
+      quality: _recalculateQuality(
+        level: level.payload,
+        delta: delta.payload,
+        existing: existing,
+        incoming: incoming,
+        nowUtc: nowUtc,
+      ),
+    );
+    return DailyWaterSnapshotMergeResult.improvedUpdate(merged);
+  }
+
+  _MergeGroup _mergeLevel(
+    DailyWaterSnapshotPayload existing,
+    DailyWaterSnapshotPayload incoming,
+  ) {
+    final existingComplete = existing.levelCm != null;
+    final incomingComplete = incoming.levelCm != null;
+    if (!existingComplete || !incomingComplete) {
+      return _MergeGroup(
+        payload: incomingComplete ? incoming : existing,
+        changed: !existingComplete && incomingComplete,
+      );
+    }
+    final time = incoming.levelMeasuredAt!.toUtc().compareTo(
+      existing.levelMeasuredAt!.toUtc(),
+    );
+    if (time > 0) return _MergeGroup(payload: incoming, changed: true);
+    if (time < 0) return _MergeGroup(payload: existing, changed: false);
+    if (_sameLevel(existing, incoming)) {
+      return _MergeGroup(payload: existing, changed: false);
+    }
+    return _MergeGroup(payload: existing, conflict: true);
+  }
+
+  _MergeGroup _mergeDelta(
+    DailyWaterSnapshotPayload existing,
+    DailyWaterSnapshotPayload incoming,
+  ) {
+    final existingRank = _deltaRank(existing.deltaMethod);
+    final incomingRank = _deltaRank(incoming.deltaMethod);
+    if (incomingRank > existingRank) {
+      return _MergeGroup(payload: incoming, changed: true);
+    }
+    if (incomingRank < existingRank) {
+      return _MergeGroup(payload: existing, changed: false);
+    }
+    if (incomingRank == 0) {
+      return _MergeGroup(payload: existing, changed: false);
+    }
+    final time = incoming.deltaMeasuredAt!.toUtc().compareTo(
+      existing.deltaMeasuredAt!.toUtc(),
+    );
+    if (time > 0) return _MergeGroup(payload: incoming, changed: true);
+    if (time < 0) return _MergeGroup(payload: existing, changed: false);
+    if (_sameDelta(existing, incoming)) {
+      return _MergeGroup(payload: existing, changed: false);
+    }
+    return _MergeGroup(payload: existing, conflict: true);
+  }
+
+  String _recalculateQuality({
+    required DailyWaterSnapshotPayload level,
+    required DailyWaterSnapshotPayload delta,
+    required DailyWaterSnapshotPayload existing,
+    required DailyWaterSnapshotPayload incoming,
+    required DateTime nowUtc,
+  }) {
+    final source = SnapshotSource.values.firstWhere(
+      (source) => source.databaseValue == level.levelSource,
+      orElse: () => SnapshotSource.afdj,
+    );
+    final selectedLevel = level.levelCm == null
+        ? null
+        : ProviderReading(
+            source: source,
+            levelCm: level.levelCm!,
+            measuredAt: level.levelMeasuredAt!,
+          );
+    final deltaSelection = delta.deltaMethod == 'unavailable'
+        ? const _DeltaSelection.unavailable()
+        : _DeltaSelection._(
+            value: delta.dailyDeltaCm,
+            source: null,
+            measuredAt: delta.deltaMeasuredAt,
+            baseMeasuredAt: delta.deltaBaseMeasuredAt,
+            method: SnapshotDeltaMethod.values.firstWhere(
+              (method) => method.databaseValue == delta.deltaMethod,
+            ),
+          );
+    final hadProviderFailure =
+        existing.quality == SnapshotQuality.providerError.databaseValue ||
+        incoming.quality == SnapshotQuality.providerError.databaseValue;
+    return const DailyWaterSnapshotBuilder()
+        ._qualityFor(
+          selectedLevel: selectedLevel,
+          delta: deltaSelection,
+          failures: hadProviderFailure
+              ? const [ProviderFailure(SnapshotSource.afdj, 'provider error')]
+              : const [],
+          nowUtc: nowUtc.toUtc(),
+        )
+        .databaseValue;
+  }
+
+  static int _deltaRank(String method) => switch (method) {
+    'provider_reported' => 2,
+    'computed_same_source' => 1,
+    _ => 0,
+  };
+
+  static bool _sameLevel(
+    DailyWaterSnapshotPayload a,
+    DailyWaterSnapshotPayload b,
+  ) =>
+      a.levelCm == b.levelCm &&
+      a.levelSource == b.levelSource &&
+      _sameTime(a.levelMeasuredAt, b.levelMeasuredAt);
+
+  static bool _sameDelta(
+    DailyWaterSnapshotPayload a,
+    DailyWaterSnapshotPayload b,
+  ) =>
+      a.dailyDeltaCm == b.dailyDeltaCm &&
+      a.deltaSource == b.deltaSource &&
+      _sameTime(a.deltaMeasuredAt, b.deltaMeasuredAt) &&
+      _sameTime(a.deltaBaseMeasuredAt, b.deltaBaseMeasuredAt) &&
+      a.deltaMethod == b.deltaMethod;
+
+  static bool _sameTime(DateTime? a, DateTime? b) =>
+      a?.toUtc().millisecondsSinceEpoch == b?.toUtc().millisecondsSinceEpoch;
+}
+
+class _MergeGroup {
+  const _MergeGroup({
+    required this.payload,
+    this.changed = false,
+    this.conflict = false,
+  });
+
+  final DailyWaterSnapshotPayload payload;
+  final bool changed;
+  final bool conflict;
 }
 
 class _DeltaSelection {

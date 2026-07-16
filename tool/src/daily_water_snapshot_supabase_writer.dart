@@ -18,7 +18,7 @@ const _contractFields = <String>[
   'quality',
 ];
 
-enum SnapshotWriteOutcome { inserted, alreadyExists }
+enum SnapshotWriteOutcome { inserted, updated, alreadyExists }
 
 class SnapshotWriteResult {
   const SnapshotWriteResult._(this.outcome, {this.differingFields = const []});
@@ -27,6 +27,8 @@ class SnapshotWriteResult {
 
   const SnapshotWriteResult.alreadyExists()
     : this._(SnapshotWriteOutcome.alreadyExists);
+
+  const SnapshotWriteResult.updated() : this._(SnapshotWriteOutcome.updated);
 
   final SnapshotWriteOutcome outcome;
   final List<String> differingFields;
@@ -52,13 +54,16 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
     required String supabaseUrl,
     required String secretKey,
     required http.Client client,
+    DateTime Function()? nowUtc,
   }) : _supabaseUrl = supabaseUrl,
        _secretKey = secretKey,
-       _client = client;
+       _client = client,
+       _nowUtc = nowUtc ?? (() => DateTime.now().toUtc());
 
   final String _supabaseUrl;
   final String _secretKey;
   final http.Client _client;
+  final DateTime Function() _nowUtc;
 
   static const _sources = {'AFDJ', 'DanubeHIS', 'DanubeFIS'};
   static const _deltaMethods = {
@@ -87,19 +92,7 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
         'Snapshot integrity anomaly: more than one row exists for this station and observation date.',
       );
     }
-    if (existing.length == 1) {
-      final differingFields = _differingFields(
-        payload.toJson(),
-        existing.single,
-      );
-      if (differingFields.isEmpty) {
-        return const SnapshotWriteResult.alreadyExists();
-      }
-      throw SnapshotWriteException(
-        'Existing snapshot differs. RC12.2B-3B will not overwrite it. '
-        'Differing fields: ${differingFields.join(', ')}.',
-      );
-    }
+    if (existing.length == 1) return _mergeAndWrite(existing.single, payload);
 
     final inserted = await _insert(payload);
     if (_differingFields(payload.toJson(), inserted).isNotEmpty) {
@@ -120,6 +113,93 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
       );
     }
     return const SnapshotWriteResult.inserted();
+  }
+
+  Future<SnapshotWriteResult> _mergeAndWrite(
+    Map<String, Object?> existingRow,
+    DailyWaterSnapshotPayload incoming,
+  ) async {
+    final existing = _payloadFromRow(existingRow);
+    validatePayload(existing);
+    final merge = const DailyWaterSnapshotMerger().merge(
+      existing: existing,
+      incoming: incoming,
+      nowUtc: _nowUtc().toUtc(),
+    );
+    switch (merge.outcome) {
+      case DailyWaterSnapshotMergeOutcome.identicalNoOp:
+        return const SnapshotWriteResult.alreadyExists();
+      case DailyWaterSnapshotMergeOutcome.conflictRefused:
+        throw SnapshotWriteException(
+          'Same-day snapshot merge refused. Conflicting fields: '
+          '${merge.conflictingFields.join(', ')}.',
+        );
+      case DailyWaterSnapshotMergeOutcome.improvedUpdate:
+        final changes = _changedFields(
+          existing.toJson(),
+          merge.payload.toJson(),
+        );
+        if (changes.isEmpty) return const SnapshotWriteResult.alreadyExists();
+        final updatedAt = existingRow['updated_at']?.toString();
+        if (updatedAt == null || DateTime.tryParse(updatedAt) == null) {
+          throw const SnapshotWriteException(
+            'Snapshot read did not include a valid updated_at concurrency value.',
+          );
+        }
+        final patched = await _patch(
+          payload: incoming,
+          desired: merge.payload,
+          updatedAt: updatedAt,
+          changes: changes,
+        );
+        if (patched.isEmpty) {
+          return _resolveConcurrentPatchResult(incoming, merge.payload);
+        }
+        if (patched.length != 1) {
+          throw const SnapshotWriteException(
+            'Snapshot PATCH did not return exactly one updated row.',
+          );
+        }
+        final patchDifferences = _differingFields(
+          merge.payload.toJson(),
+          patched.single,
+        );
+        if (patchDifferences.isNotEmpty) {
+          throw SnapshotWriteException(
+            'Snapshot PATCH returned data that differs from the merged contract fields: '
+            '${patchDifferences.join(', ')}.',
+          );
+        }
+        final readBack = await _readSnapshots(incoming);
+        if (readBack.length != 1) {
+          throw const SnapshotWriteException(
+            'Snapshot PATCH read-back integrity check did not return exactly one row.',
+          );
+        }
+        if (_differingFields(
+          merge.payload.toJson(),
+          readBack.single,
+        ).isNotEmpty) {
+          throw const SnapshotWriteException(
+            'Snapshot PATCH read-back differs from the merged contract fields.',
+          );
+        }
+        return const SnapshotWriteResult.updated();
+    }
+  }
+
+  Future<SnapshotWriteResult> _resolveConcurrentPatchResult(
+    DailyWaterSnapshotPayload lookup,
+    DailyWaterSnapshotPayload desired,
+  ) async {
+    final current = await _readSnapshots(lookup);
+    if (current.length == 1 &&
+        _differingFields(desired.toJson(), current.single).isEmpty) {
+      return const SnapshotWriteResult.alreadyExists();
+    }
+    throw const SnapshotWriteException(
+      'Concurrent snapshot update conflict; no automatic PATCH retry was attempted.',
+    );
   }
 
   static void validatePayload(DailyWaterSnapshotPayload payload) {
@@ -221,7 +301,7 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
     final response = await _get(
       'snapshot read',
       _endpoint('daily_water_snapshots', {
-        'select': _contractFields.join(','),
+        'select': '${_contractFields.join(',')},updated_at',
         'station_id': 'eq.${payload.stationId}',
         'observation_date': 'eq.${payload.observationDate}',
       }),
@@ -248,6 +328,26 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
     return rows.single;
   }
 
+  Future<List<Map<String, Object?>>> _patch({
+    required DailyWaterSnapshotPayload payload,
+    required DailyWaterSnapshotPayload desired,
+    required String updatedAt,
+    required Map<String, Object?> changes,
+  }) async {
+    final response = await _patchRequest(
+      'snapshot PATCH',
+      _endpoint('daily_water_snapshots', {
+        'select': _contractFields.join(','),
+        'station_id': 'eq.${payload.stationId}',
+        'observation_date': 'eq.${payload.observationDate}',
+        'updated_at': 'eq.$updatedAt',
+      }),
+      jsonEncode(changes),
+      stationId: desired.stationId,
+    );
+    return _decodeRows(response, 'snapshot PATCH');
+  }
+
   Future<http.Response> _get(
     String operation,
     Uri uri, {
@@ -272,6 +372,27 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
   }) async {
     try {
       final response = await _client.post(
+        uri,
+        headers: {..._headers, 'Prefer': 'return=representation'},
+        body: body,
+      );
+      _ensureSuccess(operation, response);
+      return response;
+    } on SnapshotWriteException {
+      rethrow;
+    } on Object catch (error) {
+      throw _transportException(operation, error, stationId);
+    }
+  }
+
+  Future<http.Response> _patchRequest(
+    String operation,
+    Uri uri,
+    String body, {
+    String? stationId,
+  }) async {
+    try {
+      final response = await _client.patch(
         uri,
         headers: {..._headers, 'Prefer': 'return=representation'},
         body: body,
@@ -424,6 +545,59 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
             _normalise(field, actual[field]),
       )
       .toList(growable: false);
+
+  static Map<String, Object?> _changedFields(
+    Map<String, Object?> existing,
+    Map<String, Object?> desired,
+  ) => {
+    for (final field in _contractFields)
+      if (_normalise(field, existing[field]) !=
+          _normalise(field, desired[field]))
+        field: desired[field],
+  };
+
+  static DailyWaterSnapshotPayload _payloadFromRow(Map<String, Object?> row) {
+    DateTime? timestamp(String field) {
+      final value = row[field];
+      if (value == null) return null;
+      final parsed = DateTime.tryParse(value.toString());
+      if (parsed == null) {
+        throw SnapshotWriteException(
+          'Snapshot read returned an invalid $field value.',
+        );
+      }
+      return parsed.toUtc();
+    }
+
+    String requiredString(String field) {
+      final value = row[field]?.toString();
+      if (value == null || value.isEmpty) {
+        throw SnapshotWriteException('Snapshot read omitted $field.');
+      }
+      return value;
+    }
+
+    int? integer(String field) {
+      final value = row[field];
+      if (value == null) return null;
+      if (value is num) return value.toInt();
+      return int.tryParse(value.toString());
+    }
+
+    return DailyWaterSnapshotPayload(
+      stationId: requiredString('station_id'),
+      observationDate: requiredString('observation_date'),
+      levelCm: integer('level_cm'),
+      levelSource: row['level_source']?.toString(),
+      levelMeasuredAt: timestamp('level_measured_at'),
+      dailyDeltaCm: integer('daily_delta_cm'),
+      deltaSource: row['delta_source']?.toString(),
+      deltaMeasuredAt: timestamp('delta_measured_at'),
+      deltaBaseMeasuredAt: timestamp('delta_base_measured_at'),
+      deltaMethod: requiredString('delta_method'),
+      quality: requiredString('quality'),
+    );
+  }
 
   static Object? _normalise(String field, Object? value) {
     if (value == null) return null;

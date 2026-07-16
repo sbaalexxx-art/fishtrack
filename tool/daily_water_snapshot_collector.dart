@@ -114,12 +114,15 @@ class DailyWaterSnapshotCommand {
     final writer = writerFactory(supabaseUrl, secretKey);
     try {
       final writeResult = await writer.writeIfAbsent(result.payload);
-      if (writeResult.outcome == SnapshotWriteOutcome.alreadyExists) {
-        output(
-          'Snapshot already exists with identical data. No write required.',
-        );
-      } else {
-        output('Snapshot inserted and verified by read-back.');
+      switch (writeResult.outcome) {
+        case SnapshotWriteOutcome.alreadyExists:
+          output(
+            'Snapshot already exists with identical data. No write required.',
+          );
+        case SnapshotWriteOutcome.inserted:
+          output('Snapshot inserted and verified by read-back.');
+        case SnapshotWriteOutcome.updated:
+          output('Snapshot safely improved and verified by read-back.');
       }
       return 0;
     } on SnapshotWriteException catch (exception) {

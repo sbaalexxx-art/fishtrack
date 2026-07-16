@@ -325,6 +325,206 @@ void main() {
     ],
   );
 
+  DailyWaterSnapshotPayload snapshot({
+    int? levelCm = 503,
+    DateTime? levelMeasuredAt,
+    int? dailyDeltaCm = 3,
+    DateTime? deltaMeasuredAt,
+    DateTime? deltaBaseMeasuredAt,
+    String deltaMethod = 'computed_same_source',
+    String quality = 'valid',
+  }) {
+    final levelPresent = levelCm != null;
+    final deltaPresent = deltaMethod != 'unavailable';
+    return DailyWaterSnapshotPayload(
+      stationId: 'bazias',
+      observationDate: '2026-01-15',
+      levelCm: levelCm,
+      levelSource: levelPresent ? 'DanubeHIS' : null,
+      levelMeasuredAt: levelPresent ? levelMeasuredAt ?? now : null,
+      dailyDeltaCm: deltaPresent ? dailyDeltaCm : null,
+      deltaSource: deltaPresent ? 'DanubeHIS' : null,
+      deltaMeasuredAt: deltaPresent ? deltaMeasuredAt ?? now : null,
+      deltaBaseMeasuredAt: deltaMethod == 'computed_same_source'
+          ? deltaBaseMeasuredAt ?? now.subtract(const Duration(hours: 24))
+          : null,
+      deltaMethod: deltaMethod,
+      quality: quality,
+    );
+  }
+
+  DailyWaterSnapshotMergeResult merge(
+    DailyWaterSnapshotPayload existing,
+    DailyWaterSnapshotPayload incoming,
+  ) => const DailyWaterSnapshotMerger().merge(
+    existing: existing,
+    incoming: incoming,
+    nowUtc: now,
+  );
+
+  test('merge fills an absent level only with a complete incoming level', () {
+    final result = merge(snapshot(levelCm: null), snapshot(levelCm: 510));
+    expect(result.outcome, DailyWaterSnapshotMergeOutcome.improvedUpdate);
+    expect(result.payload.levelCm, 510);
+    expect(result.payload.levelSource, 'DanubeHIS');
+    expect(result.payload.levelMeasuredAt, now);
+  });
+
+  test('merge replaces a level only when its timestamp is newer', () {
+    final result = merge(
+      snapshot(
+        levelCm: 500,
+        levelMeasuredAt: now.subtract(const Duration(hours: 2)),
+      ),
+      snapshot(levelCm: 510, levelMeasuredAt: now),
+    );
+    expect(result.payload.levelCm, 510);
+    expect(result.outcome, DailyWaterSnapshotMergeOutcome.improvedUpdate);
+  });
+
+  test('merge does not let an older level degrade a newer level', () {
+    final result = merge(
+      snapshot(levelCm: 510),
+      snapshot(
+        levelCm: 500,
+        levelMeasuredAt: now.subtract(const Duration(hours: 2)),
+      ),
+    );
+    expect(result.outcome, DailyWaterSnapshotMergeOutcome.identicalNoOp);
+    expect(result.payload.levelCm, 510);
+  });
+
+  test('merge treats equal level timestamps with equal values as a no-op', () {
+    expect(
+      merge(snapshot(), snapshot()).outcome,
+      DailyWaterSnapshotMergeOutcome.identicalNoOp,
+    );
+  });
+
+  test('merge refuses unequal levels with equal timestamps', () {
+    final result = merge(snapshot(levelCm: 500), snapshot(levelCm: 510));
+    expect(result.outcome, DailyWaterSnapshotMergeOutcome.conflictRefused);
+    expect(result.conflictingFields, contains('level_cm'));
+  });
+
+  test('provider-reported delta replaces computed delta', () {
+    final result = merge(
+      snapshot(),
+      snapshot(
+        deltaMethod: 'provider_reported',
+        dailyDeltaCm: 7,
+        deltaMeasuredAt: now.subtract(const Duration(hours: 1)),
+      ),
+    );
+    expect(result.payload.deltaMethod, 'provider_reported');
+    expect(result.payload.deltaBaseMeasuredAt, isNull);
+  });
+
+  test('computed delta cannot replace provider-reported delta', () {
+    final result = merge(
+      snapshot(deltaMethod: 'provider_reported'),
+      snapshot(deltaMeasuredAt: now.add(const Duration(hours: 1))),
+    );
+    expect(result.outcome, DailyWaterSnapshotMergeOutcome.identicalNoOp);
+    expect(result.payload.deltaMethod, 'provider_reported');
+  });
+
+  test('newer same-method delta replaces older delta', () {
+    final result = merge(
+      snapshot(deltaMeasuredAt: now.subtract(const Duration(hours: 1))),
+      snapshot(dailyDeltaCm: 7),
+    );
+    expect(result.payload.dailyDeltaCm, 7);
+    expect(result.outcome, DailyWaterSnapshotMergeOutcome.improvedUpdate);
+  });
+
+  test('older same-method delta cannot degrade newer delta', () {
+    final result = merge(
+      snapshot(dailyDeltaCm: 7),
+      snapshot(
+        deltaMeasuredAt: now.subtract(const Duration(hours: 1)),
+        dailyDeltaCm: 3,
+      ),
+    );
+    expect(result.outcome, DailyWaterSnapshotMergeOutcome.identicalNoOp);
+    expect(result.payload.dailyDeltaCm, 7);
+  });
+
+  test('unavailable delta cannot erase a valid delta', () {
+    final result = merge(snapshot(), snapshot(deltaMethod: 'unavailable'));
+    expect(result.outcome, DailyWaterSnapshotMergeOutcome.identicalNoOp);
+    expect(result.payload.deltaMethod, 'computed_same_source');
+  });
+
+  test('merge preserves complete level and delta pairings', () {
+    final result = merge(
+      snapshot(levelCm: null, deltaMethod: 'unavailable'),
+      snapshot(),
+    );
+    expect([
+      result.payload.levelCm,
+      result.payload.levelSource,
+      result.payload.levelMeasuredAt,
+    ], everyElement(isNotNull));
+    expect([
+      result.payload.dailyDeltaCm,
+      result.payload.deltaSource,
+      result.payload.deltaMeasuredAt,
+      result.payload.deltaBaseMeasuredAt,
+    ], everyElement(isNotNull));
+  });
+
+  test('merge recalculates quality from the final payload', () {
+    final result = merge(
+      snapshot(levelCm: null, deltaMethod: 'unavailable', quality: 'unknown'),
+      snapshot(),
+    );
+    expect(result.payload.quality, 'valid');
+  });
+
+  test('a stale final level never becomes valid because delta improves', () {
+    final stale = now.subtract(const Duration(hours: 37));
+    final result = merge(
+      snapshot(levelMeasuredAt: stale, quality: 'stale'),
+      snapshot(
+        levelMeasuredAt: stale,
+        deltaMethod: 'provider_reported',
+        deltaMeasuredAt: now,
+      ),
+    );
+    expect(result.payload.quality, 'stale');
+  });
+
+  test('merge is deterministic for the same inputs', () {
+    final existing = snapshot(
+      levelCm: 500,
+      levelMeasuredAt: now.subtract(const Duration(hours: 1)),
+    );
+    final incoming = snapshot(levelCm: 510);
+    expect(
+      merge(existing, incoming).payload.toJson(),
+      merge(existing, incoming).payload.toJson(),
+    );
+  });
+
+  test('merge result does not depend on provider input order', () {
+    final existing = snapshot(deltaMethod: 'unavailable');
+    final computed = snapshot(deltaMethod: 'computed_same_source');
+    final reported = snapshot(
+      deltaMethod: 'provider_reported',
+      dailyDeltaCm: 7,
+    );
+    final computedThenReported = merge(
+      merge(existing, computed).payload,
+      reported,
+    ).payload;
+    final reportedThenComputed = merge(
+      merge(existing, reported).payload,
+      computed,
+    ).payload;
+    expect(computedThenReported.toJson(), reportedThenComputed.toJson());
+  });
+
   StationSnapshotResult validResult() => StationSnapshotResult(
     stationId: 'bazias',
     stationName: 'Baziaș',
@@ -337,6 +537,7 @@ void main() {
         supabaseUrl: 'https://example.invalid',
         secretKey: 'secret-test-key',
         client: client,
+        nowUtc: () => now,
       );
 
   DailyWaterSnapshotCommand command({
@@ -618,9 +819,193 @@ void main() {
     );
   });
 
+  test('improved existing snapshot produces exactly one PATCH', () async {
+    final existing = snapshot(
+      levelCm: 500,
+      levelMeasuredAt: now.subtract(const Duration(hours: 1)),
+    );
+    final incoming = snapshot(levelCm: 510);
+    final desired = merge(existing, incoming).payload;
+    final client = _RecordingClient.json([
+      [
+        const {'id': 'bazias'},
+      ],
+      [
+        {...existing.toJson(), 'updated_at': '2026-01-15T12:00:00Z'},
+      ],
+      [desired.toJson()],
+      [
+        {...desired.toJson(), 'updated_at': '2026-01-15T12:01:00Z'},
+      ],
+    ]);
+    final result = await writer(client).writeIfAbsent(incoming);
+    final patch =
+        client.requests.singleWhere((request) => request.method == 'PATCH')
+            as http.Request;
+    expect(result.outcome, SnapshotWriteOutcome.updated);
+    expect(
+      client.requests.where((request) => request.method == 'PATCH'),
+      hasLength(1),
+    );
+    expect(patch.url.queryParameters['updated_at'], 'eq.2026-01-15T12:00:00Z');
+    expect(
+      jsonDecode(patch.body).keys,
+      containsAll(<String>['level_cm', 'level_measured_at']),
+    );
+  });
+
+  test('PATCH body includes only changed contract fields', () async {
+    final existing = snapshot(
+      levelCm: 500,
+      levelMeasuredAt: now.subtract(const Duration(hours: 1)),
+    );
+    final incoming = snapshot(levelCm: 510);
+    final desired = merge(existing, incoming).payload;
+    final client = _RecordingClient.json([
+      [
+        const {'id': 'bazias'},
+      ],
+      [
+        {...existing.toJson(), 'updated_at': '2026-01-15T12:00:00Z'},
+      ],
+      [desired.toJson()],
+      [
+        {...desired.toJson(), 'updated_at': '2026-01-15T12:01:00Z'},
+      ],
+    ]);
+    await writer(client).writeIfAbsent(incoming);
+    final body =
+        jsonDecode(
+              (client.requests.singleWhere(
+                        (request) => request.method == 'PATCH',
+                      )
+                      as http.Request)
+                  .body,
+            )
+            as Map<String, dynamic>;
+    expect(
+      body.keys,
+      unorderedEquals(<String>['level_cm', 'level_measured_at']),
+    );
+    expect(
+      body.keys,
+      isNot(containsAll(<String>['id', 'created_at', 'updated_at'])),
+    );
+    expect(body.containsKey('quality_status'), isFalse);
+  });
+
+  test(
+    'zero-row PATCH becomes a no-op when concurrent read matches desired',
+    () async {
+      final existing = snapshot(
+        levelCm: 500,
+        levelMeasuredAt: now.subtract(const Duration(hours: 1)),
+      );
+      final incoming = snapshot(levelCm: 510);
+      final desired = merge(existing, incoming).payload;
+      final client = _RecordingClient.json([
+        [
+          const {'id': 'bazias'},
+        ],
+        [
+          {...existing.toJson(), 'updated_at': '2026-01-15T12:00:00Z'},
+        ],
+        const [],
+        [
+          {...desired.toJson(), 'updated_at': '2026-01-15T12:01:00Z'},
+        ],
+      ]);
+      expect(
+        (await writer(client).writeIfAbsent(incoming)).outcome,
+        SnapshotWriteOutcome.alreadyExists,
+      );
+      expect(
+        client.requests.where((request) => request.method == 'PATCH'),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
+    'zero-row PATCH refuses a different concurrent snapshot without retry',
+    () async {
+      final existing = snapshot(
+        levelCm: 500,
+        levelMeasuredAt: now.subtract(const Duration(hours: 1)),
+      );
+      final incoming = snapshot(levelCm: 510);
+      final client = _RecordingClient.json([
+        [
+          const {'id': 'bazias'},
+        ],
+        [
+          {...existing.toJson(), 'updated_at': '2026-01-15T12:00:00Z'},
+        ],
+        const [],
+        [
+          {...existing.toJson(), 'updated_at': '2026-01-15T12:01:00Z'},
+        ],
+      ]);
+      await expectLater(
+        writer(client).writeIfAbsent(incoming),
+        throwsA(
+          predicate<Object>(
+            (error) => error.toString().contains(
+              'Concurrent snapshot update conflict',
+            ),
+          ),
+        ),
+      );
+      expect(
+        client.requests.where((request) => request.method == 'PATCH'),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
+    'different PATCH read-back fails safely without another write',
+    () async {
+      final existing = snapshot(
+        levelCm: 500,
+        levelMeasuredAt: now.subtract(const Duration(hours: 1)),
+      );
+      final incoming = snapshot(levelCm: 510);
+      final desired = merge(existing, incoming).payload;
+      final client = _RecordingClient.json([
+        [
+          const {'id': 'bazias'},
+        ],
+        [
+          {...existing.toJson(), 'updated_at': '2026-01-15T12:00:00Z'},
+        ],
+        [desired.toJson()],
+        [
+          {...existing.toJson(), 'updated_at': '2026-01-15T12:01:00Z'},
+        ],
+      ]);
+      await expectLater(
+        writer(client).writeIfAbsent(incoming),
+        throwsA(isA<SnapshotWriteException>()),
+      );
+      expect(
+        client.requests.where((request) => request.method == 'PATCH'),
+        hasLength(1),
+      );
+      expect(
+        client.requests.map((request) => request.method),
+        isNot(contains('DELETE')),
+      );
+      expect(
+        client.requests.map((request) => request.method),
+        isNot(contains('POST')),
+      );
+    },
+  );
+
   test('different existing row is refused without update', () async {
     final payload = validPayload();
-    final different = {...payload.toJson(), 'quality': 'partial'};
+    final different = {...payload.toJson(), 'level_cm': 999};
     final client = _RecordingClient.json([
       [
         const {'id': 'bazias'},
@@ -631,7 +1016,8 @@ void main() {
       writer(client).writeIfAbsent(payload),
       throwsA(
         predicate<Object>(
-          (error) => error.toString().contains('will not overwrite'),
+          (error) =>
+              error.toString().contains('Same-day snapshot merge refused'),
         ),
       ),
     );
