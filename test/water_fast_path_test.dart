@@ -11,6 +11,55 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   setUp(WaterService.clearCache);
 
+  test('station metadata preserves missing dynamic Water fields', () {
+    final station = Station.tryFromJson({
+      'id': 'afdj-drencova',
+      'name': 'Drencova',
+      'river': 'Dunărea',
+      'latitude': 44.6377707,
+      'longitude': 21.9723364,
+      'level': null,
+      'trend': null,
+      'last_update': null,
+    });
+
+    expect(station, isNotNull);
+    expect(station!.persistedLevel, isNull);
+    expect(station.persistedTrend, isNull);
+    expect(station.persistedLastUpdate, isNull);
+    expect(station.level.isNaN, isTrue);
+    expect(station.hasWaterLevel, isFalse);
+    expect(station.hasKnownTrend, isFalse);
+    expect(station.trendText, 'Unknown');
+    expect(station.lastUpdate.millisecondsSinceEpoch, 0);
+  });
+
+  test('complete station metadata remains compatible', () {
+    final observedAt = DateTime.utc(2026, 7, 16, 9, 30);
+    final station = Station.tryFromJson({
+      'id': 'afdj-tulcea',
+      'name': 'Tulcea',
+      'river': 'Dunărea',
+      'latitude': 45.1786,
+      'longitude': 28.8059,
+      'level': 214,
+      'trend': 'falling',
+      'last_update': observedAt.toIso8601String(),
+      'has_water_level': true,
+      'has_known_trend': true,
+    });
+
+    expect(station, isNotNull);
+    expect(station!.persistedLevel, 214);
+    expect(station.persistedTrend, WaterTrend.falling);
+    expect(station.persistedLastUpdate, observedAt);
+    expect(station.level, 214);
+    expect(station.trend, WaterTrend.falling);
+    expect(station.lastUpdate, observedAt);
+    expect(station.hasWaterLevel, isTrue);
+    expect(station.hasKnownTrend, isTrue);
+  });
+
   test(
     'FIS current value is emitted before delayed canonical result',
     () async {

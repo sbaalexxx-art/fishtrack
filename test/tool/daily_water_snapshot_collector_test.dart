@@ -326,6 +326,7 @@ void main() {
   );
 
   DailyWaterSnapshotPayload snapshot({
+    String stationId = 'bazias',
     int? levelCm = 503,
     DateTime? levelMeasuredAt,
     int? dailyDeltaCm = 3,
@@ -337,7 +338,7 @@ void main() {
     final levelPresent = levelCm != null;
     final deltaPresent = deltaMethod != 'unavailable';
     return DailyWaterSnapshotPayload(
-      stationId: 'bazias',
+      stationId: stationId,
       observationDate: '2026-01-15',
       levelCm: levelCm,
       levelSource: levelPresent ? 'DanubeHIS' : null,
@@ -532,6 +533,24 @@ void main() {
     failures: const [],
   );
 
+  StationSnapshotResult validResultFor(
+    String stationId,
+    String stationName, {
+    SnapshotSource source = SnapshotSource.danubeHis,
+  }) => StationSnapshotResult(
+    stationId: stationId,
+    stationName: stationName,
+    payload: builder.build(
+      stationId: stationId,
+      nowUtc: now,
+      readings: [
+        reading(source, 500, now.subtract(const Duration(hours: 2))),
+        reading(source, 503, now),
+      ],
+    ),
+    failures: const [],
+  );
+
   SupabaseDailyWaterSnapshotWriter writer(_RecordingClient client) =>
       SupabaseDailyWaterSnapshotWriter(
         supabaseUrl: 'https://example.invalid',
@@ -546,13 +565,19 @@ void main() {
     required List<String> errors,
     Map<String, String> environment = const {},
     SnapshotWriterFactory? customWriterFactory,
+    Map<String, String> stations = const {'bazias': 'Baziaș'},
+    Map<String, String> remoteStationIds = const {},
+    SnapshotCollector? customCollector,
     void Function()? onCollect,
   }) => DailyWaterSnapshotCommand(
-    stations: const {'bazias': 'Baziaș'},
-    collect: (stationId, stationName) async {
-      onCollect?.call();
-      return validResult();
-    },
+    stations: stations,
+    remoteStationIds: remoteStationIds,
+    collect:
+        customCollector ??
+        (stationId, stationName) async {
+          onCollect?.call();
+          return validResult();
+        },
     writerFactory: customWriterFactory ?? (_, _) => fakeWriter,
     environment: environment,
     output: output.add,
@@ -569,8 +594,304 @@ void main() {
     ).run(['--dry-run', '--station-id=bazias']);
     expect(commandResult, 0);
     expect(writer.used, isFalse);
+    expect(writer.closeCalls, 0);
     expect(output, isNotEmpty);
   });
+
+  test(
+    'all canonical selections are processed sequentially in dry-run',
+    () async {
+      final collected = <String>[];
+      final output = <String>[];
+      final result = await command(
+        fakeWriter: _FakeWriter(),
+        output: output,
+        errors: <String>[],
+        stations: canonicalWaterStations,
+        remoteStationIds: canonicalRemoteStationIds,
+        customCollector: (stationId, stationName) async {
+          collected.add(stationId);
+          return validResultFor(
+            stationId,
+            stationName,
+            source: SnapshotSource.danubeFis,
+          );
+        },
+      ).run(['--dry-run', '--all-stations']);
+
+      expect(result, 0);
+      expect(
+        collected,
+        canonicalWaterStations.keys
+            .map((id) => canonicalRemoteStationIds[id] ?? id)
+            .toList(growable: false),
+      );
+      expect(
+        output.last,
+        contains(
+          'total stations=23; fetched=23; inserted=0; updated=0; '
+          'unchanged=0; skipped=0; failed=0',
+        ),
+      );
+      expect(
+        output,
+        contains(
+          'station_id=drencova; remote_station_id=afdj-drencova; '
+          'fetched; source=DanubeFIS; level_cm=503; '
+          'observation_date=2026-01-15',
+        ),
+      );
+    },
+  );
+
+  test(
+    'missing canonical stations resolve only to their explicit remote IDs',
+    () async {
+      final resolvedIds = <String>[];
+      final output = <String>[];
+      final result = await command(
+        fakeWriter: _FakeWriter(),
+        output: output,
+        errors: <String>[],
+        stations: const {
+          'drencova': 'Drencova',
+          'gruia': 'Gruia',
+          'cetate': 'Cetate',
+          'rast': 'Rast',
+        },
+        remoteStationIds: const {
+          'drencova': 'afdj-drencova',
+          'gruia': 'afdj-gruia',
+          'cetate': 'afdj-cetate',
+          'rast': 'afdj-rast',
+        },
+        customCollector: (remoteStationId, stationName) async {
+          resolvedIds.add(remoteStationId);
+          return validResultFor(
+            remoteStationId,
+            stationName,
+            source: SnapshotSource.danubeFis,
+          );
+        },
+      ).run(['--dry-run', '--all-stations']);
+
+      expect(result, 0);
+      expect(resolvedIds, [
+        'afdj-drencova',
+        'afdj-gruia',
+        'afdj-cetate',
+        'afdj-rast',
+      ]);
+      expect(
+        output,
+        contains(
+          'station_id=gruia; remote_station_id=afdj-gruia; '
+          'fetched; source=DanubeFIS; level_cm=503; '
+          'observation_date=2026-01-15',
+        ),
+      );
+    },
+  );
+
+  test('a failed station does not stop the dry-run batch', () async {
+    final collected = <String>[];
+    final errors = <String>[];
+    final result = await command(
+      fakeWriter: _FakeWriter(),
+      output: <String>[],
+      errors: errors,
+      stations: const {'bazias': 'Baziaș', 'drencova': 'Drencova'},
+      customCollector: (stationId, stationName) async {
+        collected.add(stationId);
+        if (stationId == 'bazias') throw StateError('provider unavailable');
+        return validResultFor(stationId, stationName);
+      },
+    ).run(['--dry-run', '--all-stations']);
+
+    expect(result, 1);
+    expect(collected, ['bazias', 'drencova']);
+    expect(errors.single, contains('station_id=bazias;'));
+  });
+
+  test('invalid batch payload is skipped without a snapshot write', () async {
+    final writer = _FakeWriter();
+    final result = await command(
+      fakeWriter: writer,
+      output: <String>[],
+      errors: <String>[],
+      environment: const {
+        'SUPABASE_URL': 'https://test.supabase.co',
+        'SUPABASE_SECRET_KEY': 'secret-test-key',
+      },
+      customCollector: (_, _) async => StationSnapshotResult(
+        stationId: 'bazias',
+        stationName: 'Baziaș',
+        payload: DailyWaterSnapshotPayload(
+          stationId: 'bazias',
+          observationDate: '2026-01-15',
+          levelCm: null,
+          levelSource: null,
+          levelMeasuredAt: null,
+          dailyDeltaCm: null,
+          deltaSource: null,
+          deltaMeasuredAt: null,
+          deltaBaseMeasuredAt: null,
+          deltaMethod: 'unavailable',
+          quality: 'unknown',
+        ),
+        failures: const [],
+      ),
+    ).run(['--apply', '--station-id=bazias', '--confirm-station-id=bazias']);
+
+    expect(result, 1);
+    expect(writer.used, isFalse);
+  });
+
+  test(
+    'batch apply counts same-day no-ops and preserves real sources',
+    () async {
+      final writer = _FakeWriter(
+        outcome: const SnapshotWriteResult.alreadyExists(),
+      );
+      final output = <String>[];
+      final result = await command(
+        fakeWriter: writer,
+        output: output,
+        errors: <String>[],
+        environment: const {
+          'SUPABASE_URL': 'https://test.supabase.co',
+          'SUPABASE_SECRET_KEY': 'secret-test-key',
+        },
+      ).run(['--apply', '--station-id=bazias', '--confirm-station-id=bazias']);
+
+      expect(result, 0);
+      expect(writer.used, isTrue);
+      expect(output.any((line) => line.contains('unchanged=1')), isTrue);
+      expect(output.any((line) => line.contains('sources=DanubeHIS')), isTrue);
+    },
+  );
+
+  test(
+    'an explicitly confirmed subset is applied station by station',
+    () async {
+      final writer = _FakeWriter();
+      final result =
+          await command(
+            fakeWriter: writer,
+            output: <String>[],
+            errors: <String>[],
+            environment: const {
+              'SUPABASE_URL': 'https://test.supabase.co',
+              'SUPABASE_SECRET_KEY': 'secret-test-key',
+            },
+            stations: const {'bazias': 'Baziaș', 'drencova': 'Drencova'},
+            customCollector: (stationId, stationName) async =>
+                validResultFor(stationId, stationName),
+          ).run([
+            '--apply',
+            '--station-id=bazias',
+            '--station-id=drencova',
+            '--confirm-station-id=bazias',
+            '--confirm-station-id=drencova',
+          ]);
+
+      expect(result, 0);
+      expect(writer.used, isTrue);
+    },
+  );
+
+  test(
+    'five consecutive stations keep one writer open until batch completion',
+    () async {
+      final writer = _FakeWriter();
+      final errors = <String>[];
+      final result =
+          await command(
+            fakeWriter: writer,
+            output: <String>[],
+            errors: errors,
+            environment: const {
+              'SUPABASE_URL': 'https://test.supabase.co',
+              'SUPABASE_SECRET_KEY': 'secret-test-key',
+            },
+            stations: const {
+              'bazias': 'Baziaș',
+              'drencova': 'Drencova',
+              'gruia': 'Gruia',
+              'tulcea': 'Tulcea',
+              'sulina': 'Sulina',
+            },
+            customCollector: (stationId, stationName) async =>
+                validResultFor(stationId, stationName),
+          ).run([
+            '--apply',
+            '--station-id=bazias',
+            '--station-id=drencova',
+            '--station-id=gruia',
+            '--station-id=tulcea',
+            '--station-id=sulina',
+            '--confirm-station-id=bazias',
+            '--confirm-station-id=drencova',
+            '--confirm-station-id=gruia',
+            '--confirm-station-id=tulcea',
+            '--confirm-station-id=sulina',
+          ]);
+
+      expect(result, 0);
+      expect(errors, isEmpty);
+      expect(writer.writeStationIds, [
+        'bazias',
+        'drencova',
+        'gruia',
+        'tulcea',
+        'sulina',
+      ]);
+      expect(writer.closeCalls, 1);
+    },
+  );
+
+  test(
+    'a failed station does not close the writer for the next station',
+    () async {
+      const failure = SnapshotWriteException('station verification failed');
+      final writer = _FakeWriter(
+        failure: failure,
+        failStationIds: const {'bazias'},
+      );
+      final output = <String>[];
+      final result =
+          await command(
+            fakeWriter: writer,
+            output: output,
+            errors: <String>[],
+            environment: const {
+              'SUPABASE_URL': 'https://test.supabase.co',
+              'SUPABASE_SECRET_KEY': 'secret-test-key',
+            },
+            stations: const {'bazias': 'Baziaș', 'drencova': 'Drencova'},
+            customCollector: (stationId, stationName) async =>
+                validResultFor(stationId, stationName),
+          ).run([
+            '--apply',
+            '--station-id=bazias',
+            '--station-id=drencova',
+            '--confirm-station-id=bazias',
+            '--confirm-station-id=drencova',
+          ]);
+
+      expect(result, 1);
+      expect(writer.writeStationIds, ['bazias', 'drencova']);
+      expect(
+        output,
+        contains(
+          'station_id=drencova; remote_station_id=drencova; '
+          'inserted; source=DanubeHIS; level_cm=503; '
+          'observation_date=2026-01-15',
+        ),
+      );
+      expect(writer.closeCalls, 1);
+    },
+  );
 
   test('apply without station-id is refused', () async {
     final errors = <String>[];
@@ -784,6 +1105,69 @@ void main() {
     expect(client.requests, hasLength(1));
     expect(client.requests.single.method, 'GET');
   });
+
+  test(
+    'missing canonical stations use their exact remote station IDs',
+    () async {
+      for (final remoteId in const [
+        'afdj-drencova',
+        'afdj-gruia',
+        'afdj-cetate',
+        'afdj-rast',
+      ]) {
+        final payload = snapshot(stationId: remoteId);
+        final client = _RecordingClient.json([
+          [
+            {'id': remoteId},
+          ],
+          const [],
+          [payload.toJson()],
+          [payload.toJson()],
+        ]);
+
+        expect(
+          (await writer(client).writeIfAbsent(payload)).outcome,
+          SnapshotWriteOutcome.inserted,
+        );
+        final verification = client.requests.first as http.Request;
+        expect(verification.url.queryParameters['id'], 'eq.$remoteId');
+      }
+    },
+  );
+
+  test(
+    'a similar but incorrect remote ID is rejected before snapshot write',
+    () async {
+      final payload = snapshot(stationId: 'drencova');
+      final client = _RecordingClient.json([const []]);
+
+      await expectLater(
+        writer(client).writeIfAbsent(payload),
+        throwsA(isA<SnapshotWriteException>()),
+      );
+      expect(client.requests.single.method, 'GET');
+      expect(client.requests.single.url.queryParameters['id'], 'eq.drencova');
+    },
+  );
+
+  test(
+    'multiple remote station matches are rejected without snapshot write',
+    () async {
+      final payload = snapshot(stationId: 'afdj-drencova');
+      final client = _RecordingClient.json([
+        [
+          const {'id': 'afdj-drencova'},
+          const {'id': 'drencova-similar'},
+        ],
+      ]);
+
+      await expectLater(
+        writer(client).writeIfAbsent(payload),
+        throwsA(isA<SnapshotWriteException>()),
+      );
+      expect(client.requests.single.method, 'GET');
+    },
+  );
 
   test('absent row produces exactly one insert', () async {
     final payload = validPayload();
@@ -1233,23 +1617,41 @@ void main() {
 }
 
 class _FakeWriter implements DailyWaterSnapshotWriter {
-  _FakeWriter({this.failure});
+  _FakeWriter({
+    this.failure,
+    this.outcome = const SnapshotWriteResult.inserted(),
+    this.failStationIds = const {},
+  });
 
   final SnapshotWriteException? failure;
+  final SnapshotWriteResult outcome;
+  final Set<String> failStationIds;
   bool used = false;
   bool closed = false;
+  int closeCalls = 0;
+  final List<String> writeStationIds = [];
 
   @override
   Future<SnapshotWriteResult> writeIfAbsent(
     DailyWaterSnapshotPayload payload,
   ) async {
+    if (closed) {
+      throw const SnapshotWriteException('Client is already closed.');
+    }
     used = true;
-    if (failure != null) throw failure!;
-    return const SnapshotWriteResult.inserted();
+    writeStationIds.add(payload.stationId);
+    if (failure != null && failStationIds.contains(payload.stationId)) {
+      throw failure!;
+    }
+    if (failure != null && failStationIds.isEmpty) throw failure!;
+    return outcome;
   }
 
   @override
-  void close() => closed = true;
+  void close() {
+    closeCalls++;
+    closed = true;
+  }
 }
 
 class _RecordingClient extends http.BaseClient {
