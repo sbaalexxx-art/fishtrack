@@ -14,6 +14,7 @@ class DanubeHisWaterProvider {
   Future<Map<String, List<WaterLevel>>> getLevels(
     Iterable<String> stationNames, {
     int limit = 30,
+    int? historyDays,
   }) async {
     final requested = stationNames.map(normalizedName).toSet();
     try {
@@ -24,7 +25,11 @@ class DanubeHisWaterProvider {
       final entries = await Future.wait(
         matches.map((station) async {
           try {
-            final history = await _fetchHistory(station, limit: limit);
+            final history = await _fetchHistory(
+              station,
+              limit: limit,
+              historyDays: historyDays ?? limit,
+            );
             return MapEntry(normalizedName(station.name), history);
           } on Exception catch (error, stackTrace) {
             _logFailure('history ${station.name}', error, stackTrace);
@@ -100,9 +105,11 @@ class DanubeHisWaterProvider {
   Future<List<WaterLevel>> _fetchHistory(
     _DanubeHisStation station, {
     required int limit,
+    required int historyDays,
   }) async {
-    final now = DateTime.now();
-    final from = now.subtract(const Duration(days: 14));
+    final now = DateTime.now().toUtc();
+    final safeHistoryDays = historyDays.clamp(1, 30);
+    final from = now.subtract(Duration(days: safeHistoryDays));
     final uri = Uri.parse('$_baseUrl/results/${station.providerId}').replace(
       queryParameters: {
         'symbol[h]': 'h',

@@ -146,7 +146,7 @@ void main() {
   );
 
   test(
-    'history from another provider is not associated with current',
+    'official cross-source history stays attributed to each observation',
     () async {
       final now = _now();
       final current = _reading(
@@ -174,9 +174,18 @@ void main() {
       final result = await service.getWaterUiResult(_stationFrom(current));
 
       expect(result.source, WaterLevelSource.afdj);
-      expect(result.history, isEmpty);
-      expect(result.latestReading?.hasKnownTrend, isFalse);
-      expect(result.status, WaterUiStatus.insufficientHistory);
+      expect(result.history, hasLength(3));
+      expect(result.history.map((reading) => reading.source), [
+        WaterLevelSource.danubeHis,
+        WaterLevelSource.danubeHis,
+        WaterLevelSource.afdj,
+      ]);
+      expect(result.history.last.timestamp, current.timestamp);
+      expect(result.history.last.value, current.value);
+      expect(result.latestReading?.trend, WaterTrend.rising);
+      expect(result.latestReading?.hasKnownTrend, isTrue);
+      expect(result.deltaCm, 5);
+      expect(result.status, WaterUiStatus.availableHistory);
     },
   );
 
@@ -204,7 +213,7 @@ void main() {
 
     final result = await service.getWaterUiResult(_stationFrom(current));
 
-    expect(result.history, hasLength(2));
+    expect(result.history, hasLength(3));
     expect(
       result.history.every(
         (reading) => reading.source == WaterLevelSource.afdj,
@@ -215,6 +224,39 @@ void main() {
     expect(result.latestReading?.hasKnownTrend, isTrue);
     expect(result.status, WaterUiStatus.availableHistory);
   });
+
+  test(
+    'authoritative current observation closes the real chart series',
+    () async {
+      final now = _now();
+      final current = _reading(
+        value: 535,
+        timestamp: now.subtract(const Duration(minutes: 30)),
+        source: WaterLevelSource.danubeFis,
+      );
+      final service = WaterService(
+        repository: _FakeWaterRepository([
+          _reading(
+            value: 535,
+            timestamp: now.subtract(const Duration(days: 3)),
+            source: WaterLevelSource.danubeHis,
+          ),
+          _reading(
+            value: 537,
+            timestamp: now.subtract(const Duration(days: 1)),
+            source: WaterLevelSource.danubeHis,
+          ),
+        ]),
+      );
+
+      final result = await service.getWaterUiResult(_stationFrom(current));
+
+      expect(result.history.map((reading) => reading.value), [535, 537, 535]);
+      expect(result.history.last.timestamp, current.timestamp);
+      expect(result.deltaCm, -2);
+      expect(result.latestReading?.trend, WaterTrend.falling);
+    },
+  );
 
   test('memoized repeat preserves source value status and trend', () async {
     final now = _now();

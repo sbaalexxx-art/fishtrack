@@ -23,11 +23,13 @@ class WaterHomeStationSelection {
     required this.mode,
     required this.station,
     required this.candidates,
+    this.canonicalStations = const <Station>[],
   });
 
   final WaterStationSelectionMode mode;
   final Station? station;
   final List<Station> candidates;
+  final List<Station> canonicalStations;
 }
 
 enum WaterStationDetailsRange {
@@ -175,6 +177,7 @@ class WaterService {
   static int _waterUiCacheEpoch = 0;
   static int _progressiveBatchGeneration = 0;
   static Station? _selectedStation;
+  static Station? _lastAutomaticStation;
   static WaterStationSelectionMode _selectionMode =
       WaterStationSelectionMode.automatic;
   static Future<void>? _selectionRestore;
@@ -206,6 +209,7 @@ class WaterService {
 
   Stream<Station> get stationSelections => _stationSelectionController.stream;
   Station? get selectedStation => _selectedStation;
+  Station? get lastAutomaticStation => _lastAutomaticStation;
   WaterStationSelectionMode get selectionMode => _selectionMode;
 
   void selectStation(Station station) {
@@ -230,29 +234,146 @@ class WaterService {
   Future<WaterHomeStationSelection> resolveHomeStationSelection() async {
     await _restoreSelection();
     final stations = await getStations();
-    final candidates = await _rankHomeCandidates(stations);
+    final canonicalStations = orderCanonicalStations(stations);
 
     if (_selectionMode == WaterStationSelectionMode.pinned) {
       final pinned = _selectedStation;
       final restored = pinned == null
           ? null
-          : candidates.where((station) => station.id == pinned.id).firstOrNull;
+          : canonicalStations
+                .where((station) => station.id == pinned.id)
+                .firstOrNull;
       if (restored != null) {
         _selectedStation = restored;
         return WaterHomeStationSelection(
           mode: _selectionMode,
           station: restored,
-          candidates: candidates,
+          candidates: rankHomeCandidates(stations),
+          canonicalStations: canonicalStations,
         );
       }
       await setAutomatic();
     }
 
+    try {
+      final position = await _locationService.determinePosition();
+      final candidates = rankHomeCandidates(
+        stations,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      final automaticStations = rankCanonicalStations(
+        canonicalStations,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      final automaticStation = automaticStations.firstOrNull;
+      if (automaticStation != null) {
+        _lastAutomaticStation = automaticStation;
+      }
+      return WaterHomeStationSelection(
+        mode: WaterStationSelectionMode.automatic,
+        station: automaticStation,
+        candidates: candidates,
+        canonicalStations: canonicalStations,
+      );
+    } on LocationFailure {
+      // Without a real position there is no safe automatic station choice.
+    } on Exception {
+      // Keep automatic mode without inventing a first-station fallback.
+    }
+
+    final retainedAutomaticStation = _lastAutomaticStation == null
+        ? null
+        : canonicalStations
+              .where((station) => station.id == _lastAutomaticStation!.id)
+              .firstOrNull;
+    if (retainedAutomaticStation != null) {
+      _lastAutomaticStation = retainedAutomaticStation;
+    }
     return WaterHomeStationSelection(
       mode: WaterStationSelectionMode.automatic,
-      station: candidates.firstOrNull,
-      candidates: candidates,
+      station: retainedAutomaticStation,
+      candidates: rankHomeCandidates(stations),
+      canonicalStations: canonicalStations,
     );
+  }
+
+  static List<String> get canonicalStationNames =>
+      WaterRepository.officialAfdjStationOrder;
+
+  static List<Station> orderCanonicalStations(Iterable<Station> stations) {
+    final byName = <String, Station>{
+      for (final station in stations)
+        _normalizeStationName(station.name): station,
+    };
+    return List<Station>.unmodifiable(
+      canonicalStationNames
+          .map((name) => byName[_normalizeStationName(name)])
+          .whereType<Station>(),
+    );
+  }
+
+  static List<String> filterCanonicalStationNames(String query) {
+    final normalizedQuery = _normalizeStationName(query);
+    if (normalizedQuery.isEmpty) return canonicalStationNames;
+    return List<String>.unmodifiable(
+      canonicalStationNames.where(
+        (name) => _normalizeStationName(name).contains(normalizedQuery),
+      ),
+    );
+  }
+
+  static Station? canonicalStationNamed(
+    Iterable<Station> stations,
+    String canonicalName,
+  ) {
+    final normalizedName = _normalizeStationName(canonicalName);
+    return stations
+        .where(
+          (station) => _normalizeStationName(station.name) == normalizedName,
+        )
+        .firstOrNull;
+  }
+
+  static List<Station> rankCanonicalStations(
+    Iterable<Station> stations, {
+    required double latitude,
+    required double longitude,
+  }) {
+    final canonicalOrder = canonicalStationNames
+        .map(_normalizeStationName)
+        .toList(growable: false);
+    final ranked = orderCanonicalStations(stations)
+        .where(
+          (station) =>
+              station.latitude.isFinite &&
+              station.longitude.isFinite &&
+              station.latitude.abs() <= 90 &&
+              station.longitude.abs() <= 180 &&
+              (station.latitude != 0 || station.longitude != 0),
+        )
+        .toList();
+    ranked.sort((left, right) {
+      final leftDistance = Geolocator.distanceBetween(
+        latitude,
+        longitude,
+        left.latitude,
+        left.longitude,
+      );
+      final rightDistance = Geolocator.distanceBetween(
+        latitude,
+        longitude,
+        right.latitude,
+        right.longitude,
+      );
+      final byDistance = leftDistance.compareTo(rightDistance);
+      if (byDistance != 0) return byDistance;
+      return canonicalOrder
+          .indexOf(_normalizeStationName(left.name))
+          .compareTo(canonicalOrder.indexOf(_normalizeStationName(right.name)));
+    });
+    return List<Station>.unmodifiable(ranked);
   }
 
   static List<Station> eligibleHomeStations(Iterable<Station> stations) {
@@ -326,24 +447,10 @@ class WaterService {
 
   static void resetStationSelectionForTest() {
     _selectedStation = null;
+    _lastAutomaticStation = null;
     _selectionMode = WaterStationSelectionMode.automatic;
     _selectionRestore = null;
     _selectionWasExplicitlySet = false;
-  }
-
-  Future<List<Station>> _rankHomeCandidates(List<Station> stations) async {
-    try {
-      final position = await _locationService.determinePosition();
-      return rankHomeCandidates(
-        stations,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-    } on LocationFailure {
-      return rankHomeCandidates(stations);
-    } on Exception {
-      return rankHomeCandidates(stations);
-    }
   }
 
   Future<void> _restoreSelection() {
@@ -576,6 +683,18 @@ class WaterService {
     bool forceRefresh = false,
   }) async* {
     final now = DateTime.now();
+    // Snapshot cache state before a forced refresh invalidates its entry. This
+    // lets the UI keep the last real reading visible while the provider call
+    // runs in the background.
+    final cached = _cachedWaterUiResult(
+      station,
+      limit: limit,
+      historyWindow: historyWindow,
+      now: now,
+    );
+    final lastKnownGood = cached == null
+        ? _lastKnownGoodResult(station, now)
+        : null;
     final canonicalFuture = getWaterUiResult(
       station,
       limit: limit,
@@ -584,23 +703,12 @@ class WaterService {
     );
     WaterUiResult? displayed;
 
-    if (!forceRefresh) {
-      final cached = _cachedWaterUiResult(
-        station,
-        limit: limit,
-        historyWindow: historyWindow,
-        now: now,
-      );
-      if (cached != null && _hasValidReading(cached)) {
-        displayed = cached;
-        yield cached;
-      } else {
-        final lastKnownGood = _lastKnownGoodResult(station, now);
-        if (lastKnownGood != null) {
-          displayed = lastKnownGood;
-          yield lastKnownGood;
-        }
-      }
+    if (cached != null && _hasValidReading(cached)) {
+      displayed = cached;
+      yield cached;
+    } else if (lastKnownGood != null) {
+      displayed = lastKnownGood;
+      yield lastKnownGood;
     }
 
     final fastResult = _fastResultFromStation(station, now);
@@ -613,9 +721,28 @@ class WaterService {
 
     final canonical = await canonicalFuture;
     if (displayed == null ||
+        forceRefresh ||
         _shouldReplaceDisplayed(displayed, canonical, DateTime.now())) {
       yield canonical;
     }
+  }
+
+  /// Returns only a cached or last-known-good result for [station]. It never
+  /// starts a provider request, so callers can render a station-consistent
+  /// value immediately while scheduling a background refresh.
+  WaterUiResult? cachedWaterUiResult(
+    Station station, {
+    int limit = 72,
+    Duration historyWindow = const Duration(hours: 24),
+  }) {
+    final now = DateTime.now();
+    return _cachedWaterUiResult(
+          station,
+          limit: limit,
+          historyWindow: historyWindow,
+          now: now,
+        ) ??
+        _lastKnownGoodResult(station, now);
   }
 
   Future<WaterUiResult> _loadWaterUiResult(
@@ -659,9 +786,7 @@ class WaterService {
     );
     final compatibleReadings = selectedReading == null
         ? const <WaterLevel>[]
-        : validReadings
-              .where((reading) => reading.source == selectedReading.source)
-              .toList(growable: false);
+        : _historyThroughSelectedReading(validReadings, selectedReading);
     final history = _withCompatibleTrends(compatibleReadings);
     final latestReading = selectedReading == null
         ? null
@@ -709,13 +834,36 @@ class WaterService {
     List<WaterLevel> history,
   ) {
     for (final candidate in history.reversed) {
-      if (candidate.source == latest.source &&
+      if (_sourcesCanShareHistory(candidate.source, latest.source) &&
           candidate.unit.toLowerCase() == 'cm' &&
           candidate.timestamp.isBefore(latest.timestamp)) {
         return candidate;
       }
     }
     return null;
+  }
+
+  static List<WaterLevel> _historyThroughSelectedReading(
+    List<WaterLevel> readings,
+    WaterLevel selectedReading,
+  ) {
+    final selectedTimestamp = selectedReading.timestamp.toUtc();
+    final byTimestamp = <int, WaterLevel>{};
+    for (final reading in readings) {
+      if (!_sourcesCanShareHistory(reading.source, selectedReading.source) ||
+          reading.timestamp.toUtc().isAfter(selectedTimestamp)) {
+        continue;
+      }
+      byTimestamp[reading.timestamp.toUtc().microsecondsSinceEpoch] = reading;
+    }
+    // The authoritative current observation can come from the prefetched
+    // station feed rather than the history provider. It is still a real
+    // observation and must close the chart series instead of being shown only
+    // in the hero summary.
+    byTimestamp[selectedTimestamp.microsecondsSinceEpoch] = selectedReading;
+    final chronological = byTimestamp.values.toList(growable: false)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return chronological;
   }
 
   Future<List<Station>> getStations({bool forceRefresh = false}) async =>
@@ -1382,7 +1530,8 @@ class WaterService {
   }
 
   static WaterLevel _copyWithTrend(WaterLevel reading, WaterLevel? previous) {
-    if (previous == null || previous.source != reading.source) {
+    if (previous == null ||
+        !_sourcesCanShareHistory(previous.source, reading.source)) {
       return WaterLevel(
         stationId: reading.stationId,
         value: reading.value,
@@ -1412,6 +1561,14 @@ class WaterService {
       hasKnownTrend: true,
     );
   }
+
+  static bool _sourcesCanShareHistory(
+    WaterLevelSource first,
+    WaterLevelSource second,
+  ) =>
+      first == second ||
+      (first != WaterLevelSource.manualFallback &&
+          second != WaterLevelSource.manualFallback);
 
   static bool _isOfficialSource(WaterLevelSource source) => switch (source) {
     WaterLevelSource.afdj ||

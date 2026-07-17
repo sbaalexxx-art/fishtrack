@@ -1,13 +1,17 @@
 import 'package:timezone/timezone.dart' as tz;
 
 enum SnapshotSource {
-  afdj('AFDJ'),
-  danubeHis('DanubeHIS'),
-  danubeFis('DanubeFIS');
+  afdj('AFDJ', authorityRank: 3),
+  danubeHis('DanubeHIS', authorityRank: 2),
+  danubeFis('DanubeFIS', authorityRank: 1);
 
-  const SnapshotSource(this.databaseValue);
+  const SnapshotSource(this.databaseValue, {required this.authorityRank});
 
   final String databaseValue;
+  final int authorityRank;
+
+  static SnapshotSource fromDatabaseValue(String value) =>
+      values.firstWhere((source) => source.databaseValue == value);
 }
 
 enum SnapshotDeltaMethod {
@@ -405,6 +409,18 @@ class DailyWaterSnapshotMerger {
         payload: incomingComplete ? incoming : existing,
         changed: !existingComplete && incomingComplete,
       );
+    }
+    final existingAuthority = SnapshotSource.fromDatabaseValue(
+      existing.levelSource!,
+    ).authorityRank;
+    final incomingAuthority = SnapshotSource.fromDatabaseValue(
+      incoming.levelSource!,
+    ).authorityRank;
+    if (incomingAuthority > existingAuthority) {
+      return _MergeGroup(payload: incoming, changed: true);
+    }
+    if (incomingAuthority < existingAuthority) {
+      return _MergeGroup(payload: existing, changed: false);
     }
     final time = incoming.levelMeasuredAt!.toUtc().compareTo(
       existing.levelMeasuredAt!.toUtc(),

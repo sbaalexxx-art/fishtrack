@@ -88,10 +88,10 @@ class WaterRepository implements OfficialWaterDataSource {
   static const maxSnapshotHistoryPoints = 30;
 
   static const officialAfdjStationOrder = <String>[
-    'Bazias',
+    'Baziaș',
     'Moldova Veche',
     'Drencova',
-    'Orsova',
+    'Orșova',
     'Drobeta Turnu Severin',
     'Gruia',
     'Cetate',
@@ -99,15 +99,15 @@ class WaterRepository implements OfficialWaterDataSource {
     'Rast',
     'Bechet',
     'Corabia',
-    'Turnu Magurele',
+    'Turnu Măgurele',
     'Zimnicea',
     'Giurgiu',
-    'Oltenita',
-    'Calarasi',
-    'Cernavoda',
-    'Harsova',
-    'Braila',
-    'Galati',
+    'Oltenița',
+    'Călărași',
+    'Cernavodă',
+    'Hârșova',
+    'Brăila',
+    'Galați',
     'Isaccea',
     'Tulcea',
     'Sulina',
@@ -390,7 +390,7 @@ class WaterRepository implements OfficialWaterDataSource {
       limit: limit,
     );
     final failedProviders = <String>[];
-    WaterLevel? liveReading;
+    List<WaterLevel> liveReadings = const <WaterLevel>[];
     if (stationName != null && stationName.trim().isNotEmpty) {
       final normalized = DanubeHisWaterProvider.normalizedName(stationName);
       List<WaterLevel> afdjReadings = const [];
@@ -433,13 +433,13 @@ class WaterRepository implements OfficialWaterDataSource {
         hisReadings,
         fisReadings,
       );
-      liveReading = selectedReadings.isEmpty ? null : selectedReadings.first;
+      liveReadings = selectedReadings;
     }
 
-    final readings = _mergeSnapshotHistoryWithLiveReading(
+    final readings = _mergeSnapshotHistoryWithLiveReadings(
       stationId,
       snapshotResult.readings,
-      liveReading,
+      liveReadings,
     );
     if (readings.isNotEmpty) {
       return WaterHistoryResult(
@@ -447,7 +447,9 @@ class WaterRepository implements OfficialWaterDataSource {
             ? WaterHistoryResultStatus.success
             : WaterHistoryResultStatus.insufficientHistory,
         readings: List<WaterLevel>.unmodifiable(readings),
-        source: liveReading?.source ?? readings.last.source,
+        source: liveReadings.isNotEmpty
+            ? liveReadings.first.source
+            : readings.last.source,
         hadProviderError: failedProviders.isNotEmpty,
         safeDiagnosticMessage:
             _safeProviderDiagnostic(failedProviders) ??
@@ -602,13 +604,13 @@ class WaterRepository implements OfficialWaterDataSource {
     return source == WaterLevelSource.manualFallback ? null : source;
   }
 
-  static List<WaterLevel> _mergeSnapshotHistoryWithLiveReading(
+  static List<WaterLevel> _mergeSnapshotHistoryWithLiveReadings(
     String stationId,
     List<WaterLevel> snapshots,
-    WaterLevel? liveReading,
+    List<WaterLevel> liveReadings,
   ) {
     final readingsByDate = <String, WaterLevel>{};
-    for (final reading in [...snapshots, ?liveReading]) {
+    for (final reading in [...snapshots, ...liveReadings]) {
       if (!_isValidReading(reading)) continue;
       final dateKey = reading.timestamp.toUtc().toIso8601String().substring(
         0,
@@ -786,17 +788,15 @@ class WaterRepository implements OfficialWaterDataSource {
       _logProviderUsed(stationName, afdj.first, 'AFDJ primary available');
       return [
         afdj.first,
-        ...danubeHis
-            .where(
-              (reading) => reading.timestamp.isBefore(afdj.first.timestamp),
-            )
-            .take(13),
+        ...danubeHis.where(
+          (reading) => reading.timestamp.isBefore(afdj.first.timestamp),
+        ),
       ];
     }
     if (danubeHis.isNotEmpty) {
       _logAfdjNotSelected(stationName, 'no valid AFDJ reading matched');
       _logProviderUsed(stationName, danubeHis.first, 'AFDJ unavailable');
-      return danubeHis.take(14).toList(growable: false);
+      return danubeHis;
     }
     if (danubeFis.isNotEmpty) {
       _logAfdjNotSelected(stationName, 'no valid AFDJ reading matched');
