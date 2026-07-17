@@ -257,7 +257,8 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
   Widget _buildDashboard(HomePremiumLayout layout) {
     return PremiumDashboard(
       layout: layout,
-      onWaterLevelPressed: () => _openPage(const WaterLevelPage()),
+      onWaterLevelPressed: (station) =>
+          _openPage(WaterLevelPage(initialStation: station)),
       onWeatherPressed: () => _openPage(const WeatherPage()),
       onWeatherMetricPressed: (section) =>
           _openPage(WeatherPage(initialSection: section)),

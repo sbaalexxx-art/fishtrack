@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/formatters/water_freshness_formatter.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../core/water/water_history_analysis.dart';
 import '../../l10n/l10n.dart';
 import '../../models/station.dart';
 import '../../models/water_level.dart';
@@ -46,15 +47,24 @@ Color waterCardTrendColor(WaterTrend? trend) => switch (trend) {
 bool shouldShowWaterHistoryChart(List<WaterLevel> history) =>
     history.length >= 2;
 
+bool isApproximatelyDailyWaterComparison(Duration duration) {
+  final hours = duration.inMinutes.abs() / 60;
+  return hours >= 20 && hours <= 28;
+}
+
 class WaterLevelCardPremium extends StatefulWidget {
   const WaterLevelCardPremium({
     super.key,
     required this.layout,
     this.selectedStation,
+    this.onOpenDetails,
+    this.waterService,
   });
 
   final HomePremiumLayout layout;
   final Station? selectedStation;
+  final ValueChanged<Station>? onOpenDetails;
+  final WaterService? waterService;
 
   @override
   State<WaterLevelCardPremium> createState() => _WaterLevelCardPremiumState();
@@ -62,7 +72,7 @@ class WaterLevelCardPremium extends StatefulWidget {
 
 class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
     with WidgetsBindingObserver {
-  final WaterService _waterService = WaterService();
+  late final WaterService _waterService;
   final Connectivity _connectivity = Connectivity();
   late Future<Station?> _stationFuture;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -83,7 +93,17 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _stationFuture = Future<Station?>.value(null);
+    _waterService = widget.waterService ?? WaterService();
+    final lastAutomaticStation = _waterService.lastAutomaticStation;
+    _stationFuture = Future<Station?>.value(lastAutomaticStation);
+    if (lastAutomaticStation != null) {
+      _activeStationId = lastAutomaticStation.id;
+      _waterResultStationId = lastAutomaticStation.id;
+      _isWaterResultLoading = true;
+      unawaited(_loadWaterResult(lastAutomaticStation, ++_stationRequestId));
+    } else {
+      _isWaterResultLoading = true;
+    }
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
       _updateConnectivity,
     );
@@ -194,11 +214,18 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
   Future<void> _switchStationWhenReady(Station station) async {
     if (_activeStationId == station.id) return;
     final requestId = ++_stationRequestId;
-    setState(() => _isWaterResultLoading = true);
+    setState(() {
+      _activeStationId = station.id;
+      _waterResult = null;
+      _waterResultStationId = station.id;
+      _stationFuture = Future<Station?>.value(station);
+      _isWaterResultLoading = true;
+    });
     try {
       await for (final result in _waterService.getProgressiveWaterUiResults(
         station,
         limit: 72,
+        forceRefresh: true,
       )) {
         if (!mounted || requestId != _stationRequestId) return;
         setState(() {
@@ -279,6 +306,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
       await for (final result in _waterService.getProgressiveWaterUiResults(
         station,
         limit: 72,
+        forceRefresh: true,
       )) {
         if (!mounted ||
             requestId != _stationRequestId ||
@@ -343,9 +371,6 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
         final waterValue = latestReading?.value ?? station?.level;
         final waterUnit =
             latestReading?.unit ?? station?.waterLevelUnit ?? 'cm';
-        final trend =
-            waterResult?.trend ?? latestReading?.trend ?? station?.trend;
-        final hasKnownTrend = trend != null;
         final measurementTimestamp =
             waterResult?.measurementTimestamp ??
             (hasStationReading ? station!.lastUpdate : null);
@@ -382,18 +407,13 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
                 : context.l10n.noStationAvailable);
         final waterLevel = hasReading && waterValue != null
             ? '${waterValue.toStringAsFixed(0)} $waterUnit'
-            : context.l10n.noData;
-        final status = hasReading
-            ? (hasKnownTrend
-                  ? _statusFor(context, trend)
-                  : context.l10n.unknown)
-            : context.l10n.noData;
+            : null;
         final lastUpdate = measurementTimestamp == null
             ? (snapshot.hasError
                   ? Localizations.localeOf(context).languageCode == 'ro'
                         ? 'Încercați din nou în câteva momente'
                         : 'Please try again in a few moments'
-                  : context.l10n.waitingForData)
+                  : null)
             : WaterFreshnessFormatter.format(
                 measurementTimestamp: measurementTimestamp,
                 now: DateTime.now(),
@@ -406,7 +426,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
                   ) ??
                   latestReading?.sourceName ??
                   station!.waterLevelSource
-            : context.l10n.noSource;
+            : null;
 
         return PremiumLoadingShimmer(
           isLoading: isInitialLoading,
@@ -422,25 +442,35 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
               final cardPadding = layout.isSmallPhone
                   ? 7.0
                   : (layout.isTablet ? 10.0 : 8.0);
-              final verticalPadding = (compact ? 6.0 : cardPadding) * .80;
-              final trendColor = waterCardTrendColor(trend);
+              final verticalPadding = (compact ? 5.0 : cardPadding) * .80;
               final fullHistory = waterResult?.history ?? const <WaterLevel>[];
-              final history = fullHistory.length > 7
-                  ? fullHistory.sublist(fullHistory.length - 7)
-                  : fullHistory;
+              final history = realWaterHistorySeries(
+                fullHistory,
+                period: const Duration(days: 7),
+                stationId: station?.id,
+              );
               final historyLoading =
                   station != null &&
                   _waterResultStationId == station.id &&
                   _isWaterResultLoading;
               final canShowHistory = shouldShowWaterHistoryChart(history);
-              final deltaLabel = formatWaterCardDelta(
-                waterResult?.deltaCm,
-                waterUnit,
-              );
+              final historyDelta = realWaterSeriesDelta(history);
+              final historyTrend = waterTrendFromRealDelta(historyDelta);
+              final historyColor = waterCardTrendColor(historyTrend);
+              const insufficientHistoryColor = Color(0xFF9AA7B2);
+              final truthfulTrend =
+                  canShowHistory &&
+                  historyTrend != null &&
+                  historyDelta != null;
+              final deltaLabel = formatWaterCardDelta(historyDelta, waterUnit);
               final isRo = Localizations.localeOf(context).languageCode == 'ro';
-              final trendStatus = hasProviderError
-                  ? context.l10n.updateFailed
-                  : (isStale ? lastUpdate : status);
+              final comparisonLabel = _comparisonLabel(
+                context,
+                waterResult?.comparisonDuration,
+              );
+              final trendStatus = historyTrend == null
+                  ? context.l10n.notEnoughHistory
+                  : _statusFor(context, historyTrend);
               final badgeLabel = hasReading
                   ? isStale
                         ? (isRo ? 'DATE VECHI' : 'STALE DATA')
@@ -490,19 +520,33 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
                         ],
                       ),
                       Expanded(
-                        child: Center(
-                          child: Text(
-                            isRo
-                                ? 'Se \u00eencarc\u0103 datele\u2026'
-                                : 'Loading data\u2026',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: AppTextStyles.caption.copyWith(
-                              color: Colors.white70,
-                              fontSize: compact ? 10 : null,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              isRo
+                                  ? 'Se \u00eencarc\u0103 nivelul apei\u2026'
+                                  : 'Loading water level\u2026',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: AppTextStyles.caption.copyWith(
+                                color: Colors.white70,
+                                fontSize: compact ? 10 : null,
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            FractionallySizedBox(
+                              widthFactor: .56,
+                              child: Container(
+                                height: 7,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: .10),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -510,319 +554,416 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
                 );
               }
 
-              return Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: cardPadding,
-                  vertical: verticalPadding,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF162F40), Color(0xFF0D2230)],
+              if (!hasReading) {
+                return Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: cardPadding,
+                    vertical: verticalPadding,
                   ),
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(
-                    color: const Color(0xFF00BCD4).withValues(alpha: 0.38),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF00BCD4).withValues(alpha: 0.06),
-                      blurRadius: 16,
-                      spreadRadius: -9,
-                      offset: const Offset(0, 7),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF162F40), Color(0xFF0D2230)],
                     ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: compact ? 26 : 30,
-                          height: compact ? 26 : 30,
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF00BCD4,
-                            ).withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: const Color(
-                                0xFF00BCD4,
-                              ).withValues(alpha: 0.46),
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.water_rounded,
-                            color: const Color(0xFF00BCD4),
-                            size: (compact ? 15 : 17) * layout.iconScale,
-                          ),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: const Color(0xFF00BCD4).withValues(alpha: .26),
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      isRo
+                          ? 'Date despre ap\u0103 indisponibile momentan'
+                          : 'Water data is temporarily unavailable',
+                      key: const Key('water-home-no-data-message'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.caption.copyWith(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(15),
+                  onTap: station == null || widget.onOpenDetails == null
+                      ? null
+                      : () => widget.onOpenDetails!(station),
+                  child: Ink(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: cardPadding,
+                      vertical: verticalPadding,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF162F40), Color(0xFF0D2230)],
+                      ),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(
+                        color: const Color(0xFF00BCD4).withValues(alpha: 0.38),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFF00BCD4,
+                          ).withValues(alpha: 0.06),
+                          blurRadius: 16,
+                          spreadRadius: -9,
+                          offset: const Offset(0, 7),
                         ),
-                        SizedBox(width: compact ? 6 : 8),
-                        Expanded(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                context.l10n.waterLevel.toUpperCase(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppTextStyles.cardTitle.copyWith(
-                                  fontSize:
-                                      (compact ? 13 : 15) *
-                                      layout.titleFontScale,
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: compact ? 26 : 30,
+                              height: compact ? 26 : 30,
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFF00BCD4,
+                                ).withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF00BCD4,
+                                  ).withValues(alpha: 0.46),
                                 ),
                               ),
-                              Row(
+                              child: Icon(
+                                Icons.water_rounded,
+                                color: const Color(0xFF00BCD4),
+                                size: (compact ? 15 : 17) * layout.iconScale,
+                              ),
+                            ),
+                            SizedBox(width: compact ? 6 : 8),
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: Text(
-                                      stationName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: AppTextStyles.caption.copyWith(
-                                        color: Colors.white70,
-                                        fontSize: narrow || compact ? 8 : 10,
-                                      ),
+                                  Text(
+                                    context.l10n.waterLevel.toUpperCase(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.cardTitle.copyWith(
+                                      fontSize:
+                                          (compact ? 13 : 15) *
+                                          layout.titleFontScale,
                                     ),
                                   ),
-                                  SizedBox(width: compact ? 2 : 4),
-                                  Tooltip(
-                                    message: context.l10n.waterStations,
-                                    child:
-                                        _selectionMode ==
-                                            WaterStationSelectionMode.pinned
-                                        ? InkResponse(
-                                            onTap: _setAutomatic,
-                                            radius: 12,
-                                            child: Icon(
-                                              Icons.push_pin_rounded,
-                                              color: const Color(0xFF00BCD4),
-                                              size: compact ? 12 : 14,
-                                            ),
-                                          )
-                                        : Icon(
-                                            Icons.my_location_rounded,
-                                            color: Colors.white54,
-                                            size: compact ? 12 : 14,
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          stationName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: AppTextStyles.caption.copyWith(
+                                            color: Colors.white70,
+                                            fontSize: compact ? 12 : 14,
+                                            fontWeight: FontWeight.w600,
                                           ),
+                                        ),
+                                      ),
+                                      SizedBox(width: compact ? 2 : 4),
+                                      Tooltip(
+                                        message: context.l10n.waterStations,
+                                        child:
+                                            _selectionMode ==
+                                                WaterStationSelectionMode.pinned
+                                            ? InkResponse(
+                                                onTap: _setAutomatic,
+                                                radius: 12,
+                                                child: Icon(
+                                                  Icons.push_pin_rounded,
+                                                  color: const Color(
+                                                    0xFF00BCD4,
+                                                  ),
+                                                  size: compact ? 14 : 16,
+                                                ),
+                                              )
+                                            : Icon(
+                                                Icons.my_location_rounded,
+                                                color: Colors.white54,
+                                                size: compact ? 14 : 16,
+                                              ),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        _selectionMode ==
+                                                WaterStationSelectionMode.pinned
+                                            ? context.l10n.waterPinned
+                                            : context.l10n.waterAutomatic,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTextStyles.caption.copyWith(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
+                              ),
+                            ),
+                            SizedBox(width: compact ? 6 : 8),
+                            if (showLiveBadge || showNonLiveBadge)
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: compact ? 6.5 : 7.5,
+                                  vertical: compact ? 1.5 : 2.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: badgeColor.withValues(alpha: 0.06),
+                                  borderRadius: BorderRadius.circular(9),
+                                  border: Border.all(
+                                    color: badgeColor.withValues(alpha: 0.46),
+                                  ),
+                                ),
+                                child: Text(
+                                  badgeLabel,
+                                  maxLines: 1,
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: badgeColor,
+                                    fontSize: narrow || compact ? 7.5 : 8.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.48,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        SizedBox(height: compact ? 2 : 4),
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                flex: narrow ? 3 : 4,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            truthfulTrend
+                                                ? deltaLabel
+                                                : waterLevel!,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize:
+                                                  (truthfulTrend
+                                                      ? (compact
+                                                            ? 23
+                                                            : (narrow
+                                                                  ? 25
+                                                                  : 30))
+                                                      : (compact
+                                                            ? 22
+                                                            : (narrow
+                                                                  ? 22
+                                                                  : 29))) *
+                                                  layout.titleFontScale,
+                                              height: 1,
+                                              fontWeight: FontWeight.bold,
+                                              color: truthfulTrend
+                                                  ? historyColor
+                                                  : Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                        if (truthfulTrend) ...[
+                                          SizedBox(width: compact ? 4 : 6),
+                                          Flexible(
+                                            child: Text(
+                                              waterLevel!,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: AppTextStyles.caption
+                                                  .copyWith(
+                                                    color: Colors.white70,
+                                                    fontSize: compact ? 11 : 13,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    SizedBox(height: compact ? 1 : 3),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          truthfulTrend
+                                              ? _iconFor(historyTrend)
+                                              : Icons.help_outline_rounded,
+                                          color: truthfulTrend
+                                              ? historyColor
+                                              : insufficientHistoryColor,
+                                          size: compact ? 13 : 16,
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Flexible(
+                                          child: Text(
+                                            !truthfulTrend
+                                                ? context.l10n.notEnoughHistory
+                                                : '$deltaLabel · $trendStatus',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: truthfulTrend
+                                                  ? historyColor
+                                                  : insufficientHistoryColor,
+                                              fontSize: compact ? 12 : 13,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (!compact &&
+                                        comparisonLabel != null &&
+                                        truthfulTrend) ...[
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        comparisonLabel,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTextStyles.caption.copyWith(
+                                          color: Colors.white60,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              SizedBox(width: narrow ? 6 : 10),
+                              Expanded(
+                                flex: narrow ? 2 : 3,
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: compact ? 4 : 6,
+                                    vertical: compact ? 2 : 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFF061720,
+                                    ).withValues(alpha: 0.52),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color:
+                                          (canShowHistory
+                                                  ? historyColor
+                                                  : const Color(0xFF00BCD4))
+                                              .withValues(alpha: 0.20),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Text(
+                                        historyTitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTextStyles.caption.copyWith(
+                                          color: Colors.white60,
+                                          fontSize: narrow || compact ? 7 : 9,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.55,
+                                        ),
+                                      ),
+                                      SizedBox(height: compact ? 1.5 : 2.5),
+                                      Container(
+                                        height: 1,
+                                        color:
+                                            (canShowHistory
+                                                    ? historyColor
+                                                    : const Color(0xFF00BCD4))
+                                                .withValues(alpha: 0.14),
+                                      ),
+                                      SizedBox(height: compact ? 1.5 : 2.5),
+                                      Expanded(
+                                        child: historyLoading && !canShowHistory
+                                            ? const Center(
+                                                child: SizedBox.square(
+                                                  dimension: 16,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 1.8,
+                                                      ),
+                                                ),
+                                              )
+                                            : canShowHistory
+                                            ? CustomPaint(
+                                                painter: _WaterSparklinePainter(
+                                                  readings: history,
+                                                  color: historyColor,
+                                                ),
+                                                child: const SizedBox.expand(),
+                                              )
+                                            : const SizedBox.shrink(),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        SizedBox(width: compact ? 6 : 8),
-                        if (showLiveBadge || showNonLiveBadge)
-                          Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: compact ? 6.5 : 7.5,
-                              vertical: compact ? 1.5 : 2.5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: badgeColor.withValues(alpha: 0.06),
-                              borderRadius: BorderRadius.circular(9),
-                              border: Border.all(
-                                color: badgeColor.withValues(alpha: 0.46),
-                              ),
-                            ),
-                            child: Text(
-                              badgeLabel,
-                              maxLines: 1,
-                              style: AppTextStyles.caption.copyWith(
-                                color: badgeColor,
-                                fontSize: narrow || compact ? 7.5 : 8.5,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.48,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    SizedBox(height: compact ? 2 : 4),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: narrow ? 3 : 4,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  deltaLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize:
-                                        (compact ? 22 : (narrow ? 22 : 29)) *
-                                        layout.titleFontScale,
-                                    height: 1,
-                                    fontWeight: FontWeight.bold,
-                                    color: trendColor,
-                                  ),
-                                ),
-                                SizedBox(height: compact ? 0 : 3),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      hasKnownTrend
-                                          ? _iconFor(trend)
-                                          : Icons.help_outline_rounded,
-                                      color: trendColor,
-                                      size: compact ? 13 : 16,
-                                    ),
-                                    const SizedBox(width: 3),
-                                    Flexible(
-                                      child: Text(
-                                        trendStatus,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: trendColor,
-                                          fontSize: narrow || compact ? 9 : 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                SizedBox(height: compact ? 0 : 3),
-                                Text(
-                                  waterLevel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.caption.copyWith(
-                                    color: Colors.white70,
-                                    fontSize: narrow || compact ? 8.5 : 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(width: narrow ? 6 : 10),
-                          Expanded(
-                            flex: narrow ? 2 : 3,
-                            child: Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: compact ? 4 : 6,
-                                vertical: compact ? 2 : 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFF061720,
-                                ).withValues(alpha: 0.52),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color:
-                                      (canShowHistory
-                                              ? trendColor
-                                              : const Color(0xFF00BCD4))
-                                          .withValues(alpha: 0.20),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Text(
-                                    historyTitle,
+                        SizedBox(height: compact ? 2 : 4),
+                        if (sourceLabel != null || lastUpdate != null)
+                          Row(
+                            children: [
+                              if (sourceLabel != null)
+                                Expanded(
+                                  child: Text(
+                                    '${context.l10n.source}: $sourceLabel',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: AppTextStyles.caption.copyWith(
                                       color: Colors.white60,
-                                      fontSize: narrow || compact ? 7 : 9,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.55,
+                                      fontSize: compact ? 9 : 12,
                                     ),
                                   ),
-                                  SizedBox(height: compact ? 1.5 : 2.5),
-                                  Container(
-                                    height: 1,
-                                    color:
-                                        (canShowHistory
-                                                ? trendColor
-                                                : const Color(0xFF00BCD4))
-                                            .withValues(alpha: 0.14),
+                                ),
+                              if (sourceLabel != null && lastUpdate != null)
+                                SizedBox(width: compact ? 6 : 10),
+                              if (lastUpdate != null)
+                                Flexible(
+                                  child: Text(
+                                    '${context.l10n.lastUpdated}: $lastUpdate',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.end,
+                                    style: AppTextStyles.caption.copyWith(
+                                      color: Colors.white60,
+                                      fontSize: compact ? 9 : 12,
+                                    ),
                                   ),
-                                  SizedBox(height: compact ? 1.5 : 2.5),
-                                  Expanded(
-                                    child: historyLoading
-                                        ? const Center(
-                                            child: SizedBox.square(
-                                              dimension: 16,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 1.8,
-                                              ),
-                                            ),
-                                          )
-                                        : canShowHistory
-                                        ? CustomPaint(
-                                            painter: _WaterSparklinePainter(
-                                              readings: history,
-                                              color: trendColor,
-                                            ),
-                                            child: const SizedBox.expand(),
-                                          )
-                                        : Center(
-                                            child: Text(
-                                              _historyStatusLabel(
-                                                reliabilityStatus,
-                                                context: context,
-                                              ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              textAlign: TextAlign.center,
-                                              style: AppTextStyles.caption
-                                                  .copyWith(
-                                                    color: Colors.white54,
-                                                    fontSize: narrow || compact
-                                                        ? 7
-                                                        : 9,
-                                                  ),
-                                            ),
-                                          ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                                ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(height: compact ? 2 : 4),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            sourceLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.caption.copyWith(
-                              color: Colors.white60,
-                              fontSize: narrow || compact ? 7 : 8.5,
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: compact ? 6 : 10),
-                        Flexible(
-                          child: Text(
-                            lastUpdate,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.end,
-                            style: AppTextStyles.caption.copyWith(
-                              color: Colors.white60,
-                              fontSize: narrow || compact ? 7 : 8.5,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               );
             },
@@ -855,15 +996,12 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium>
         null => null,
       };
 
-  static String _historyStatusLabel(
-    WaterUiStatus status, {
-    required BuildContext context,
-  }) => switch (status) {
-    WaterUiStatus.availableHistory => context.l10n.waterLevelHistory,
-    WaterUiStatus.insufficientHistory => context.l10n.unknown,
-    WaterUiStatus.providerError => context.l10n.updateFailed,
-    WaterUiStatus.unavailable => context.l10n.waterUnavailable,
-  };
+  static String? _comparisonLabel(BuildContext context, Duration? duration) {
+    if (duration == null) return null;
+    return isApproximatelyDailyWaterComparison(duration)
+        ? context.l10n.waterComparedWithYesterday
+        : context.l10n.waterComparedWithLastReading;
+  }
 }
 
 class _WaterSparklinePainter extends CustomPainter {

@@ -116,9 +116,52 @@ class WeatherService {
     bool forceRefresh = false,
   }) async {
     final coordinates = await _resolveCoordinates(fallbackStation);
+    return _getWeatherForCoordinates(
+      coordinates.latitude,
+      coordinates.longitude,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  /// Loads weather for a station without consulting the device location.
+  /// Home Weather deliberately keeps its GPS-first behaviour.
+  Future<WeatherData> getWeatherForStation(
+    Station station, {
+    bool forceRefresh = false,
+  }) async => (await getWeatherForStationResult(
+    station,
+    forceRefresh: forceRefresh,
+  )).value;
+
+  Future<CacheResult<WeatherData>> getWeatherForStationResult(
+    Station station, {
+    bool forceRefresh = false,
+  }) {
+    final latitude = station.latitude;
+    final longitude = station.longitude;
+    if (!_validCoordinates(latitude, longitude) ||
+        (latitude == 0 && longitude == 0)) {
+      return Future<CacheResult<WeatherData>>.error(
+        const WeatherServiceException(
+          'Station weather coordinates are invalid.',
+        ),
+      );
+    }
+    return _getWeatherForCoordinates(
+      latitude,
+      longitude,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<CacheResult<WeatherData>> _getWeatherForCoordinates(
+    double latitude,
+    double longitude, {
+    required bool forceRefresh,
+  }) async {
     final key =
-        '${coordinates.latitude.toStringAsFixed(3)}:'
-        '${coordinates.longitude.toStringAsFixed(3)}';
+        '${latitude.toStringAsFixed(3)}:'
+        '${longitude.toStringAsFixed(3)}';
     final cache = _cache.putIfAbsent(
       key,
       () => TimedCache<WeatherData>(duration: cacheDuration),
@@ -126,8 +169,8 @@ class WeatherService {
     try {
       return await cache.get(
         () => _repository.getCurrentWeather(
-          latitude: coordinates.latitude,
-          longitude: coordinates.longitude,
+          latitude: latitude,
+          longitude: longitude,
         ),
         forceRefresh: forceRefresh,
       );

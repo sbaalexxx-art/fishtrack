@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/station.dart';
 import '../../screens/weather_page.dart';
 import 'ai_conditions_card.dart';
 import 'community_card.dart';
@@ -20,7 +21,7 @@ class PremiumDashboard extends StatelessWidget {
   });
 
   final HomePremiumLayout layout;
-  final VoidCallback onWaterLevelPressed;
+  final ValueChanged<Station> onWaterLevelPressed;
   final VoidCallback onWeatherPressed;
   final ValueChanged<WeatherPageSection> onWeatherMetricPressed;
   final VoidCallback onCommunityPressed;
@@ -66,9 +67,9 @@ class PremiumDashboard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               height: geometry.waterHeight,
-              child: _action(
-                onTap: onWaterLevelPressed,
-                child: WaterLevelCardPremium(layout: layout),
+              child: WaterLevelCardPremium(
+                layout: layout,
+                onOpenDetails: onWaterLevelPressed,
               ),
             ),
             SizedBox(height: spacing),

@@ -2,23 +2,41 @@ import 'dart:async';
 
 import 'package:fishtrack/models/station.dart';
 import 'package:fishtrack/models/water_level.dart';
+import 'package:fishtrack/models/weather.dart';
+import 'package:fishtrack/l10n/app_localizations.dart';
+import 'package:fishtrack/core/water/water_history_analysis.dart';
 import 'package:fishtrack/repositories/water_repository.dart';
+import 'package:fishtrack/repositories/weather_repository.dart';
+import 'package:fishtrack/services/location_service.dart';
 import 'package:fishtrack/services/water_service.dart';
+import 'package:fishtrack/services/weather_service.dart';
 import 'package:fishtrack/screens/water_level_page.dart'
-    show WaterDetailsPeriod, WaterDetailsSummary;
+    show
+        WaterLevelPage,
+        WaterDetailsPeriod,
+        WaterDetailsSummary,
+        waterDetailsTrendColor,
+        waterDetailsSelectionForHandoff,
+        waterDetailsRefreshLabel,
+        waterDetailsPeriodLabel;
 import 'package:fishtrack/widgets/home_premium/water_level_card.dart'
     show
+        WaterLevelCardPremium,
         formatWaterCardDelta,
+        isApproximatelyDailyWaterComparison,
         shouldShowWaterHistoryChart,
         shouldShowWaterLiveBadge,
         waterCardTrendColor;
+import 'package:fishtrack/widgets/home_premium/home_premium_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
     WaterService.clearCache();
+    WeatherService.clearCache();
     WaterService.resetStationSelectionForTest();
     SharedPreferences.setMockInitialValues({});
   });
@@ -29,6 +47,77 @@ void main() {
     expect(formatWaterCardDelta(0, 'cm'), '0 cm');
     expect(formatWaterCardDelta(null, 'cm'), '—');
     expect(formatWaterCardDelta(.4, 'cm'), '+0.4 cm');
+  });
+
+  testWidgets('Water Details refresh and period labels are localized cleanly', (
+    tester,
+  ) async {
+    Future<void> pumpLabel(Locale locale) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => Text(
+              '${waterDetailsRefreshLabel(context)}|${waterDetailsPeriodLabel(context, WaterDetailsPeriod.sevenDays)}',
+            ),
+          ),
+        ),
+      );
+    }
+
+    await pumpLabel(const Locale('ro'));
+    expect(find.text('Actualizare\u2026|7 zile'), findsOneWidget);
+
+    await pumpLabel(const Locale('en'));
+    expect(find.text('Updating\u2026|7 days'), findsOneWidget);
+  });
+
+  test(
+    'Water comparison label policy distinguishes daily and last readings',
+    () {
+      expect(
+        isApproximatelyDailyWaterComparison(const Duration(hours: 24)),
+        isTrue,
+      );
+      expect(
+        isApproximatelyDailyWaterComparison(const Duration(hours: 6)),
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'Station weather keeps delayed A and B coordinate requests isolated',
+    () async {
+      final stationA = _homeStation('station-a', 'Station A', 44.81, 21.38);
+      final stationB = _homeStation('station-b', 'Station B', 45.17, 28.81);
+      final repository = _ControlledWeatherRepository();
+      final service = WeatherService(repository: repository);
+
+      final weatherA = service.getWeatherForStation(stationA);
+      final weatherB = service.getWeatherForStation(stationB);
+
+      expect(repository.requests, [(44.81, 21.38), (45.17, 28.81)]);
+
+      repository.complete(45.17, 28.81, _weather(22));
+      expect((await weatherB).temperature, 22);
+      repository.complete(44.81, 21.38, _weather(11));
+      expect((await weatherA).temperature, 11);
+    },
+  );
+
+  test('Station weather rejects 0/0 without a provider request', () async {
+    final repository = _ControlledWeatherRepository();
+    final service = WeatherService(repository: repository);
+    final station = _homeStation('missing-coordinates', 'Missing', 0, 0);
+
+    await expectLater(
+      service.getWeatherForStation(station),
+      throwsA(isA<WeatherServiceException>()),
+    );
+    expect(repository.requests, isEmpty);
   });
 
   test('Water card maps each real trend to its official color', () {
@@ -49,6 +138,30 @@ void main() {
     expect(shouldShowWaterHistoryChart(const <WaterLevel>[]), isFalse);
     expect(shouldShowWaterHistoryChart([reading]), isFalse);
     expect(shouldShowWaterHistoryChart([reading, reading]), isTrue);
+  });
+
+  test('insufficient Home history never becomes zero and stable', () {
+    final reading = _reading(
+      stationId: 'bazias',
+      value: 537,
+      timestamp: DateTime.utc(2026, 7, 17, 9),
+      source: WaterLevelSource.danubeFis,
+    );
+    final previous = _reading(
+      stationId: 'bazias',
+      value: 531,
+      timestamp: DateTime.utc(2026, 7, 16, 9),
+      source: WaterLevelSource.danubeFis,
+    );
+
+    expect(realWaterSeriesDelta(const <WaterLevel>[]), isNull);
+    expect(realWaterSeriesDelta([reading]), isNull);
+    expect(waterTrendFromRealDelta(realWaterSeriesDelta([reading])), isNull);
+    expect(realWaterSeriesDelta([previous, reading]), 6);
+    expect(
+      waterTrendFromRealDelta(realWaterSeriesDelta([previous, reading])),
+      WaterTrend.rising,
+    );
   });
 
   test(
@@ -86,6 +199,10 @@ void main() {
         history,
         WaterDetailsPeriod.fourteenDays,
       );
+      final thirtyDays = WaterDetailsSummary.fromHistory(
+        history,
+        WaterDetailsPeriod.thirtyDays,
+      );
 
       expect(sevenDays.readings.map((reading) => reading.value), [512, 520]);
       expect(sevenDays.minimum, 512);
@@ -97,8 +214,205 @@ void main() {
         512,
         520,
       ]);
+      expect(thirtyDays.readings.map((reading) => reading.value), [
+        500,
+        512,
+        520,
+      ]);
+      expect(fourteenDays.change, 20);
+      expect(thirtyDays.change, 20);
     },
   );
+
+  test('period trend delta and colors come only from real endpoints', () {
+    final now = DateTime.utc(2026, 7, 16, 12);
+    WaterDetailsSummary summary(double first, double last) =>
+        WaterDetailsSummary.fromHistory(
+          [
+            _reading(
+              stationId: 'orsova',
+              value: first,
+              timestamp: now.subtract(const Duration(days: 2)),
+              source: WaterLevelSource.danubeFis,
+            ),
+            _reading(
+              stationId: 'orsova',
+              value: last,
+              timestamp: now,
+              source: WaterLevelSource.danubeFis,
+            ),
+          ],
+          WaterDetailsPeriod.sevenDays,
+          stationId: 'orsova',
+        );
+
+    final falling = summary(540, 533);
+    final rising = summary(533, 540);
+    final stable = summary(537, 537);
+    expect(falling.change, -7);
+    expect(falling.trend, WaterTrend.falling);
+    expect(waterDetailsTrendColor(falling.trend), const Color(0xFFE53935));
+    expect(rising.change, 7);
+    expect(rising.trend, WaterTrend.rising);
+    expect(waterDetailsTrendColor(rising.trend), const Color(0xFF2196F3));
+    expect(stable.change, 0);
+    expect(stable.trend, WaterTrend.stable);
+    expect(waterDetailsTrendColor(stable.trend), const Color(0xFF43A047));
+  });
+
+  test('one real observation is visible but never produces a chart line', () {
+    final summary = WaterDetailsSummary.fromHistory(
+      [
+        _reading(
+          stationId: 'moldovaveche',
+          value: 690,
+          timestamp: DateTime.utc(2026, 7, 16),
+          source: WaterLevelSource.danubeFis,
+        ),
+      ],
+      WaterDetailsPeriod.sevenDays,
+      stationId: 'moldova_veche',
+    );
+
+    expect(summary.readings.single.value, 690);
+    expect(summary.hasChart, isFalse);
+    expect(summary.change, isNull);
+    expect(summary.trend, isNull);
+  });
+
+  test('missing observations never become zero deltas', () {
+    expect(
+      realWaterIntervalDelta(
+        const <WaterLevel>[],
+        const Duration(hours: 24),
+        stationId: 'orsova',
+      ),
+      isNull,
+    );
+    final summary = WaterDetailsSummary.fromHistory(
+      const <WaterLevel>[],
+      WaterDetailsPeriod.thirtyDays,
+      stationId: 'orsova',
+    );
+    expect(summary.change, isNull);
+    expect(summary.minimum, isNull);
+    expect(summary.maximum, isNull);
+  });
+
+  test('24h 48h and 7 day comparisons use nearby real observations', () {
+    final latest = DateTime.utc(2026, 7, 16, 12);
+    final history = [
+      _reading(
+        stationId: 'orsova',
+        value: 550,
+        timestamp: latest.subtract(const Duration(days: 7)),
+        source: WaterLevelSource.danubeFis,
+      ),
+      _reading(
+        stationId: 'orsova',
+        value: 544,
+        timestamp: latest.subtract(const Duration(hours: 48)),
+        source: WaterLevelSource.danubeFis,
+      ),
+      _reading(
+        stationId: 'orsova',
+        value: 540,
+        timestamp: latest.subtract(const Duration(hours: 24)),
+        source: WaterLevelSource.danubeFis,
+      ),
+      _reading(
+        stationId: 'orsova',
+        value: 537,
+        timestamp: latest,
+        source: WaterLevelSource.danubeFis,
+      ),
+    ];
+
+    expect(
+      realWaterIntervalDelta(
+        history,
+        const Duration(hours: 24),
+        stationId: 'orsova',
+      )?.deltaCm,
+      -3,
+    );
+    expect(
+      realWaterIntervalDelta(
+        history,
+        const Duration(hours: 48),
+        stationId: 'orsova',
+      )?.deltaCm,
+      -7,
+    );
+    expect(
+      realWaterIntervalDelta(
+        history,
+        const Duration(days: 7),
+        stationId: 'orsova',
+      )?.deltaCm,
+      -13,
+    );
+  });
+
+  test('station A history is excluded from station B series', () {
+    final now = DateTime.utc(2026, 7, 16);
+    final mixed = [
+      _reading(
+        stationId: 'moldovaveche',
+        value: 690,
+        timestamp: now,
+        source: WaterLevelSource.danubeFis,
+      ),
+      _reading(
+        stationId: 'orsova',
+        value: 310,
+        timestamp: now.subtract(const Duration(days: 1)),
+        source: WaterLevelSource.danubeFis,
+      ),
+      _reading(
+        stationId: 'orsova',
+        value: 303,
+        timestamp: now,
+        source: WaterLevelSource.danubeFis,
+      ),
+    ];
+    final orsova = WaterDetailsSummary.fromHistory(
+      mixed,
+      WaterDetailsPeriod.sevenDays,
+      stationId: 'orsova',
+    );
+    final moldova = WaterDetailsSummary.fromHistory(
+      mixed,
+      WaterDetailsPeriod.sevenDays,
+      stationId: 'moldova_veche',
+    );
+
+    expect(orsova.readings.map((reading) => reading.value), [310, 303]);
+    expect(orsova.change, -7);
+    expect(moldova.readings.map((reading) => reading.value), [690]);
+    expect(moldova.change, isNull);
+  });
+
+  test('period switching performs local filtering without a fetch', () {
+    var fetchCount = 0;
+    final history = [
+      _reading(
+        value: 500,
+        timestamp: DateTime.utc(2026, 7, 1),
+        source: WaterLevelSource.danubeFis,
+      ),
+      _reading(
+        value: 510,
+        timestamp: DateTime.utc(2026, 7, 16),
+        source: WaterLevelSource.danubeFis,
+      ),
+    ];
+    for (final period in WaterDetailsPeriod.values) {
+      WaterDetailsSummary.fromHistory(history, period);
+    }
+
+    expect(fetchCount, 0);
+  });
 
   test(
     'automatic candidates choose the nearest eligible canonical station',
@@ -124,6 +438,250 @@ void main() {
     ]);
 
     expect(candidates.first.id, 'afdj-moldova-veche');
+  });
+
+  test('Water station selector exposes exactly 23 canonical stations', () {
+    expect(WaterService.canonicalStationNames, [
+      'Baziaș',
+      'Moldova Veche',
+      'Drencova',
+      'Orșova',
+      'Drobeta Turnu Severin',
+      'Gruia',
+      'Cetate',
+      'Calafat',
+      'Rast',
+      'Bechet',
+      'Corabia',
+      'Turnu Măgurele',
+      'Zimnicea',
+      'Giurgiu',
+      'Oltenița',
+      'Călărași',
+      'Cernavodă',
+      'Hârșova',
+      'Brăila',
+      'Galați',
+      'Isaccea',
+      'Tulcea',
+      'Sulina',
+    ]);
+    expect(WaterService.canonicalStationNames, hasLength(23));
+    expect(
+      WaterService.canonicalStationNames.any(
+        (name) => name.toLowerCase().contains('periprava'),
+      ),
+      isFalse,
+    );
+  });
+
+  test('Water station search is local and ignores Romanian diacritics', () {
+    expect(WaterService.filterCanonicalStationNames('orsova'), ['Orșova']);
+    expect(WaterService.filterCanonicalStationNames('Orșova'), ['Orșova']);
+    expect(WaterService.filterCanonicalStationNames('calarasi'), ['Călărași']);
+    expect(WaterService.filterCanonicalStationNames('Călărași'), ['Călărași']);
+  });
+
+  testWidgets(
+    'real Water route exposes burger and pins Calafat from existing selector',
+    (tester) async {
+      final stations = _canonicalMenuStations();
+      final service = WaterService(
+        repository: _MenuWaterRepository(stations),
+        locationService: _FixedLocationService(_position(44.2665, 22.7046)),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('ro'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  key: const Key('open-home-water-route'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => WaterLevelPage(waterService: service),
+                    ),
+                  ),
+                  child: const Text('Open Water'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('open-home-water-route')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.byType(BackButton), findsOneWidget);
+      expect(
+        find.byKey(const Key('water-station-menu-button')),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.menu_rounded), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('water-station-menu-button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Automat / Locația mea'), findsOneWidget);
+      expect(find.text('Baziaș'), findsOneWidget);
+      expect(find.byKey(const Key('water-station-search')), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const Key('water-station-search')),
+        'Calafat',
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('water-station-calafat')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('water-station-calafat')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('Automat / Locația mea'), findsNothing);
+      expect(service.selectionMode, WaterStationSelectionMode.pinned);
+      expect(service.selectedStation?.name, 'Calafat');
+    },
+  );
+
+  test('manual Gruia and Moldova Veche selections remain pinned', () async {
+    final stations = _canonicalMenuStations();
+    final repository = _MenuWaterRepository(stations);
+    final service = WaterService(
+      repository: repository,
+      locationService: _FixedLocationService(_position(44.2665, 22.7046)),
+    );
+    final gruia = WaterService.canonicalStationNamed(stations, 'Gruia')!;
+    final moldova = WaterService.canonicalStationNamed(
+      stations,
+      'Moldova Veche',
+    )!;
+
+    service.selectStation(gruia);
+    var selection = await service.resolveHomeStationSelection();
+    expect(selection.mode, WaterStationSelectionMode.pinned);
+    expect(selection.station?.name, 'Gruia');
+    expect(selection.station?.id, isNot('bazias'));
+
+    service.selectStation(moldova);
+    selection = await service.resolveHomeStationSelection();
+    expect(selection.mode, WaterStationSelectionMode.pinned);
+    expect(selection.station?.name, 'Moldova Veche');
+    expect(selection.station?.id, 'moldova_veche');
+  });
+
+  test('returning to Automatic reactivates geolocation near Gruia', () async {
+    final stations = _canonicalMenuStations();
+    final service = WaterService(
+      repository: _MenuWaterRepository(stations),
+      locationService: _FixedLocationService(_position(44.2665, 22.7046)),
+    );
+    service.selectStation(
+      WaterService.canonicalStationNamed(stations, 'Moldova Veche')!,
+    );
+    expect(service.selectionMode, WaterStationSelectionMode.pinned);
+
+    await service.setAutomatic();
+    final selection = await service.resolveHomeStationSelection();
+
+    expect(selection.mode, WaterStationSelectionMode.automatic);
+    expect(selection.station?.name, 'Gruia');
+    expect(selection.canonicalStations, hasLength(23));
+  });
+
+  test('manual station keeps name level history and source coherent', () async {
+    final stations = _canonicalMenuStations();
+    final repository = _MenuWaterRepository(stations);
+    final service = WaterService(
+      repository: repository,
+      locationService: _FixedLocationService(_position(44.2665, 22.7046)),
+    );
+    final moldova = WaterService.canonicalStationNamed(
+      stations,
+      'Moldova Veche',
+    )!;
+    service.selectStation(moldova);
+
+    final selection = await service.resolveHomeStationSelection();
+    final result = await service.getWaterUiResult(selection.station!);
+
+    expect(selection.station?.name, 'Moldova Veche');
+    expect(selection.station?.level, moldova.level);
+    expect(result.latestReading?.stationId, moldova.id);
+    expect(
+      result.history.every((reading) => reading.stationId == moldova.id),
+      isTrue,
+    );
+    expect(result.source, WaterLevelSource.danubeHis);
+    expect(
+      result.history.every(
+        (reading) => reading.source == WaterLevelSource.danubeHis,
+      ),
+      isTrue,
+    );
+  });
+
+  test(
+    'Water Details keeps Baziaș, Isaccea and Gruia station data coherent',
+    () async {
+      final stations = _canonicalMenuStations();
+      final service = WaterService(repository: _MenuWaterRepository(stations));
+      for (final name in const ['Baziaș', 'Isaccea', 'Gruia']) {
+        final station = WaterService.canonicalStationNamed(stations, name)!;
+        final result = await service.getWaterUiResult(station);
+
+        expect(result.latestReading?.stationId, station.id);
+        expect(
+          result.history.every((reading) => reading.stationId == station.id),
+          isTrue,
+        );
+        expect(result.latestReading?.value, station.level);
+      }
+    },
+  );
+
+  test('automatic selection never falls back to stations.first', () async {
+    final stations = _canonicalMenuStations();
+    expect(stations.first.name, 'Baziaș');
+    final service = WaterService(
+      repository: _MenuWaterRepository(stations),
+      locationService: const _FailingLocationService(),
+    );
+
+    final selection = await service.resolveHomeStationSelection();
+
+    expect(selection.mode, WaterStationSelectionMode.automatic);
+    expect(selection.station, isNull);
+  });
+
+  test('Water details preserves the exact station handed off by Home', () {
+    final bazias = _homeStation('bazias', 'Baziaș', 44.8176, 21.3892);
+    final moldova = _homeStation(
+      'moldova_veche',
+      'Moldova Veche',
+      44.723,
+      21.634,
+    );
+    final orsova = _homeStation('orsova', 'Orșova', 44.725, 22.396);
+    final resolved = WaterHomeStationSelection(
+      mode: WaterStationSelectionMode.automatic,
+      station: bazias,
+      candidates: [bazias, moldova, orsova],
+    );
+
+    expect(
+      waterDetailsSelectionForHandoff(resolved, moldova).station?.id,
+      'moldova_veche',
+    );
+    expect(
+      waterDetailsSelectionForHandoff(resolved, orsova).station?.id,
+      'orsova',
+    );
   });
 
   test('automatic candidates exclude invalid and noncanonical stations', () {
@@ -453,6 +1011,10 @@ void main() {
           hadProviderError: false,
         ),
       );
+      expect(await iterator.moveNext(), isTrue);
+      expect(iterator.current.latestReading?.value, 536);
+      expect(iterator.current.history, hasLength(1));
+      expect(iterator.current.history.single.value, 536);
       expect(await iterator.moveNext(), isFalse);
     },
   );
@@ -764,6 +1326,217 @@ void main() {
     expect(forced.current.source, WaterLevelSource.afdj);
     expect(await forced.moveNext(), isFalse);
   });
+
+  test(
+    'forced refresh emits the same-station cache before the provider result',
+    () async {
+      final now = _now();
+      final station = _stationWithoutReading();
+      final repository = _SequencedWaterRepository();
+      final service = WaterService(repository: repository);
+      final initial = service.getWaterUiResult(station);
+      repository.complete(
+        0,
+        _result([
+          _reading(
+            value: 535,
+            timestamp: now.subtract(const Duration(minutes: 5)),
+            source: WaterLevelSource.afdj,
+          ),
+        ]),
+      );
+      await initial;
+
+      final refresh = StreamIterator(
+        service.getProgressiveWaterUiResults(station, forceRefresh: true),
+      );
+      expect(await refresh.moveNext(), isTrue);
+      expect(refresh.current.latestReading?.value, 535);
+      expect(refresh.current.latestReading?.stationId, station.id);
+
+      repository.complete(
+        1,
+        const WaterHistoryResult(
+          status: WaterHistoryResultStatus.providerError,
+          readings: <WaterLevel>[],
+          source: null,
+          hadProviderError: true,
+        ),
+      );
+      expect(await refresh.moveNext(), isTrue);
+      expect(refresh.current.latestReading?.value, 535);
+      expect(refresh.current.status, WaterUiStatus.providerError);
+      expect(await refresh.moveNext(), isFalse);
+    },
+  );
+
+  testWidgets(
+    'Home cold start uses one compact no-data state after loading finishes',
+    (tester) async {
+      final location = _ControlledLocationService();
+      final service = WaterService(
+        repository: _MenuWaterRepository(const <Station>[]),
+        locationService: location,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('ro'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: SizedBox(
+                height: 150,
+                child: WaterLevelCardPremium(
+                  layout: HomePremiumLayout.of(context),
+                  waterService: service,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      expect(
+        find.text('Se \u00eencarc\u0103 nivelul apei\u2026'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('water-home-no-data-message')), findsNothing);
+
+      location.fail();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('water-home-no-data-message')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('F\u0103r\u0103 surs\u0103'), findsNothing);
+      expect(find.textContaining('Se a\u0219teapt\u0103 date'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Home Water remains RenderFlex-safe at narrow portrait and landscape sizes',
+    (tester) async {
+      final stations = _canonicalMenuStations();
+      final drobeta = WaterService.canonicalStationNamed(
+        stations,
+        'Drobeta Turnu Severin',
+      )!;
+      final service = WaterService(
+        repository: _MenuWaterRepository(stations),
+        locationService: _FixedLocationService(
+          _position(drobeta.latitude, drobeta.longitude),
+        ),
+      );
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      Future<void> pumpHome(Size size) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('ro'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.3)),
+              child: child ?? const SizedBox.shrink(),
+            ),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: SizedBox(
+                  height: size.height >= size.width ? 136 : 128,
+                  child: WaterLevelCardPremium(
+                    layout: HomePremiumLayout.of(context),
+                    waterService: service,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+
+      await pumpHome(const Size(320, 700));
+      expect(tester.takeException(), isNull);
+
+      await pumpHome(const Size(700, 320));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Water Details keeps long station and period controls visible when narrow',
+    (tester) async {
+      final stations = _canonicalMenuStations();
+      final drobeta = WaterService.canonicalStationNamed(
+        stations,
+        'Drobeta Turnu Severin',
+      )!;
+      final service = WaterService(
+        repository: _MenuWaterRepository(stations),
+        locationService: _FixedLocationService(
+          _position(drobeta.latitude, drobeta.longitude),
+        ),
+      );
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      Future<void> pumpDetails(Size size, Locale locale) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: locale,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.3)),
+              child: child ?? const SizedBox.shrink(),
+            ),
+            home: WaterLevelPage(
+              initialStation: drobeta,
+              waterService: service,
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 700));
+      }
+
+      await pumpDetails(const Size(320, 700), const Locale('ro'));
+      expect(find.text('7 zile'), findsAtLeastNWidgets(1));
+      expect(find.text('14 zile'), findsAtLeastNWidgets(1));
+      expect(find.text('30 zile'), findsAtLeastNWidgets(1));
+      expect(
+        find.byKey(const Key('water-details-primary-delta')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('water-details-absolute-level')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('water-details-period-trend-badge')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('7 zile ·'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await pumpDetails(const Size(700, 320), const Locale('en'));
+      expect(find.text('7 zile'), findsAtLeastNWidgets(1));
+      expect(find.text('14 zile'), findsAtLeastNWidgets(1));
+      expect(find.text('30 zile'), findsAtLeastNWidgets(1));
+      expect(find.textContaining('7 days ·'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   test('provider error is emitted with the last-known-good reading', () async {
     final now = _now();
@@ -1099,6 +1872,102 @@ class _PerStationWaterRepository extends WaterRepository {
   }
 }
 
+class _MenuWaterRepository extends WaterRepository {
+  _MenuWaterRepository(this.stations);
+
+  final List<Station> stations;
+
+  @override
+  Future<List<Station>> getStations() async => stations;
+
+  @override
+  Future<List<Station>> getFastStations() async => stations;
+
+  @override
+  Future<WaterHistoryResult> getHistoryResult(
+    String stationId, {
+    String? stationName,
+    int limit = 30,
+    WaterLevel? prefetchedCurrentReading,
+  }) async {
+    final station = stations.singleWhere((value) => value.id == stationId);
+    final source = station.name == 'Moldova Veche'
+        ? WaterLevelSource.danubeHis
+        : WaterLevelSource.afdj;
+    final readings = [
+      _reading(
+        stationId: station.id,
+        value: station.level - 2,
+        timestamp: station.lastUpdate.subtract(const Duration(days: 1)),
+        source: source,
+      ),
+      _reading(
+        stationId: station.id,
+        value: station.level,
+        timestamp: station.lastUpdate,
+        source: source,
+      ),
+    ];
+    return WaterHistoryResult(
+      status: WaterHistoryResultStatus.success,
+      readings: readings,
+      source: source,
+      hadProviderError: false,
+    );
+  }
+}
+
+class _FixedLocationService extends LocationService {
+  const _FixedLocationService(this.position);
+
+  final Position position;
+
+  @override
+  Future<Position> determinePosition() async => position;
+}
+
+class _FailingLocationService extends LocationService {
+  const _FailingLocationService();
+
+  @override
+  Future<Position> determinePosition() async =>
+      throw const LocationFailure(LocationFailureReason.unavailable);
+}
+
+class _ControlledLocationService extends LocationService {
+  final Completer<Position> _position = Completer<Position>();
+
+  void fail() => _position.completeError(
+    const LocationFailure(LocationFailureReason.unavailable),
+  );
+
+  @override
+  Future<Position> determinePosition() => _position.future;
+}
+
+class _ControlledWeatherRepository extends WeatherRepository {
+  final requests = <(double, double)>[];
+  final _responses = <String, Completer<WeatherData>>{};
+
+  @override
+  Future<WeatherData> getCurrentWeather({
+    required double latitude,
+    required double longitude,
+  }) {
+    requests.add((latitude, longitude));
+    return _responses
+        .putIfAbsent(
+          _weatherKey(latitude, longitude),
+          Completer<WeatherData>.new,
+        )
+        .future;
+  }
+
+  void complete(double latitude, double longitude, WeatherData weather) {
+    _responses[_weatherKey(latitude, longitude)]!.complete(weather);
+  }
+}
+
 class _StaticHistoryRepository extends WaterRepository {
   _StaticHistoryRepository(this.result);
 
@@ -1230,4 +2099,73 @@ Station _homeStation(
   lastUpdate: DateTime.utc(2026, 7, 16),
   hasWaterLevel: hasReading,
   waterLevelSource: 'DanubeFIS',
+);
+
+List<Station> _canonicalMenuStations() => WaterService.canonicalStationNames
+    .asMap()
+    .entries
+    .map((entry) {
+      final name = entry.value;
+      final (latitude, longitude) = switch (name) {
+        'Baziaș' => (44.8167, 21.3833),
+        'Moldova Veche' => (44.7383, 21.6333),
+        'Gruia' => (44.2665, 22.7046),
+        _ => (46.0 + entry.key / 1000, 28.0 + entry.key / 1000),
+      };
+      final id = switch (name) {
+        'Baziaș' => 'bazias',
+        'Moldova Veche' => 'moldova_veche',
+        'Gruia' => 'gruia',
+        _ => 'canonical-${entry.key}',
+      };
+      final source = name == 'Moldova Veche'
+          ? WaterLevelSource.danubeHis
+          : WaterLevelSource.afdj;
+      return Station(
+        id: id,
+        name: name,
+        river: 'Dunărea',
+        level: 300 + entry.key.toDouble(),
+        trend: WaterTrend.stable,
+        latitude: latitude,
+        longitude: longitude,
+        lastUpdate: DateTime.utc(2026, 7, 17, 9),
+        hasWaterLevel: true,
+        waterLevelUnit: 'cm',
+        waterLevelSource: source.name,
+        hasKnownTrend: true,
+      );
+    })
+    .toList(growable: false);
+
+Position _position(double latitude, double longitude) => Position(
+  longitude: longitude,
+  latitude: latitude,
+  timestamp: DateTime.utc(2026, 7, 17, 9),
+  accuracy: 1,
+  altitude: 0,
+  altitudeAccuracy: 1,
+  heading: 0,
+  headingAccuracy: 1,
+  speed: 0,
+  speedAccuracy: 1,
+);
+
+String _weatherKey(double latitude, double longitude) =>
+    '${latitude.toStringAsFixed(3)}:${longitude.toStringAsFixed(3)}';
+
+WeatherData _weather(double temperature) => WeatherData(
+  temperature: temperature,
+  condition: 'Clear sky',
+  humidity: 50,
+  windSpeed: 10,
+  windGusts: 15,
+  windDirectionDegrees: 180,
+  precipitationProbability: 0,
+  cloudCover: 0,
+  observedAt: DateTime.utc(2026, 7, 17),
+  forecast: const <WeatherForecastDay>[],
+  hourlyForecast: const <WeatherForecastHour>[],
+  moonPhase: 'Full moon',
+  fishingActivity: FishingActivity.good,
 );

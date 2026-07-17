@@ -24,6 +24,7 @@ class StationDetailsPage extends StatefulWidget {
 class _StationDetailsPageState extends State<StationDetailsPage> {
   final _favoritesService = const FavoriteStationsService();
   final _waterService = WaterService();
+  final _weatherService = WeatherService();
   bool _isFavorite = false;
   bool _favoriteLoading = true;
   WaterStationDetailsRange _selectedRange = WaterStationDetailsRange.sevenDays;
@@ -32,7 +33,7 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   bool _historyLoading = true;
   bool _detailsLoadFailed = false;
   int _detailsRequestId = 0;
-  late final Future<WeatherData> _weather;
+  late Future<WeatherData> _weather;
 
   Station get station => widget.station;
 
@@ -40,9 +41,23 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
   void initState() {
     super.initState();
     _isFavorite = station.isFavorite;
-    _weather = WeatherService().getCurrentWeather(fallbackStation: station);
+    _loadWeather();
     unawaited(_loadDetails());
     _loadFavorite();
+  }
+
+  @override
+  void didUpdateWidget(covariant StationDetailsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.station.id != station.id ||
+        oldWidget.station.latitude != station.latitude ||
+        oldWidget.station.longitude != station.longitude) {
+      _loadWeather();
+    }
+  }
+
+  void _loadWeather() {
+    _weather = _weatherService.getWeatherForStation(station);
   }
 
   Future<void> _loadDetails() async {
@@ -155,7 +170,6 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     final historyLoading = _historyLoading || details == null;
     final trend = details?.trend;
     final trendColor = _trendColor(trend);
-    final isRo = Localizations.localeOf(context).languageCode == 'ro';
     final freshness = details?.measurementTimestamp == null
         ? context.l10n.updateTimeUnavailable
         : WaterFreshnessFormatter.format(
@@ -165,301 +179,321 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
             locale: Localizations.localeOf(context).languageCode,
           );
     return Scaffold(
-      appBar: AppBar(title: Text(station.name), centerTitle: true),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    const CircleAvatar(
-                      radius: 38,
-                      backgroundColor: Colors.blue,
-                      child: Icon(
-                        Icons.water_drop,
-                        color: Colors.white,
-                        size: 42,
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    Text(
-                      station.name,
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 6),
-
-                    Text(
-                      station.river,
-                      style: const TextStyle(fontSize: 18, color: Colors.grey),
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    Text(
-                      _detailsLoading && details == null
-                          ? context.l10n.loadingEllipsis
-                          : '${isRo ? 'Surs\u0103' : 'Source'}: '
-                                '${hasCurrent ? _sourceLabel(details!.source) : context.l10n.noSource}',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    Text(
-                      _detailsLoading && details == null
-                          ? context.l10n.loadingEllipsis
-                          : hasCurrent
-                          ? '${current.value.toStringAsFixed(0)} ${current.unit}'
-                          : context.l10n.noData,
-                      style: const TextStyle(
-                        fontSize: 46,
-                        color: Colors.blue,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(_trendIcon(trend), color: trendColor),
-                        const SizedBox(width: 8),
-                        Text(
-                          _detailsLoading && details == null
-                              ? context.l10n.loadingEllipsis
-                              : _trendLabel(context, trend),
-                          style: TextStyle(
-                            color: trendColor,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+      appBar: AppBar(
+        title: Text(station.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      const CircleAvatar(
+                        radius: 38,
+                        backgroundColor: Colors.blue,
+                        child: Icon(
+                          Icons.water_drop,
+                          color: Colors.white,
+                          size: 42,
                         ),
-                      ],
-                    ),
+                      ),
 
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 20),
 
-                    Text(
-                      _detailsLoading && details == null
-                          ? context.l10n.loadingEllipsis
-                          : '${isRo ? 'Actualizat' : 'Updated'}: $freshness',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    if (details?.isStale == true)
                       Text(
-                        isRo ? 'Date vechi' : 'Stale data',
+                        station.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
                         style: const TextStyle(
-                          color: Colors.orange,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                  ],
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        station.river,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey,
+                        ),
+                      ),
+
+                      const SizedBox(height: 4),
+
+                      Text(
+                        _detailsLoading && details == null
+                            ? context.l10n.loadingEllipsis
+                            : '${context.l10n.source}: '
+                                  '${hasCurrent ? _sourceLabel(details!.source) : context.l10n.noSource}',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      Text(
+                        _detailsLoading && details == null
+                            ? context.l10n.loadingEllipsis
+                            : hasCurrent
+                            ? '${current.value.toStringAsFixed(0)} ${current.unit}'
+                            : context.l10n.noData,
+                        style: const TextStyle(
+                          fontSize: 46,
+                          color: Colors.blue,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(_trendIcon(trend), color: trendColor),
+                          const SizedBox(width: 8),
+                          Text(
+                            _detailsLoading && details == null
+                                ? context.l10n.loadingEllipsis
+                                : _trendLabel(context, trend),
+                            style: TextStyle(
+                              color: trendColor,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Text(
+                        _detailsLoading && details == null
+                            ? context.l10n.loadingEllipsis
+                            : '${context.l10n.lastUpdated}: $freshness',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-            Text(
-              isRo
-                  ? 'Informa\u021bii despre sta\u021bie'
-                  : 'Station information',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 16),
-
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
+              Text(
+                context.l10n.stationDetails,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              child: ListTile(
-                leading: const Icon(Icons.location_on, color: Colors.red),
-                title: Text(context.l10n.coordinates),
-                subtitle: Text("${station.latitude}, ${station.longitude}"),
-              ),
-            ),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 16),
 
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: ListTile(
+                  leading: const Icon(Icons.location_on, color: Colors.red),
+                  title: Text(context.l10n.coordinates),
+                  subtitle: Text("${station.latitude}, ${station.longitude}"),
+                ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.show_chart, color: Colors.blue),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            isRo
-                                ? 'Istoricul nivelului apei'
-                                : 'Water level history',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SegmentedButton<WaterStationDetailsRange>(
-                      segments: [
-                        ButtonSegment(
-                          value: WaterStationDetailsRange.sevenDays,
-                          label: Text(isRo ? '7 zile' : '7 days'),
-                        ),
-                        ButtonSegment(
-                          value: WaterStationDetailsRange.thirtyDays,
-                          label: Text(isRo ? '30 zile' : '30 days'),
-                        ),
-                      ],
-                      selected: {_selectedRange},
-                      onSelectionChanged: (selection) {
-                        if (selection.isNotEmpty) {
-                          _selectRange(selection.first);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    if (historyLoading)
-                      const SizedBox(
-                        height: 150,
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else ...[
-                      Text(
-                        _historyStatusLabel(
-                          context,
-                          _detailsLoadFailed
-                              ? WaterStationDetailsHistoryStatus.providerError
-                              : details.historyStatus,
-                        ),
-                        style: TextStyle(
-                          color:
-                              details.historyStatus ==
-                                  WaterStationDetailsHistoryStatus.providerError
-                              ? Theme.of(context).colorScheme.error
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (details.dailyDeltaCm case final delta?) ...[
-                        const SizedBox(height: 6),
-                        Text(_deltaLabel(delta, current?.unit ?? 'cm', isRo)),
-                      ],
-                      if (history.length >= 2) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 150,
-                          width: double.infinity,
-                          child: CustomPaint(
-                            painter: _WaterHistoryPainter(history),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        ...history.reversed
-                            .take(30)
-                            .map(
-                              (reading) => Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(_historyDateLabel(reading)),
-                                    Text(
-                                      '${reading.value.toStringAsFixed(0)} '
-                                      '${reading.unit}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+
+              const SizedBox(height: 12),
+
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.show_chart, color: Colors.blue),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              context.l10n.waterLevelHistory,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SegmentedButton<WaterStationDetailsRange>(
+                        segments: [
+                          ButtonSegment(
+                            value: WaterStationDetailsRange.sevenDays,
+                            label: const Text('7D'),
+                          ),
+                          ButtonSegment(
+                            value: WaterStationDetailsRange.thirtyDays,
+                            label: const Text('30D'),
+                          ),
+                        ],
+                        selected: {_selectedRange},
+                        onSelectionChanged: (selection) {
+                          if (selection.isNotEmpty) {
+                            _selectRange(selection.first);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      if (historyLoading)
+                        const SizedBox(
+                          height: 150,
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else ...[
+                        Text(
+                          _historyStatusLabel(
+                            context,
+                            _detailsLoadFailed
+                                ? WaterStationDetailsHistoryStatus.providerError
+                                : details.historyStatus,
+                          ),
+                          style: TextStyle(
+                            color:
+                                details.historyStatus ==
+                                    WaterStationDetailsHistoryStatus
+                                        .providerError
+                                ? Theme.of(context).colorScheme.error
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (details.dailyDeltaCm case final delta?) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            _deltaLabel(context, delta, current?.unit ?? 'cm'),
+                          ),
+                        ],
+                        if (history.length >= 2) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 150,
+                            width: double.infinity,
+                            child: CustomPaint(
+                              painter: _WaterHistoryPainter(history),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ...history.reversed
+                              .take(30)
+                              .map(
+                                (reading) => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          _historyDateLabel(reading),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        '${reading.value.toStringAsFixed(0)} '
+                                        '${reading.unit}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                        ],
                       ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: ListTile(
-                leading: const Icon(Icons.auto_awesome, color: Colors.teal),
-                title: Text(context.l10n.aiWaterInsight),
-                subtitle: Text(_waterInsight(station)),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: FutureBuilder<WeatherData>(
-                future: _weather,
-                builder: (context, snapshot) {
-                  final weather = snapshot.data;
-                  final subtitle = snapshot.hasError
-                      ? 'Weather unavailable'
-                      : weather == null
-                      ? 'Loading weather...'
-                      : '${weather.temperature.round()}° • '
-                            '${weather.condition} • '
-                            '${weather.windSpeed.toStringAsFixed(1)} km/h wind';
-                  return ListTile(
-                    leading: const Icon(Icons.cloud, color: Colors.orange),
-                    title: Text(context.l10n.weather),
-                    subtitle: Text(subtitle),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _favoriteLoading ? null : _toggleFavorite,
-                icon: Icon(
-                  _isFavorite ? Icons.favorite : Icons.favorite_border,
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                label: Text(
-                  _isFavorite ? 'Remove from Favourites' : 'Add to Favourites',
+                child: ListTile(
+                  leading: const Icon(Icons.auto_awesome, color: Colors.teal),
+                  title: Text(context.l10n.aiWaterInsight),
+                  subtitle: Text(_waterInsight(context, station)),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 30),
-          ],
+              const SizedBox(height: 12),
+
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: FutureBuilder<WeatherData>(
+                  future: _weather,
+                  builder: (context, snapshot) {
+                    final weather = snapshot.data;
+                    final subtitle = snapshot.hasError
+                        ? context.l10n.updateFailed
+                        : weather == null
+                        ? context.l10n.loadingEllipsis
+                        : '${weather.temperature.round()}° • '
+                              '${_weatherCondition(context, weather.condition)} • '
+                              '${context.l10n.wind}: '
+                              '${weather.windSpeed.toStringAsFixed(1)} km/h';
+                    return ListTile(
+                      leading: const Icon(Icons.cloud, color: Colors.orange),
+                      title: Text(context.l10n.weather),
+                      subtitle: Text(subtitle),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _favoriteLoading ? null : _toggleFavorite,
+                  icon: Icon(
+                    _isFavorite ? Icons.favorite : Icons.favorite_border,
+                  ),
+                  label: Text(
+                    _isFavorite
+                        ? context.l10n.removeFromFavourites
+                        : context.l10n.addToFavourites,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+            ],
+          ),
         ),
       ),
     );
@@ -486,16 +520,15 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     BuildContext context,
     WaterStationDetailsHistoryStatus? status,
   ) {
-    final isRo = Localizations.localeOf(context).languageCode == 'ro';
     return switch (status) {
       WaterStationDetailsHistoryStatus.available =>
-        isRo ? 'Istoric disponibil' : 'History available',
+        context.l10n.waterHistoryObservations,
       WaterStationDetailsHistoryStatus.insufficientHistory =>
-        isRo ? 'Istoric insuficient' : 'Insufficient history',
+        context.l10n.notEnoughHistory,
       WaterStationDetailsHistoryStatus.providerError =>
-        isRo ? 'Date temporar indisponibile' : 'Data temporarily unavailable',
+        context.l10n.updateFailed,
       WaterStationDetailsHistoryStatus.unavailable ||
-      null => isRo ? 'Istoric insuficient' : 'Insufficient history',
+      null => context.l10n.notEnoughHistory,
     };
   }
 
@@ -506,30 +539,24 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     return '${local.day}.${local.month}.${local.year}  $hour:$minute';
   }
 
-  static String _deltaLabel(double delta, String unit, bool isRo) {
+  static String _deltaLabel(BuildContext context, double delta, String unit) {
     final sign = delta > 0 ? '+' : '';
     final value = '$sign${delta.toStringAsFixed(0)} $unit';
-    return isRo
-        ? '$value fa\u021b\u0103 de citirea anterioar\u0103'
-        : '$value since previous reading';
+    return '$value · ${context.l10n.waterComparedWithLastReading}';
   }
 
-  static String _waterInsight(Station station) {
+  static String _waterInsight(BuildContext context, Station station) {
     if (!station.hasWaterLevel) {
-      return 'Not enough verified water data for an insight.';
+      return context.l10n.dataUnavailable;
     }
     if (!station.hasKnownTrend) {
-      return 'Not enough history for a water insight.';
+      return context.l10n.waterNotEnoughHistoryInsight;
     }
-    return switch (station.trend) {
-      WaterTrend.rising =>
-        'The level is rising. Expect stronger current near banks.',
-      WaterTrend.falling =>
-        'The level is falling. Fish may move to deeper or slower water.',
-      WaterTrend.stable =>
-        'The level is stable, with more predictable water conditions.',
-    };
+    return _trendLabel(context, station.trend);
   }
+
+  static String _weatherCondition(BuildContext context, String condition) =>
+      condition == 'Clear sky' ? context.l10n.clearSky : condition;
 }
 
 class _WaterHistoryPainter extends CustomPainter {
