@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FluviAI — Mapbox",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define=MAPBOX_ACCESS_TOKEN=${env:MAPBOX_ACCESS_TOKEN}"
+      ]
+    }
+  ]
+}

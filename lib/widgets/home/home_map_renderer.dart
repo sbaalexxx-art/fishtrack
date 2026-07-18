@@ -47,53 +47,63 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     with AutomaticKeepAliveClientMixin<HomeMapRenderer> {
   static const _satelliteStreetsStyle =
       'mapbox://styles/mapbox/satellite-streets-v12';
+
   static const _fallbackCamera = LatLng(44.8148, 21.3895);
 
-  mapbox.MapboxMap? _mapboxMap;
-  late final Widget _mapWidget;
-  bool _didApplyLocationCamera = false;
+  static const _mapWidgetKey = ValueKey<String>('aifishmap-home-mapbox');
 
-  Set<Factory<OneSequenceGestureRecognizer>> _buildGestureRecognizers() {
-    return {
-      Factory<EagerGestureRecognizer>(() => EagerGestureRecognizer()),
-      Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
-    };
-  }
+  mapbox.MapboxMap? _mapboxMap;
+
+  late final mapbox.CameraOptions _initialCameraOptions;
+
+  bool _didApplyLocationCamera = false;
 
   @override
   void initState() {
     super.initState();
+
     final initialCenter = widget.currentLocation ?? _fallbackCamera;
+
+    _initialCameraOptions = _cameraFor(initialCenter, zoom: 12.5);
+
     _didApplyLocationCamera = widget.currentLocation != null;
-    _mapWidget = mapbox.MapWidget(
-      key: const ValueKey('aifishmap-home-mapbox'),
-      textureView: true,
-      styleUri: _satelliteStreetsStyle,
-      cameraOptions: _cameraFor(initialCenter, zoom: 12.5),
-      gestureRecognizers: _buildGestureRecognizers(),
-      onMapCreated: _handleMapCreated,
-    );
   }
 
   @override
   void didUpdateWidget(covariant HomeMapRenderer oldWidget) {
     super.didUpdateWidget(oldWidget);
+
     final location = widget.currentLocation;
-    if (location == null || _didApplyLocationCamera) return;
+
+    if (location == null || _didApplyLocationCamera) {
+      return;
+    }
+
     _didApplyLocationCamera = true;
+
     _setCamera(location, zoom: 12.5);
+  }
+
+  Set<Factory<OneSequenceGestureRecognizer>> _buildGestureRecognizers() {
+    return {
+      Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
+      Factory<ScaleGestureRecognizer>(ScaleGestureRecognizer.new),
+    };
   }
 
   void _handleMapCreated(mapbox.MapboxMap mapboxMap) {
     _mapboxMap = mapboxMap;
-    widget.onMapboxMapCreated?.call(mapboxMap);
-    widget.onMapReady?.call();
 
     final location = widget.currentLocation;
+
     if (location != null && !_didApplyLocationCamera) {
       _didApplyLocationCamera = true;
+
       _setCamera(location, zoom: 12.5);
     }
+
+    widget.onMapboxMapCreated?.call(mapboxMap);
+    widget.onMapReady?.call();
   }
 
   mapbox.CameraOptions _cameraFor(LatLng target, {required double zoom}) {
@@ -106,7 +116,19 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
   }
 
   void _setCamera(LatLng target, {required double zoom}) {
-    _mapboxMap?.setCamera(_cameraFor(target, zoom: zoom));
+    final mapboxMap = _mapboxMap;
+
+    if (mapboxMap == null) {
+      return;
+    }
+
+    mapboxMap.setCamera(_cameraFor(target, zoom: zoom));
+  }
+
+  @override
+  void dispose() {
+    _mapboxMap = null;
+    super.dispose();
   }
 
   @override
@@ -115,12 +137,24 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFF101820),
+
+    return RepaintBoundary(
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
+        child: ColoredBox(
+          color: const Color(0xFF101820),
+          child: SizedBox.expand(
+            child: mapbox.MapWidget(
+              key: _mapWidgetKey,
+              textureView: true,
+              styleUri: _satelliteStreetsStyle,
+              cameraOptions: _initialCameraOptions,
+              gestureRecognizers: _buildGestureRecognizers(),
+              onMapCreated: _handleMapCreated,
+            ),
+          ),
+        ),
       ),
-      child: _mapWidget,
     );
   }
 }
