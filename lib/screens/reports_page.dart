@@ -10,8 +10,25 @@ import '../widgets/loading_list_skeleton.dart';
 import '../widgets/trust_badge.dart';
 import 'community_details_page.dart';
 
+class ReportsPageController extends ChangeNotifier {
+  ReportCategory? _pendingInitialCategory;
+
+  void requestCreateReport({required ReportCategory initialCategory}) {
+    _pendingInitialCategory = initialCategory;
+    notifyListeners();
+  }
+
+  ReportCategory? takePendingInitialCategory() {
+    final category = _pendingInitialCategory;
+    _pendingInitialCategory = null;
+    return category;
+  }
+}
+
 class ReportsPage extends StatefulWidget {
-  const ReportsPage({super.key});
+  const ReportsPage({super.key, this.controller});
+
+  final ReportsPageController? controller;
 
   @override
   State<ReportsPage> createState() => _ReportsPageState();
@@ -21,11 +38,27 @@ class _ReportsPageState extends State<ReportsPage> {
   final _service = const CommunityService();
   late Future<CacheResult<List<CommunityPost>>> _feed;
   bool _fallbackMessageShown = false;
+  bool _createReportDialogOpen = false;
 
   @override
   void initState() {
     super.initState();
     _feed = _service.getFeedResult();
+    widget.controller?.addListener(_handleCreateReportRequest);
+  }
+
+  @override
+  void didUpdateWidget(covariant ReportsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) return;
+    oldWidget.controller?.removeListener(_handleCreateReportRequest);
+    widget.controller?.addListener(_handleCreateReportRequest);
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_handleCreateReportRequest);
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -33,11 +66,33 @@ class _ReportsPageState extends State<ReportsPage> {
     if (mounted) setState(() => _feed = Future.value(posts));
   }
 
-  Future<void> _openCreateReportDialog() async {
-    final insertedReportId = await showDialog<String>(
-      context: context,
-      builder: (_) => _CreateReportDialog(service: _service),
-    );
+  void _handleCreateReportRequest() {
+    final initialCategory = widget.controller?.takePendingInitialCategory();
+    if (initialCategory == null || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _openCreateReportDialog(initialCategory: initialCategory);
+      }
+    });
+  }
+
+  Future<void> _openCreateReportDialog({
+    ReportCategory initialCategory = ReportCategory.fishActivity,
+  }) async {
+    if (_createReportDialogOpen) return;
+    _createReportDialogOpen = true;
+    String? insertedReportId;
+    try {
+      insertedReportId = await showDialog<String>(
+        context: context,
+        builder: (_) => _CreateReportDialog(
+          service: _service,
+          initialCategory: initialCategory,
+        ),
+      );
+    } finally {
+      _createReportDialogOpen = false;
+    }
     if (insertedReportId != null) await _refresh();
   }
 
@@ -330,8 +385,13 @@ class _UnderReviewBadge extends StatelessWidget {
 }
 
 class _CreateReportDialog extends StatefulWidget {
-  const _CreateReportDialog({required this.service});
+  const _CreateReportDialog({
+    required this.service,
+    required this.initialCategory,
+  });
+
   final CommunityService service;
+  final ReportCategory initialCategory;
 
   @override
   State<_CreateReportDialog> createState() => _CreateReportDialogState();
@@ -339,12 +399,18 @@ class _CreateReportDialog extends StatefulWidget {
 
 class _CreateReportDialogState extends State<_CreateReportDialog> {
   final _descriptionController = TextEditingController();
-  ReportCategory _category = ReportCategory.fishActivity;
+  late ReportCategory _category;
   File? _cameraPhoto;
   bool _useExactLocation = true;
   bool _trustConfirmed = false;
   bool _saving = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _category = widget.initialCategory;
+  }
 
   @override
   void dispose() {

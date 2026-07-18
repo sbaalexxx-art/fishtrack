@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../l10n/l10n.dart';
+import '../services/community_service.dart';
 import '../widgets/home_premium/home_premium_layout.dart';
 import 'add_catch_page.dart';
 import 'favorites_page.dart';
@@ -22,19 +23,31 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
 
+  late final ReportsPageController _reportsController;
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
+    _reportsController = ReportsPageController();
     _pages = [
       HomePremiumPage(onNavigate: _selectPage),
-      const MapPage(),
+      MapPage(
+        onAddCatch: _openAddCatchPage,
+        onCreateReport: _openReportFromMap,
+        onOpenFavorites: () => _selectPage(4),
+      ),
       const WeatherPage(),
-      const ReportsPage(),
+      ReportsPage(controller: _reportsController),
       const FavoritesPage(),
       const ProfilePage(),
     ];
+  }
+
+  @override
+  void dispose() {
+    _reportsController.dispose();
+    super.dispose();
   }
 
   void _selectPage(int index) {
@@ -49,6 +62,14 @@ class _MainNavigationState extends State<MainNavigation> {
     ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const AddCatchPage()));
     // Data updates are handled by stream listeners in HomePremiumMap and ReportsPage
     // No need to recreate widgets
+  }
+
+  void _openReportFromMap(ReportCategory initialCategory) {
+    _selectPage(3);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _reportsController.requestCreateReport(initialCategory: initialCategory);
+    });
   }
 
   @override

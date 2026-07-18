@@ -1,16 +1,29 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 
 import '../l10n/l10n.dart';
 import '../models/station.dart';
+import '../services/community_service.dart';
 import '../services/location_service.dart';
 import '../services/map_search_service.dart';
 import '../services/water_service.dart';
 import 'station_details_page.dart';
 
 class MapPage extends StatefulWidget {
-  const MapPage({super.key});
+  const MapPage({
+    super.key,
+    required this.onAddCatch,
+    required this.onCreateReport,
+    required this.onOpenFavorites,
+  });
+
+  final VoidCallback onAddCatch;
+  final ValueChanged<ReportCategory> onCreateReport;
+  final VoidCallback onOpenFavorites;
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -27,6 +40,7 @@ class _MapPageState extends State<MapPage> {
 
   mapbox.MapboxMap? _mapboxMap;
   mapbox.CircleAnnotationManager? _stationAnnotationManager;
+  mapbox.CircleAnnotationManager? _stationHighlightAnnotationManager;
   mapbox.CircleAnnotationManager? _userAnnotationManager;
   dynamic _stationTapEvents;
 
@@ -37,7 +51,12 @@ class _MapPageState extends State<MapPage> {
   bool _isMapReady = false;
   bool _isLocating = false;
   bool _isLoadingStations = false;
+  bool _actionsExpanded = false;
+  bool _stationLayerVisible = true;
+  Station? _temporarilyHighlightedStation;
   String? _stationLoadError;
+  Orientation? _orientation;
+  Size? _mediaSize;
 
   @override
   void initState() {
@@ -47,9 +66,29 @@ class _MapPageState extends State<MapPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final orientation = MediaQuery.orientationOf(context);
+    final mediaSize = MediaQuery.sizeOf(context);
+    if (_orientation == orientation && _mediaSize == mediaSize) return;
+    if (_orientation != null && _orientation != orientation) {
+      _actionsExpanded = false;
+    }
+    _orientation = orientation;
+    _mediaSize = mediaSize;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final mapboxMap = _mapboxMap;
+      if (mounted && mapboxMap != null) {
+        unawaited(_updateMapboxOrnaments(mapboxMap));
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _stationTapEvents?.cancel();
     _stationAnnotationManager?.deleteAll();
+    _stationHighlightAnnotationManager?.deleteAll();
     _userAnnotationManager?.deleteAll();
     super.dispose();
   }
@@ -58,20 +97,15 @@ class _MapPageState extends State<MapPage> {
     _mapboxMap = mapboxMap;
     _isMapReady = true;
 
-    await mapboxMap.scaleBar.updateSettings(
-      mapbox.ScaleBarSettings(
-        position: mapbox.OrnamentPosition.BOTTOM_RIGHT,
-        marginRight: 12,
-        marginBottom: 12,
-        ratio: .3,
-      ),
-    );
+    await _updateMapboxOrnaments(mapboxMap);
 
     _stationAnnotationManager =
         await mapboxMap.annotations.createCircleAnnotationManager();
     _stationTapEvents = _stationAnnotationManager?.tapEvents(
       onTap: _handleStationAnnotationTap,
     );
+    _stationHighlightAnnotationManager =
+        await mapboxMap.annotations.createCircleAnnotationManager();
     _userAnnotationManager =
         await mapboxMap.annotations.createCircleAnnotationManager();
 
@@ -88,6 +122,21 @@ class _MapPageState extends State<MapPage> {
     if (location != null) {
       _moveCamera(location, zoom: 12.5);
     }
+  }
+
+  Future<void> _updateMapboxOrnaments(mapbox.MapboxMap mapboxMap) async {
+    if (!mounted) return;
+    final size = MediaQuery.sizeOf(context);
+    final isLandscape = size.width > size.height;
+
+    await mapboxMap.scaleBar.updateSettings(
+      mapbox.ScaleBarSettings(
+        position: mapbox.OrnamentPosition.BOTTOM_RIGHT,
+        marginRight: 12,
+        marginBottom: 12,
+        ratio: isLandscape ? .24 : .3,
+      ),
+    );
   }
 
   Future<void> _loadStations() async {
@@ -165,33 +214,54 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _syncStationAnnotations() async {
     final manager = _stationAnnotationManager;
-    if (!_isMapReady || manager == null) return;
+    final highlightManager = _stationHighlightAnnotationManager;
+    if (!_isMapReady || manager == null || highlightManager == null) return;
 
-    await manager.deleteAll();
-    if (_stations.isEmpty) return;
+    final existingAnnotations = await manager.getAnnotations();
+    if (existingAnnotations.length != _stations.length) {
+      await manager.deleteAll();
+      if (_stations.isNotEmpty) {
+        final annotations = _stations
+            .map(_stationAnnotationOptions)
+            .toList(growable: false);
+        await manager.createMulti(annotations);
+      }
+    }
 
-    final annotations = _stations
-        .map(
-          (station) => mapbox.CircleAnnotationOptions(
-            geometry: mapbox.Point(
-              coordinates: mapbox.Position(station.longitude, station.latitude),
-            ),
-            circleRadius: 5.5,
-            circleColor: _mapboxColor(const Color(0xFF55D6FF)),
-            circleOpacity: .92,
-            circleStrokeColor: _mapboxColor(const Color(0xFF06141D)),
-            circleStrokeWidth: 2.0,
-            circleSortKey: 20,
-            customData: <String, Object>{
-              'type': 'water_station',
-              'stationId': station.id,
-            },
-          ),
-        )
-        .toList(growable: false);
+    await manager.setCircleOpacity(_stationLayerVisible ? .92 : 0);
+    await manager.setCircleStrokeOpacity(_stationLayerVisible ? 1 : 0);
 
-    await manager.createMulti(annotations);
+    await highlightManager.deleteAll();
+    final highlightedStation = _temporarilyHighlightedStation;
+    if (!_stationLayerVisible && highlightedStation != null) {
+      await highlightManager.create(
+        _stationAnnotationOptions(highlightedStation, highlighted: true),
+      );
+    }
   }
+
+  mapbox.CircleAnnotationOptions _stationAnnotationOptions(
+    Station station, {
+    bool highlighted = false,
+  }) => mapbox.CircleAnnotationOptions(
+    geometry: mapbox.Point(
+      coordinates: mapbox.Position(station.longitude, station.latitude),
+    ),
+    circleRadius: highlighted ? 8.5 : 5.5,
+    circleColor: _mapboxColor(
+      highlighted ? const Color(0xFFFFD166) : const Color(0xFF55D6FF),
+    ),
+    circleOpacity: highlighted ? 1 : .92,
+    circleStrokeColor: _mapboxColor(
+      highlighted ? Colors.white : const Color(0xFF06141D),
+    ),
+    circleStrokeWidth: highlighted ? 3.2 : 2.0,
+    circleSortKey: highlighted ? 60 : 20,
+    customData: <String, Object>{
+      'type': 'water_station',
+      'stationId': station.id,
+    },
+  );
 
   Future<void> _syncUserAnnotation() async {
     final manager = _userAnnotationManager;
@@ -252,7 +322,41 @@ class _MapPageState extends State<MapPage> {
     );
 
     if (selected == null || !mounted) return;
+    if (!_stationLayerVisible) {
+      setState(() {
+        _temporarilyHighlightedStation = _stationForSearchResult(selected);
+      });
+      await _syncStationAnnotations();
+    }
     _moveCamera(LatLng(selected.latitude, selected.longitude), zoom: 13.5);
+  }
+
+  Station? _stationForSearchResult(MapSearchResult result) {
+    for (final station in _stations) {
+      if (station.name == result.name &&
+          (station.latitude - result.latitude).abs() < .000001 &&
+          (station.longitude - result.longitude).abs() < .000001) {
+        return station;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _toggleStationLayer() async {
+    setState(() {
+      _stationLayerVisible = !_stationLayerVisible;
+      _temporarilyHighlightedStation = null;
+    });
+    await _syncStationAnnotations();
+  }
+
+  void _toggleActions() {
+    setState(() => _actionsExpanded = !_actionsExpanded);
+  }
+
+  void _runAction(VoidCallback action) {
+    setState(() => _actionsExpanded = false);
+    action();
   }
 
   @override
@@ -260,6 +364,16 @@ class _MapPageState extends State<MapPage> {
     final initialCenter = _currentLocation ?? _fallbackCamera;
     final languageCode = Localizations.localeOf(context).languageCode;
     final mapTitle = languageCode == 'ro' ? 'Harta Pescarilor' : 'Anglers Map';
+    final fishingSpotLabel = languageCode == 'ro'
+        ? 'Loc de pescuit'
+        : 'Fishing Spot';
+    final fishingSpotTooltip = languageCode == 'ro'
+        ? 'Adaugă loc de pescuit'
+        : 'Add fishing spot';
+    final actionsLabel = languageCode == 'ro' ? 'Acțiuni' : 'Actions';
+    final stationLayerLabel = languageCode == 'ro'
+        ? (_stationLayerVisible ? 'Ascunde stațiile' : 'Arată stațiile')
+        : (_stationLayerVisible ? 'Hide stations' : 'Show stations');
 
     return Scaffold(
       backgroundColor: const Color(0xFF071018),
@@ -291,6 +405,15 @@ class _MapPageState extends State<MapPage> {
             final controlSpacing = (height * .012).clamp(8.0, 12.0).toDouble();
             final controlSize = (shortestSide * .11)
                 .clamp(40.0, isTablet ? 48.0 : 44.0)
+                .toDouble();
+            final actionsTop = controlsTop + 2 * (controlSize + controlSpacing);
+            final railSpacing = (controlSpacing * .82)
+                .clamp(6.0, 10.0)
+                .toDouble();
+            final availableLabelWidth =
+                width - 2 * horizontalInset - controlSize - railSpacing;
+            final labelMaxWidth = availableLabelWidth
+                .clamp(92.0, isTablet ? 180.0 : 172.0)
                 .toDouble();
 
             return Stack(
@@ -334,16 +457,82 @@ class _MapPageState extends State<MapPage> {
                         tooltip: context.l10n.youAreHere,
                         icon: Icons.my_location_rounded,
                         size: controlSize,
+                        accentColor: const Color(0xFF67D04B),
                         isLoading: _isLocating,
                         onTap: () => _locateUser(recenter: true),
                       ),
                       SizedBox(height: controlSpacing),
                       _MapToolButton(
-                        tooltip: context.l10n.waterStations,
+                        tooltip: stationLayerLabel,
                         icon: Icons.water_drop_rounded,
                         size: controlSize,
+                        accentColor: _stationLayerVisible
+                            ? const Color(0xFF12D8D6)
+                            : null,
+                        foregroundColor: _stationLayerVisible
+                            ? null
+                            : Colors.white70,
+                        isActive: _stationLayerVisible,
                         isLoading: _isLoadingStations,
-                        onTap: _loadStations,
+                        onTap: _toggleStationLayer,
+                      ),
+                      SizedBox(height: controlSpacing),
+                      _MapToolButton(
+                        tooltip: actionsLabel,
+                        icon: Icons.bolt_rounded,
+                        size: controlSize,
+                        accentColor: const Color(0xFFA970FF),
+                        isActive: _actionsExpanded,
+                        onTap: _toggleActions,
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  right: isLandscape
+                      ? horizontalInset + controlSize + railSpacing
+                      : horizontalInset,
+                  top: isLandscape
+                      ? actionsTop
+                      : actionsTop + controlSize + railSpacing,
+                  child: _MapActionRail(
+                    expanded: _actionsExpanded,
+                    landscape: isLandscape,
+                    buttonSize: controlSize,
+                    spacing: railSpacing,
+                    labelMaxWidth: labelMaxWidth,
+                    actions: [
+                      _MapRailAction(
+                        icon: Icons.phishing_rounded,
+                        label: context.l10n.addCatch,
+                        color: const Color(0xFFB7F34A),
+                        onTap: () => _runAction(widget.onAddCatch),
+                      ),
+                      _MapRailAction(
+                        icon: Icons.add_location_alt_rounded,
+                        label: fishingSpotLabel,
+                        tooltip: fishingSpotTooltip,
+                        color: const Color(0xFFFFA34D),
+                        onTap: () => _runAction(
+                          () =>
+                              widget.onCreateReport(ReportCategory.goodFishing),
+                        ),
+                      ),
+                      _MapRailAction(
+                        icon: Icons.campaign_rounded,
+                        label: context.l10n.report,
+                        color: const Color(0xFFB78CFF),
+                        onTap: () => _runAction(
+                          () => widget.onCreateReport(
+                            ReportCategory.fishActivity,
+                          ),
+                        ),
+                      ),
+                      _MapRailAction(
+                        icon: Icons.favorite_rounded,
+                        label: context.l10n.favorites,
+                        color: const Color(0xFFFF75B5),
+                        onTap: () => _runAction(widget.onOpenFavorites),
                       ),
                     ],
                   ),
@@ -453,6 +642,201 @@ class _FullMapHeader extends StatelessWidget {
                         Flexible(child: titleWidget),
                       ],
                     ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MapRailAction {
+  const _MapRailAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? tooltip;
+  final Color color;
+  final VoidCallback onTap;
+}
+
+class _MapActionRail extends StatelessWidget {
+  const _MapActionRail({
+    required this.expanded,
+    required this.landscape,
+    required this.buttonSize,
+    required this.spacing,
+    required this.labelMaxWidth,
+    required this.actions,
+  });
+
+  final bool expanded;
+  final bool landscape;
+  final double buttonSize;
+  final double spacing;
+  final double labelMaxWidth;
+  final List<_MapRailAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final rail = landscape
+        ? Row(
+            key: const ValueKey('map-actions-landscape'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var index = 0; index < actions.length; index++) ...[
+                if (index > 0) SizedBox(width: spacing),
+                _MapRailActionButton(
+                  action: actions[index],
+                  buttonSize: buttonSize,
+                  labelMaxWidth: labelMaxWidth,
+                  showLabel: false,
+                ),
+              ],
+            ],
+          )
+        : Column(
+            key: const ValueKey('map-actions-portrait'),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (var index = 0; index < actions.length; index++) ...[
+                if (index > 0) SizedBox(height: spacing),
+                _MapRailActionButton(
+                  action: actions[index],
+                  buttonSize: buttonSize,
+                  labelMaxWidth: labelMaxWidth,
+                  showLabel: true,
+                ),
+              ],
+            ],
+          );
+
+    return IgnorePointer(
+      ignoring: !expanded,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        reverseDuration: const Duration(milliseconds: 180),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(.10, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        ),
+        child: expanded
+            ? rail
+            : const SizedBox.shrink(key: ValueKey('map-actions-closed')),
+      ),
+    );
+  }
+}
+
+class _MapRailActionButton extends StatelessWidget {
+  const _MapRailActionButton({
+    required this.action,
+    required this.buttonSize,
+    required this.labelMaxWidth,
+    required this.showLabel,
+  });
+
+  final _MapRailAction action;
+  final double buttonSize;
+  final double labelMaxWidth;
+  final bool showLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showLabel) ...[
+          _MapActionLabel(
+            label: action.label,
+            maxWidth: labelMaxWidth,
+            buttonSize: buttonSize,
+            color: action.color,
+          ),
+          const SizedBox(width: 6),
+        ],
+        _MapToolButton(
+          tooltip: action.tooltip ?? action.label,
+          icon: action.icon,
+          size: buttonSize,
+          accentColor: action.color,
+          onTap: action.onTap,
+        ),
+      ],
+    );
+  }
+}
+
+class _MapActionLabel extends StatelessWidget {
+  const _MapActionLabel({
+    required this.label,
+    required this.maxWidth,
+    required this.buttonSize,
+    required this.color,
+  });
+
+  final String label;
+  final double maxWidth;
+  final double buttonSize;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = (buttonSize * .72).clamp(30.0, 36.0).toDouble();
+    final compact = maxWidth < 110;
+    return ExcludeSemantics(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: IntrinsicWidth(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: Container(
+                height: height,
+                padding: EdgeInsets.symmetric(horizontal: compact ? 11 : 13),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101720).withValues(alpha: .48),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: color.withValues(alpha: .13)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: .05),
+                      blurRadius: 10,
+                      spreadRadius: -4,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .92),
+                      fontSize: compact ? 10.0 : 11.0,
+                      height: 1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -618,6 +1002,9 @@ class _MapToolButton extends StatelessWidget {
     required this.size,
     required this.onTap,
     this.isLoading = false,
+    this.accentColor,
+    this.foregroundColor,
+    this.isActive = false,
   });
 
   final String tooltip;
@@ -625,45 +1012,76 @@ class _MapToolButton extends StatelessWidget {
   final double size;
   final VoidCallback onTap;
   final bool isLoading;
+  final Color? accentColor;
+  final Color? foregroundColor;
+  final bool isActive;
 
   @override
   Widget build(BuildContext context) {
     final borderRadius = (size * .34).clamp(13.0, 16.0).toDouble();
     final iconSize = (size * .48).clamp(19.0, 23.0).toDouble();
     final loaderSize = (size * .4).clamp(16.0, 20.0).toDouble();
+    final effectiveForegroundColor =
+        foregroundColor ?? accentColor ?? Colors.white;
 
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: isLoading ? null : onTap,
-          borderRadius: BorderRadius.circular(borderRadius),
-          child: Ink(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              color: const Color(0xFF101720).withValues(alpha: .72),
-              borderRadius: BorderRadius.circular(borderRadius),
-              border: Border.all(color: Colors.white.withValues(alpha: .15)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: .18),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Center(
-              child: isLoading
-                  ? SizedBox.square(
-                      dimension: loaderSize,
-                      child: const CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        excludeFromSemantics: true,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: isLoading ? null : onTap,
+            borderRadius: BorderRadius.circular(borderRadius),
+            child: Ink(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: accentColor == null
+                    ? const Color(0xFF101720).withValues(alpha: .72)
+                    : Color.alphaBlend(
+                        accentColor!.withValues(alpha: isActive ? .16 : .07),
+                        const Color(0xFF101720).withValues(alpha: .68),
                       ),
-                    )
-                  : Icon(icon, color: Colors.white, size: iconSize),
+                borderRadius: BorderRadius.circular(borderRadius),
+                border: Border.all(
+                  color:
+                      accentColor?.withValues(alpha: isActive ? .42 : .24) ??
+                      Colors.white.withValues(alpha: .15),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: .18),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                  if (accentColor != null)
+                    BoxShadow(
+                      color: accentColor!.withValues(
+                        alpha: isActive ? .18 : .10,
+                      ),
+                      blurRadius: 12,
+                      spreadRadius: -4,
+                    ),
+                ],
+              ),
+              child: Center(
+                child: isLoading
+                    ? SizedBox.square(
+                        dimension: loaderSize,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: effectiveForegroundColor,
+                        ),
+                      )
+                    : Icon(
+                        icon,
+                        color: effectiveForegroundColor,
+                        size: iconSize,
+                      ),
+              ),
             ),
           ),
         ),
