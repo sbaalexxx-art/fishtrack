@@ -58,6 +58,15 @@ class _MapPageState extends State<MapPage> {
     _mapboxMap = mapboxMap;
     _isMapReady = true;
 
+    await mapboxMap.scaleBar.updateSettings(
+      mapbox.ScaleBarSettings(
+        position: mapbox.OrnamentPosition.BOTTOM_RIGHT,
+        marginRight: 12,
+        marginBottom: 12,
+        ratio: .3,
+      ),
+    );
+
     _stationAnnotationManager =
         await mapboxMap.annotations.createCircleAnnotationManager();
     _stationTapEvents = _stationAnnotationManager?.tapEvents(
@@ -249,18 +258,42 @@ class _MapPageState extends State<MapPage> {
   @override
   Widget build(BuildContext context) {
     final initialCenter = _currentLocation ?? _fallbackCamera;
+    final languageCode = Localizations.localeOf(context).languageCode;
+    final mapTitle = languageCode == 'ro' ? 'Harta Pescarilor' : 'Anglers Map';
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.fishingMap),
-        centerTitle: true,
-      ),
+      backgroundColor: const Color(0xFF071018),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: Stack(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final height = constraints.maxHeight;
+            final shortestSide = width < height ? width : height;
+            final isLandscape = width > height;
+            final isTablet = shortestSide >= 600;
+            final singleLineHeader = isLandscape || width >= 360;
+            final horizontalInset = (width * .035)
+                .clamp(10.0, isTablet ? 32.0 : 20.0)
+                .toDouble();
+            final wordmarkHeight = (shortestSide * .06)
+                .clamp(22.0, isTablet ? 36.0 : 30.0)
+                .toDouble();
+            final titleFontSize = (shortestSide * .035)
+                .clamp(13.5, isTablet ? 21.0 : 17.0)
+                .toDouble();
+            final headerHeight = isLandscape
+                ? (height * .14).clamp(50.0, isTablet ? 68.0 : 58.0).toDouble()
+                : singleLineHeader
+                ? (height * .10).clamp(56.0, isTablet ? 76.0 : 64.0).toDouble()
+                : (height * .13).clamp(76.0, 92.0).toDouble();
+            final controlGap = (height * .015).clamp(8.0, 14.0).toDouble();
+            final controlsTop = headerHeight + controlGap;
+            final controlSpacing = (height * .012).clamp(8.0, 12.0).toDouble();
+            final controlSize = (shortestSide * .11)
+                .clamp(40.0, isTablet ? 48.0 : 44.0)
+                .toDouble();
+
+            return Stack(
               fit: StackFit.expand,
               children: [
                 MapboxMapView(
@@ -270,29 +303,45 @@ class _MapPageState extends State<MapPage> {
                   onMapCreated: _onMapCreated,
                 ),
                 Positioned(
-                  left: 10,
-                  top: 10,
+                  left: 0,
+                  top: 0,
+                  right: 0,
+                  height: headerHeight,
+                  child: _FullMapHeader(
+                    title: mapTitle,
+                    horizontalInset: horizontalInset,
+                    wordmarkHeight: wordmarkHeight,
+                    titleFontSize: titleFontSize,
+                    singleLine: singleLineHeader,
+                  ),
+                ),
+                Positioned(
+                  left: horizontalInset,
+                  top: controlsTop,
                   child: _MapToolButton(
                     tooltip: context.l10n.searchStation,
                     icon: Icons.search_rounded,
+                    size: controlSize,
                     onTap: _openSearch,
                   ),
                 ),
                 Positioned(
-                  right: 10,
-                  top: 10,
+                  right: horizontalInset,
+                  top: controlsTop,
                   child: Column(
                     children: [
                       _MapToolButton(
                         tooltip: context.l10n.youAreHere,
                         icon: Icons.my_location_rounded,
+                        size: controlSize,
                         isLoading: _isLocating,
                         onTap: () => _locateUser(recenter: true),
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: controlSpacing),
                       _MapToolButton(
                         tooltip: context.l10n.waterStations,
                         icon: Icons.water_drop_rounded,
+                        size: controlSize,
                         isLoading: _isLoadingStations,
                         onTap: _loadStations,
                       ),
@@ -301,14 +350,14 @@ class _MapPageState extends State<MapPage> {
                 ),
                 if (_stationLoadError != null)
                   Positioned(
-                    left: 12,
-                    right: 12,
-                    bottom: 12,
+                    left: horizontalInset,
+                    right: horizontalInset,
+                    bottom: controlGap,
                     child: _MapMessage(text: _stationLoadError!),
                   ),
               ],
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
@@ -319,6 +368,96 @@ class _MapPageState extends State<MapPage> {
         ((color.r * 255).round() << 16) |
         ((color.g * 255).round() << 8) |
         (color.b * 255).round();
+  }
+}
+
+class _FullMapHeader extends StatelessWidget {
+  const _FullMapHeader({
+    required this.title,
+    required this.horizontalInset,
+    required this.wordmarkHeight,
+    required this.titleFontSize,
+    required this.singleLine,
+  });
+
+  final String title;
+  final double horizontalInset;
+  final double wordmarkHeight;
+  final double titleFontSize;
+  final bool singleLine;
+
+  @override
+  Widget build(BuildContext context) {
+    final wordmark = Image.asset(
+      'assets/branding/fluviai_wordmark.png',
+      height: wordmarkHeight,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      gaplessPlayback: true,
+    );
+    final titleWidget = Text(
+      '• $title',
+      maxLines: singleLine ? 1 : 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: .94),
+        fontSize: titleFontSize,
+        height: 1.08,
+        fontWeight: FontWeight.w600,
+        letterSpacing: .1,
+        shadows: const [
+          Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
+        ],
+      ),
+    );
+
+    return IgnorePointer(
+      child: Semantics(
+        header: true,
+        label: 'FluviAI • $title',
+        child: ExcludeSemantics(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFF06101B).withValues(alpha: .92),
+                  const Color(0xFF06101B).withValues(alpha: .58),
+                  const Color(0xFF06101B).withValues(alpha: 0),
+                ],
+                stops: const [0, .56, 1],
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalInset,
+                8,
+                horizontalInset,
+                singleLine ? 14 : 16,
+              ),
+              child: singleLine
+                  ? Row(
+                      children: [
+                        wordmark,
+                        const SizedBox(width: 9),
+                        Flexible(child: titleWidget),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        wordmark,
+                        const SizedBox(height: 5),
+                        Flexible(child: titleWidget),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -476,30 +615,36 @@ class _MapToolButton extends StatelessWidget {
   const _MapToolButton({
     required this.tooltip,
     required this.icon,
+    required this.size,
     required this.onTap,
     this.isLoading = false,
   });
 
   final String tooltip;
   final IconData icon;
+  final double size;
   final VoidCallback onTap;
   final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
+    final borderRadius = (size * .34).clamp(13.0, 16.0).toDouble();
+    final iconSize = (size * .48).clamp(19.0, 23.0).toDouble();
+    final loaderSize = (size * .4).clamp(16.0, 20.0).toDouble();
+
     return Tooltip(
       message: tooltip,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: isLoading ? null : onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(borderRadius),
           child: Ink(
-            width: 46,
-            height: 46,
+            width: size,
+            height: size,
             decoration: BoxDecoration(
               color: const Color(0xFF101720).withValues(alpha: .72),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(borderRadius),
               border: Border.all(color: Colors.white.withValues(alpha: .15)),
               boxShadow: [
                 BoxShadow(
@@ -511,14 +656,14 @@ class _MapToolButton extends StatelessWidget {
             ),
             child: Center(
               child: isLoading
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(
+                  ? SizedBox.square(
+                      dimension: loaderSize,
+                      child: const CircularProgressIndicator(
                         strokeWidth: 2,
                         color: Colors.white,
                       ),
                     )
-                  : Icon(icon, color: Colors.white, size: 22),
+                  : Icon(icon, color: Colors.white, size: iconSize),
             ),
           ),
         ),
