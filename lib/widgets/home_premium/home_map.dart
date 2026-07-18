@@ -1065,15 +1065,13 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
   Widget buildSuggestions(BuildContext context) {
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
-      return _buildStationSuggestions(stations.take(12).map(_stationResult));
+      return _buildStationSuggestions(stations.map(_stationResult));
     }
 
     return FutureBuilder<List<MapSearchResult>>(
       future: _combinedResults(trimmed),
       builder: (context, snapshot) {
-        final stationFallback = searchService
-            .searchStations(trimmed, stations)
-            .take(12);
+        final stationFallback = searchService.searchStations(trimmed, stations);
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildStationSuggestions(stationFallback);
         }
@@ -1081,7 +1079,7 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
         final results =
             snapshot.data ?? stationFallback.toList(growable: false);
         if (results.isEmpty) return Center(child: Text(noResultsText));
-        return _buildStationSuggestions(results.take(12));
+        return _buildStationSuggestions(results);
       },
     );
   }

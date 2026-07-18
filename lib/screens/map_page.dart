@@ -391,7 +391,7 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
   Widget buildSuggestions(BuildContext context) {
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
-      return _buildResults(stations.take(16).map(_stationResult));
+      return _buildResults(stations.map(_stationResult));
     }
 
     return FutureBuilder<List<MapSearchResult>>(
@@ -399,12 +399,12 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
       builder: (context, snapshot) {
         final stationFallback = searchService.searchStations(trimmed, stations);
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildResults(stationFallback.take(16));
+          return _buildResults(stationFallback);
         }
 
         final results = snapshot.data ?? stationFallback;
         if (results.isEmpty) return Center(child: Text(noResultsText));
-        return _buildResults(results.take(16));
+        return _buildResults(results);
       },
     );
   }
