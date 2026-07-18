@@ -13,6 +13,20 @@ import '../services/map_search_service.dart';
 import '../services/water_service.dart';
 import 'station_details_page.dart';
 
+enum _FullMapStyle {
+  satelliteStreets(
+    'mapbox://styles/mapbox/satellite-streets-v12',
+    Icons.satellite_alt_rounded,
+  ),
+  standard(mapbox.MapboxStyles.STANDARD, Icons.map_rounded),
+  dark(mapbox.MapboxStyles.DARK, Icons.dark_mode_rounded);
+
+  const _FullMapStyle(this.uri, this.icon);
+
+  final String uri;
+  final IconData icon;
+}
+
 class MapPage extends StatefulWidget {
   const MapPage({
     super.key,
@@ -30,8 +44,6 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
-  static const _satelliteStreetsStyle =
-      'mapbox://styles/mapbox/satellite-streets-v12';
   static const _fallbackCamera = LatLng(44.8148, 21.3895);
 
   final LocationService _locationService = const LocationService();
@@ -53,6 +65,12 @@ class _MapPageState extends State<MapPage> {
   bool _isLoadingStations = false;
   bool _actionsExpanded = false;
   bool _stationLayerVisible = true;
+  bool _hasLoadedInitialStyle = false;
+  bool _isChangingMapStyle = false;
+  bool _isCompletingStyleChange = false;
+  _FullMapStyle _selectedMapStyle = _FullMapStyle.satelliteStreets;
+  _FullMapStyle? _pendingMapStyle;
+  mapbox.CameraState? _cameraBeforeStyleChange;
   Station? _temporarilyHighlightedStation;
   String? _stationLoadError;
   Orientation? _orientation;
@@ -98,19 +116,7 @@ class _MapPageState extends State<MapPage> {
     _isMapReady = true;
 
     await _updateMapboxOrnaments(mapboxMap);
-
-    _stationAnnotationManager =
-        await mapboxMap.annotations.createCircleAnnotationManager();
-    _stationTapEvents = _stationAnnotationManager?.tapEvents(
-      onTap: _handleStationAnnotationTap,
-    );
-    _stationHighlightAnnotationManager =
-        await mapboxMap.annotations.createCircleAnnotationManager();
-    _userAnnotationManager =
-        await mapboxMap.annotations.createCircleAnnotationManager();
-
-    await _syncStationAnnotations();
-    await _syncUserAnnotation();
+    await _bindAnnotationManagers(mapboxMap);
 
     final pendingTarget = _pendingCameraTarget;
     if (pendingTarget != null) {
@@ -122,6 +128,135 @@ class _MapPageState extends State<MapPage> {
     if (location != null) {
       _moveCamera(location, zoom: 12.5);
     }
+  }
+
+  void _onStyleLoaded(mapbox.StyleLoadedEventData _) {
+    if (!_hasLoadedInitialStyle) {
+      if (mounted) setState(() => _hasLoadedInitialStyle = true);
+      return;
+    }
+    if (!_isChangingMapStyle ||
+        _pendingMapStyle == null ||
+        _isCompletingStyleChange) {
+      return;
+    }
+
+    _isCompletingStyleChange = true;
+    unawaited(_restoreAfterStyleChange());
+  }
+
+  Future<void> _bindAnnotationManagers(
+    mapbox.MapboxMap mapboxMap, {
+    bool replaceExisting = false,
+  }) async {
+    if (!replaceExisting &&
+        _stationAnnotationManager != null &&
+        _stationHighlightAnnotationManager != null &&
+        _userAnnotationManager != null) {
+      return;
+    }
+
+    if (replaceExisting) {
+      await _releaseAnnotationManagers(mapboxMap);
+    }
+
+    _stationAnnotationManager = await mapboxMap.annotations
+        .createCircleAnnotationManager();
+    try {
+      _stationTapEvents = _stationAnnotationManager?.tapEvents(
+        onTap: _handleStationAnnotationTap,
+      );
+      _stationHighlightAnnotationManager = await mapboxMap.annotations
+          .createCircleAnnotationManager();
+      _userAnnotationManager = await mapboxMap.annotations
+          .createCircleAnnotationManager();
+
+      await _syncStationAnnotations();
+      await _syncUserAnnotation();
+    } catch (_) {
+      await _releaseAnnotationManagers(mapboxMap);
+      rethrow;
+    }
+  }
+
+  Future<void> _releaseAnnotationManagers(mapbox.MapboxMap mapboxMap) async {
+    final stationManager = _stationAnnotationManager;
+    final highlightManager = _stationHighlightAnnotationManager;
+    final userManager = _userAnnotationManager;
+
+    await _stationTapEvents?.cancel();
+    _stationTapEvents = null;
+    _stationAnnotationManager = null;
+    _stationHighlightAnnotationManager = null;
+    _userAnnotationManager = null;
+
+    for (final manager in [stationManager, highlightManager, userManager]) {
+      if (manager == null) continue;
+      try {
+        await mapboxMap.annotations.removeAnnotationManager(manager);
+      } catch (_) {
+        // A completed style load may already have released the native manager.
+      }
+    }
+  }
+
+  Future<void> _restoreAfterStyleChange() async {
+    final mapboxMap = _mapboxMap;
+    final pendingStyle = _pendingMapStyle;
+    final camera = _cameraBeforeStyleChange;
+    if (mapboxMap == null || pendingStyle == null) {
+      _finishStyleChange();
+      return;
+    }
+
+    var restoreFailed = false;
+    try {
+      if (camera != null) {
+        await mapboxMap.setCamera(
+          mapbox.CameraOptions(
+            center: camera.center,
+            padding: camera.padding,
+            zoom: camera.zoom,
+            bearing: camera.bearing,
+            pitch: camera.pitch,
+          ),
+        );
+      }
+    } catch (_) {
+      restoreFailed = true;
+    }
+    try {
+      await _updateMapboxOrnaments(mapboxMap);
+    } catch (_) {
+      restoreFailed = true;
+    }
+    try {
+      await _bindAnnotationManagers(mapboxMap, replaceExisting: true);
+    } catch (_) {
+      restoreFailed = true;
+    }
+
+    if (restoreFailed && mounted) {
+      _showStyleChangeError();
+    }
+    if (!mounted) {
+      _finishStyleChange();
+      return;
+    }
+    setState(() {
+      _selectedMapStyle = pendingStyle;
+      _isChangingMapStyle = false;
+      _isCompletingStyleChange = false;
+      _pendingMapStyle = null;
+      _cameraBeforeStyleChange = null;
+    });
+  }
+
+  void _finishStyleChange() {
+    _isChangingMapStyle = false;
+    _isCompletingStyleChange = false;
+    _pendingMapStyle = null;
+    _cameraBeforeStyleChange = null;
   }
 
   Future<void> _updateMapboxOrnaments(mapbox.MapboxMap mapboxMap) async {
@@ -212,7 +347,11 @@ class _MapPageState extends State<MapPage> {
     _pendingCameraTarget = null;
   }
 
+  bool get _annotationSyncBlocked =>
+      _isChangingMapStyle && !_isCompletingStyleChange;
+
   Future<void> _syncStationAnnotations() async {
+    if (_annotationSyncBlocked) return;
     final manager = _stationAnnotationManager;
     final highlightManager = _stationHighlightAnnotationManager;
     if (!_isMapReady || manager == null || highlightManager == null) return;
@@ -264,6 +403,7 @@ class _MapPageState extends State<MapPage> {
   );
 
   Future<void> _syncUserAnnotation() async {
+    if (_annotationSyncBlocked) return;
     final manager = _userAnnotationManager;
     final location = _currentLocation;
     if (!_isMapReady || manager == null || location == null) return;
@@ -359,6 +499,72 @@ class _MapPageState extends State<MapPage> {
     action();
   }
 
+  bool get _canChangeMapStyle =>
+      _isMapReady &&
+      _hasLoadedInitialStyle &&
+      !_isChangingMapStyle &&
+      _mapboxMap != null &&
+      _stationAnnotationManager != null &&
+      _stationHighlightAnnotationManager != null &&
+      _userAnnotationManager != null;
+
+  Future<void> _openMapStyleSelector() async {
+    if (!_canChangeMapStyle) return;
+    final languageCode = Localizations.localeOf(context).languageCode;
+    final sheetWidth = MediaQuery.sizeOf(
+      context,
+    ).width.clamp(0.0, 440.0).toDouble();
+    final selectedStyle = await showModalBottomSheet<_FullMapStyle>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: .58),
+      constraints: BoxConstraints.tightFor(width: sheetWidth),
+      builder: (context) => _MapStyleSelector(
+        selectedStyle: _selectedMapStyle,
+        languageCode: languageCode,
+      ),
+    );
+
+    if (selectedStyle == null || !mounted) return;
+    await _changeMapStyle(selectedStyle);
+  }
+
+  Future<void> _changeMapStyle(_FullMapStyle style) async {
+    final mapboxMap = _mapboxMap;
+    if (!_canChangeMapStyle || mapboxMap == null) return;
+    if (style == _selectedMapStyle) return;
+
+    setState(() {
+      _isChangingMapStyle = true;
+      _pendingMapStyle = style;
+    });
+
+    try {
+      _cameraBeforeStyleChange = await mapboxMap.getCameraState();
+      await mapboxMap.loadStyleURI(style.uri);
+    } catch (_) {
+      if (!mounted) {
+        _finishStyleChange();
+        return;
+      }
+      setState(_finishStyleChange);
+      _showStyleChangeError();
+    }
+  }
+
+  void _showStyleChangeError() {
+    if (!mounted) return;
+    final isRomanian = Localizations.localeOf(context).languageCode == 'ro';
+    final message = isRomanian
+        ? 'Stilul hărții nu a putut fi schimbat.'
+        : 'The map style could not be changed.';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final initialCenter = _currentLocation ?? _fallbackCamera;
@@ -374,6 +580,7 @@ class _MapPageState extends State<MapPage> {
     final stationLayerLabel = languageCode == 'ro'
         ? (_stationLayerVisible ? 'Ascunde stațiile' : 'Arată stațiile')
         : (_stationLayerVisible ? 'Hide stations' : 'Show stations');
+    final mapStyleLabel = languageCode == 'ro' ? 'Stil hartă' : 'Map style';
 
     return Scaffold(
       backgroundColor: const Color(0xFF071018),
@@ -421,9 +628,10 @@ class _MapPageState extends State<MapPage> {
               children: [
                 MapboxMapView(
                   key: const ValueKey('aifishmap-map-page-mapbox'),
-                  styleUri: _satelliteStreetsStyle,
+                  styleUri: _FullMapStyle.satelliteStreets.uri,
                   initialCenter: initialCenter,
                   onMapCreated: _onMapCreated,
+                  onStyleLoaded: _onStyleLoaded,
                 ),
                 Positioned(
                   left: 0,
@@ -441,11 +649,29 @@ class _MapPageState extends State<MapPage> {
                 Positioned(
                   left: horizontalInset,
                   top: controlsTop,
-                  child: _MapToolButton(
-                    tooltip: context.l10n.searchStation,
-                    icon: Icons.search_rounded,
-                    size: controlSize,
-                    onTap: _openSearch,
+                  child: Column(
+                    children: [
+                      _MapToolButton(
+                        tooltip: context.l10n.searchStation,
+                        icon: Icons.search_rounded,
+                        size: controlSize,
+                        onTap: _openSearch,
+                      ),
+                      SizedBox(height: controlSpacing),
+                      _MapToolButton(
+                        tooltip: mapStyleLabel,
+                        icon: Icons.layers_rounded,
+                        size: controlSize,
+                        accentColor: _canChangeMapStyle
+                            ? const Color(0xFF12D8D6)
+                            : null,
+                        foregroundColor: _canChangeMapStyle
+                            ? null
+                            : Colors.white54,
+                        isLoading: _isChangingMapStyle,
+                        onTap: _openMapStyleSelector,
+                      ),
+                    ],
                   ),
                 ),
                 Positioned(
@@ -845,17 +1071,167 @@ class _MapActionLabel extends StatelessWidget {
   }
 }
 
+class _MapStyleSelector extends StatelessWidget {
+  const _MapStyleSelector({
+    required this.selectedStyle,
+    required this.languageCode,
+  });
+
+  final _FullMapStyle selectedStyle;
+  final String languageCode;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRomanian = languageCode == 'ro';
+    final title = isRomanian ? 'Stil hartă' : 'Map style';
+
+    return SafeArea(
+      top: false,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B141D).withValues(alpha: .98),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: Colors.white.withValues(alpha: .11)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .42),
+              blurRadius: 28,
+              offset: const Offset(0, -8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .22),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final style in _FullMapStyle.values) ...[
+                _MapStyleOption(
+                  style: style,
+                  label: _styleLabel(style, isRomanian: isRomanian),
+                  selected: style == selectedStyle,
+                ),
+                if (style != _FullMapStyle.values.last)
+                  const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _styleLabel(_FullMapStyle style, {required bool isRomanian}) =>
+      switch (style) {
+        _FullMapStyle.satelliteStreets =>
+          isRomanian ? 'Satelit + străzi' : 'Satellite + streets',
+        _FullMapStyle.standard => 'Standard',
+        _FullMapStyle.dark => isRomanian ? 'Întunecat' : 'Dark',
+      };
+}
+
+class _MapStyleOption extends StatelessWidget {
+  const _MapStyleOption({
+    required this.style,
+    required this.label,
+    required this.selected,
+  });
+
+  final _FullMapStyle style;
+  final String label;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    const accentColor = Color(0xFF12D8D6);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.of(context).pop(style),
+        borderRadius: BorderRadius.circular(15),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: selected
+                ? accentColor.withValues(alpha: .11)
+                : Colors.white.withValues(alpha: .035),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: selected
+                  ? accentColor.withValues(alpha: .42)
+                  : Colors.white.withValues(alpha: .09),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                style.icon,
+                size: 21,
+                color: selected ? accentColor : Colors.white70,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected ? Colors.white : Colors.white70,
+                    fontSize: 14,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                size: 20,
+                color: selected
+                    ? accentColor
+                    : Colors.white.withValues(alpha: .28),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class MapboxMapView extends StatelessWidget {
   const MapboxMapView({
     super.key,
     required this.styleUri,
     required this.initialCenter,
     required this.onMapCreated,
+    required this.onStyleLoaded,
   });
 
   final String styleUri;
   final LatLng initialCenter;
   final ValueChanged<mapbox.MapboxMap> onMapCreated;
+  final ValueChanged<mapbox.StyleLoadedEventData> onStyleLoaded;
 
   @override
   Widget build(BuildContext context) {
@@ -873,6 +1249,7 @@ class MapboxMapView extends StatelessWidget {
         zoom: 12.5,
       ),
       onMapCreated: onMapCreated,
+      onStyleLoadedListener: onStyleLoaded,
     );
   }
 }
