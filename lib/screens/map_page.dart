@@ -367,7 +367,7 @@ class _MapPageState extends State<MapPage> {
       }
     }
 
-    await manager.setCircleOpacity(_stationLayerVisible ? .92 : 0);
+    await manager.setCircleOpacity(_stationLayerVisible ? 1 : 0);
     await manager.setCircleStrokeOpacity(_stationLayerVisible ? 1 : 0);
 
     await highlightManager.deleteAll();
@@ -382,25 +382,41 @@ class _MapPageState extends State<MapPage> {
   mapbox.CircleAnnotationOptions _stationAnnotationOptions(
     Station station, {
     bool highlighted = false,
-  }) => mapbox.CircleAnnotationOptions(
-    geometry: mapbox.Point(
-      coordinates: mapbox.Position(station.longitude, station.latitude),
-    ),
-    circleRadius: highlighted ? 8.5 : 5.5,
-    circleColor: _mapboxColor(
-      highlighted ? const Color(0xFFFFD166) : const Color(0xFF55D6FF),
-    ),
-    circleOpacity: highlighted ? 1 : .92,
-    circleStrokeColor: _mapboxColor(
-      highlighted ? Colors.white : const Color(0xFF06141D),
-    ),
-    circleStrokeWidth: highlighted ? 3.2 : 2.0,
-    circleSortKey: highlighted ? 60 : 20,
-    customData: <String, Object>{
-      'type': 'water_station',
-      'stationId': station.id,
-    },
-  );
+  }) {
+    final stationColor = _stationTrendColor(station);
+    final fillColor = highlighted
+        ? const Color(0xFFFFD166)
+        : station.hasKnownTrend
+        ? stationColor
+        : stationColor.withValues(alpha: .88);
+
+    return mapbox.CircleAnnotationOptions(
+      geometry: mapbox.Point(
+        coordinates: mapbox.Position(station.longitude, station.latitude),
+      ),
+      circleRadius: highlighted ? 8.5 : 6.5,
+      circleColor: _mapboxColor(fillColor),
+      circleOpacity: 1,
+      circleStrokeColor: _mapboxColor(
+        highlighted ? Colors.white : const Color(0xFF06141D),
+      ),
+      circleStrokeWidth: highlighted ? 3.2 : 2.2,
+      circleSortKey: highlighted ? 60 : 20,
+      customData: <String, Object>{
+        'type': 'water_station',
+        'stationId': station.id,
+      },
+    );
+  }
+
+  Color _stationTrendColor(Station station) {
+    if (!station.hasKnownTrend) return const Color(0xFF78909C);
+    return switch (station.trend) {
+      WaterTrend.rising => const Color(0xFF2F8CFF),
+      WaterTrend.stable => const Color(0xFF67D04B),
+      WaterTrend.falling => const Color(0xFFFF5A67),
+    };
+  }
 
   Future<void> _syncUserAnnotation() async {
     if (_annotationSyncBlocked) return;
