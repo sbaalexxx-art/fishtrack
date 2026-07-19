@@ -983,13 +983,13 @@ abstract class AppLocalizations {
   /// No description provided for @mapSearchHint.
   ///
   /// In ro, this message translates to:
-  /// **'Caută stație sau locație…'**
+  /// **'Caută o localitate sau o zonă…'**
   String get mapSearchHint;
 
   /// No description provided for @noMapSearchResult.
   ///
   /// In ro, this message translates to:
-  /// **'Nu a fost găsită nicio stație sau locație.'**
+  /// **'Nu a fost găsită nicio locație.'**
   String get noMapSearchResult;
 
   /// No description provided for @noStationFound.
@@ -1291,6 +1291,12 @@ abstract class AppLocalizations {
   /// In ro, this message translates to:
   /// **'Altul'**
   String get reportCategoryOther;
+
+  /// No description provided for @reportDetails.
+  ///
+  /// In ro, this message translates to:
+  /// **'Detalii raport'**
+  String get reportDetails;
 
   /// No description provided for @abuseReasonSpam.
   ///

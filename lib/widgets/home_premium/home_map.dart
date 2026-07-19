@@ -1,21 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:latlong2/latlong.dart';
 
 import '../../l10n/l10n.dart';
 import '../../models/station.dart';
 import '../../services/community_service.dart';
-import '../../services/build_mode_service.dart';
 import '../../services/favorite_stations_service.dart';
 import '../../services/location_service.dart';
 import '../../services/map_search_service.dart';
 import '../../services/station_filter_service.dart';
 import '../../services/water_service.dart';
+import '../../screens/community_details_page.dart';
 import '../../screens/station_details_page.dart';
 import 'home_premium_layout.dart';
 import '../home/home_map.dart';
 
 enum HomeMapLocationAvailability { locating, available, unavailable }
+
+enum _HomeReportStreamState { sync, live, offline }
 
 class HomePremiumMap extends StatefulWidget {
   const HomePremiumMap({
@@ -39,6 +42,13 @@ class HomePremiumMap extends StatefulWidget {
 }
 
 class _HomePremiumMapState extends State<HomePremiumMap> {
+  static const _defaultLocalRadiusKm = 100.0;
+  static const _homeLayerOptions = <MapOverlay>[
+    MapOverlay.waterStations,
+    MapOverlay.communityReports,
+    MapOverlay.favoriteStations,
+  ];
+
   final CommunityService _communityService = const CommunityService();
   final LocationService _locationService = const LocationService();
   final MapSearchService _searchService = const MapSearchService();
@@ -49,8 +59,10 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   final StationFilterService _filterService = StationFilterService.instance;
   late Stream<List<CommunityPost>> _reportsStream;
   List<Station> _stations = const [];
-  List<CommunityPost> _recentCatches = const [];
   Set<String> _favoriteStationIds = const {};
+  Set<ReportCategory> _reportCategories = const {};
+  LatLng? _explorationCenter;
+  double _localRadiusKm = _defaultLocalRadiusKm;
   LatLng? _currentLocation;
   LocationFailureReason? _locationFailure;
   bool _isLocating = false;
@@ -60,11 +72,8 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   LatLng? _pendingCameraTarget;
   double _pendingCameraZoom = 13.5;
   bool _isSearching = false;
-  MapBaseLayer _baseLayer = MapBaseLayer.standard;
-  Set<MapOverlay> _overlays = const {
-    MapOverlay.waterStations,
-    MapOverlay.communityReports,
-  };
+  final MapBaseLayer _baseLayer = MapBaseLayer.standard;
+  Set<MapOverlay> _overlays = const {MapOverlay.communityReports};
 
   @override
   void initState() {
@@ -104,19 +113,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     } on Exception {
       // The base map remains usable when station data is unavailable.
     }
-    await Future.wait([_loadFavoriteIds(), _loadRecentCatches()]);
-  }
-
-  Future<List<Station>> _ensureStationsLoaded() async {
-    if (_stations.isNotEmpty) return _stations;
-
-    try {
-      final stations = await _waterService.getStations();
-      if (mounted) setState(() => _stations = stations);
-      return stations;
-    } on Exception {
-      return _stations;
-    }
+    await _loadFavoriteIds();
   }
 
   Future<void> _loadFavoriteIds() async {
@@ -132,20 +129,6 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     }
   }
 
-  Future<void> _loadRecentCatches() async {
-    try {
-      final cutoff = DateTime.now().subtract(const Duration(hours: 72));
-      final posts = await _communityService.getFeed();
-      final catches = posts
-          .where((post) => post.type == CommunityPostType.catchPost)
-          .where((post) => post.createdAt.isAfter(cutoff))
-          .toList(growable: false);
-      if (mounted) setState(() => _recentCatches = catches);
-    } on CommunityException {
-      // Reports and station markers remain usable without recent catches.
-    }
-  }
-
   Future<void> _openStation(Station station) async {
     _waterService.selectStation(station);
     await Navigator.of(context).push<void>(
@@ -156,132 +139,109 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     await _loadFavoriteIds();
   }
 
+  Future<void> _openReport(CommunityPost report) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => CatchDetailsPage(post: report),
+      ),
+    );
+  }
+
   Future<void> _openCompactSearch() async {
     if (_isSearching) return;
 
     setState(() => _isSearching = true);
     try {
-      final stations = await _ensureStationsLoaded();
-      if (!mounted) return;
-
       final selected = await showSearch<MapSearchResult?>(
         context: context,
         delegate: _MapSearchDelegate(
           searchService: _searchService,
-          stations: stations,
           hintText: context.l10n.mapSearchHint,
           noResultsText: context.l10n.noMapSearchResult,
         ),
       );
 
       if (selected == null || !mounted) return;
-      _filterService.updateQuery(selected.name);
-      _moveCamera(LatLng(selected.latitude, selected.longitude), zoom: 13.5);
+      final explorationCenter = LatLng(selected.latitude, selected.longitude);
+      setState(() => _explorationCenter = explorationCenter);
+      _moveCamera(explorationCenter, zoom: 13.5);
     } finally {
       if (mounted) setState(() => _isSearching = false);
     }
   }
 
   Future<void> _openMapOptions() async {
-    var layer = _baseLayer;
-    var overlays = {..._overlays};
-    await showModalBottomSheet<void>(
-      context: context,
+    var overlays = _overlays.intersection(_homeLayerOptions.toSet());
+    await _showPremiumMapSheet<void>(
       builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  context.l10n.mapLayers,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                RadioGroup<MapBaseLayer>(
-                  groupValue: layer,
+        builder: (context, setSheetState) => _HomeMapSheet(
+          title: context.l10n.mapLayers,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final overlay in _homeLayerOptions)
+                CheckboxListTile(
+                  value: overlays.contains(overlay),
+                  title: Text(switch (overlay) {
+                    MapOverlay.waterStations => context.l10n.waterStations,
+                    MapOverlay.communityReports =>
+                      context.l10n.communityReports,
+                    MapOverlay.recentCatches => context.l10n.recentCatches,
+                    MapOverlay.favoriteStations =>
+                      context.l10n.favoriteStations,
+                  }),
                   onChanged: (value) {
-                    if (value != null) setSheetState(() => layer = value);
-                  },
-                  child: Column(
-                    children: [
-                      RadioListTile(
-                        value: MapBaseLayer.standard,
-                        title: Text(context.l10n.standard),
-                      ),
-                      if (BuildModeService.isDeveloperVisible) ...[
-                        RadioListTile(
-                          value: MapBaseLayer.satellite,
-                          enabled: false,
-                          title: Text(context.l10n.satellite),
-                          subtitle: Text(context.l10n.comingSoon),
+                    if (overlay == MapOverlay.favoriteStations &&
+                        value == true &&
+                        !_favoriteStationsService.isAuthenticated) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(context.l10n.signInForFavoriteStations),
                         ),
-                        RadioListTile(
-                          value: MapBaseLayer.fishingMode,
-                          enabled: false,
-                          title: Text(context.l10n.fishingMode),
-                          subtitle: Text(context.l10n.comingSoon),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const Divider(),
-                for (final overlay in MapOverlay.values)
-                  CheckboxListTile(
-                    value: overlays.contains(overlay),
-                    title: Text(switch (overlay) {
-                      MapOverlay.waterStations => context.l10n.waterStations,
-                      MapOverlay.communityReports =>
-                        context.l10n.communityReports,
-                      MapOverlay.recentCatches => context.l10n.recentCatches,
-                      MapOverlay.favoriteStations =>
-                        context.l10n.favoriteStations,
-                    }),
-                    onChanged: (value) {
-                      if (overlay == MapOverlay.favoriteStations &&
-                          value == true &&
-                          !_favoriteStationsService.isAuthenticated) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              context.l10n.signInForFavoriteStations,
-                            ),
-                          ),
-                        );
-                        return;
+                      );
+                      return;
+                    }
+                    setSheetState(() {
+                      if (value == true) {
+                        overlays.add(overlay);
+                      } else {
+                        overlays.remove(overlay);
                       }
-                      setSheetState(() {
-                        if (value == true) {
-                          overlays.add(overlay);
-                        } else {
-                          overlays.remove(overlay);
-                        }
-                      });
-                    },
-                  ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton(
-                    onPressed: () {
-                      setState(() {
-                        _baseLayer = layer;
-                        _overlays = Set.unmodifiable(overlays);
-                      });
-                      Navigator.pop(context);
-                    },
-                    child: Text(context.l10n.apply),
-                  ),
+                    });
+                  },
                 ),
-              ],
-            ),
+            ],
+          ),
+          actions: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              FilledButton(
+                onPressed: () {
+                  setState(() {
+                    _overlays = Set.unmodifiable(overlays);
+                  });
+                  Navigator.pop(context);
+                },
+                child: Text(context.l10n.apply),
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Future<T?> _showPremiumMapSheet<T>({required WidgetBuilder builder}) {
+    final width = MediaQuery.sizeOf(context).width;
+    final sheetWidth = (width - 16).clamp(0.0, 560.0).toDouble();
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: .62),
+      constraints: BoxConstraints.tightFor(width: sheetWidth),
+      builder: builder,
     );
   }
 
@@ -397,6 +357,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   }
 
   void _handleLocationAction() {
+    if (_explorationCenter != null) {
+      setState(() => _explorationCenter = null);
+    }
     final location = _currentLocation;
     if (location != null) {
       _recenter(location);
@@ -425,15 +388,91 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     };
   }
 
-  static String _localizedTrendName(BuildContext context, String value) {
-    if (Localizations.localeOf(context).languageCode != 'ro') return value;
-    return switch (value.trim().toLowerCase()) {
-      'rising' => 'În creștere',
-      'stable' => 'Stabil',
-      'falling' => 'În scădere',
-      _ => value,
-    };
+  List<Station> _homeStations() {
+    final showWaterStations = _overlays.contains(MapOverlay.waterStations);
+    final showFavoriteStations = _overlays.contains(
+      MapOverlay.favoriteStations,
+    );
+    if (!showWaterStations && !showFavoriteStations) return const [];
+
+    final uniqueStations = <String, Station>{};
+    for (final station in _stations) {
+      if (showWaterStations || _favoriteStationIds.contains(station.id)) {
+        uniqueStations.putIfAbsent(station.id, () => station);
+      }
+    }
+    return List<Station>.unmodifiable(uniqueStations.values);
   }
+
+  List<CommunityPost> _homeReports(Iterable<CommunityPost> reports) {
+    final center = _explorationCenter ?? _currentLocation;
+    final showEntireMap = _localRadiusKm.isInfinite;
+    if (!showEntireMap && center == null) return const [];
+
+    return reports
+        .where((report) {
+          final latitude = report.latitude;
+          final longitude = report.longitude;
+          if (!report.isActiveReport ||
+              report.isSuspicious ||
+              !_isValidCoordinate(latitude, longitude)) {
+            return false;
+          }
+          if (_reportCategories.isNotEmpty &&
+              !_reportCategories.contains(report.reportCategory)) {
+            return false;
+          }
+          return showEntireMap ||
+              _isWithinLocalRadius(latitude!, longitude!, center!);
+        })
+        .toList(growable: false);
+  }
+
+  bool _isWithinLocalRadius(
+    double latitude,
+    double longitude,
+    LatLng location,
+  ) {
+    final distanceMeters = Geolocator.distanceBetween(
+      location.latitude,
+      location.longitude,
+      latitude,
+      longitude,
+    );
+    return distanceMeters <= _localRadiusKm * 1000;
+  }
+
+  static bool _isValidCoordinate(double? latitude, double? longitude) =>
+      latitude != null &&
+      longitude != null &&
+      latitude.isFinite &&
+      longitude.isFinite &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180;
+
+  static String _reportCategoryLabel(
+    BuildContext context,
+    ReportCategory category,
+  ) => switch (category) {
+    ReportCategory.fishActivity => context.l10n.reportCategoryFishActivity,
+    ReportCategory.waterClarity => context.l10n.reportCategoryWaterClarity,
+    ReportCategory.floatingGrass => context.l10n.reportCategoryFloatingGrass,
+    ReportCategory.highWater => context.l10n.reportCategoryHighWater,
+    ReportCategory.lowWater => context.l10n.reportCategoryLowWater,
+    ReportCategory.strongCurrent => context.l10n.reportCategoryStrongCurrent,
+    ReportCategory.noCurrent => context.l10n.reportCategoryNoCurrent,
+    ReportCategory.boats => context.l10n.reportCategoryBoats,
+    ReportCategory.poaching => context.l10n.reportCategoryPoaching,
+    ReportCategory.theftWarning => context.l10n.reportCategoryTheftWarning,
+    ReportCategory.accessBlocked => context.l10n.reportCategoryAccessBlocked,
+    ReportCategory.parkingAvailable =>
+      context.l10n.reportCategoryParkingAvailable,
+    ReportCategory.goodFishing => context.l10n.reportCategoryGoodFishing,
+    ReportCategory.poorFishing => context.l10n.reportCategoryPoorFishing,
+    ReportCategory.other => context.l10n.reportCategoryOther,
+  };
 
   Widget _buildMapContent() {
     final customChild = widget.child;
@@ -444,15 +483,18 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     return StreamBuilder<List<CommunityPost>>(
       stream: _reportsStream,
       builder: (context, snapshot) {
-        final reports = (snapshot.data ?? const <CommunityPost>[])
-            .where((report) => report.isActiveReport)
-            .toList(growable: false);
+        final reports = _homeReports(snapshot.data ?? const <CommunityPost>[]);
+        final streamState = snapshot.hasError
+            ? _HomeReportStreamState.offline
+            : snapshot.hasData
+            ? _HomeReportStreamState.live
+            : _HomeReportStreamState.sync;
 
         final map = HomeMap(
           reports: reports,
-          stations: _filterService.apply(_stations),
-          recentCatches: _recentCatches,
+          stations: _homeStations(),
           favoriteStationIds: _favoriteStationIds,
+          onReportTap: _openReport,
           onStationTap: _openStation,
           currentLocation: _currentLocation,
           onMapboxMapCreated: _onMapReady,
@@ -460,337 +502,156 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
           overlays: _overlays,
         );
 
-        final isLoading =
-            !snapshot.hasData &&
-            snapshot.connectionState == ConnectionState.waiting;
-
         return Stack(
           fit: StackFit.expand,
           children: [
             Positioned.fill(child: map),
-            if (isLoading)
-              Positioned(
-                left: 62,
-                top: 12,
-                child: _GlassSurface(
-                  borderRadius: 14,
-                  blur: 14,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 7,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox.square(
-                          dimension: 12,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.8,
-                            color: Color(0xFF67D04B),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          Localizations.localeOf(context).languageCode == 'ro'
-                              ? 'Date în timp real'
-                              : 'Live data',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            Positioned(
+              right: 12,
+              bottom: 10,
+              child: _HomeReportStreamBadge(
+                state: streamState,
+                onRetry: streamState == _HomeReportStreamState.offline
+                    ? _retry
+                    : null,
               ),
-            if (snapshot.hasError)
-              Positioned(
-                right: 12,
-                bottom: 54,
-                child: _GlassSurface(
-                  borderRadius: 16,
-                  blur: 16,
-                  child: IconButton(
-                    tooltip: context.l10n.retryLoadingReports,
-                    onPressed: _retry,
-                    icon: const Icon(
-                      Icons.refresh_rounded,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
+            ),
           ],
         );
       },
     );
   }
 
-  // Kept temporarily for compatibility while fishing filters move to overlays.
-  // ignore: unused_element
   Future<void> _openFilters() async {
-    var draft = _filterService.filters.value;
-    var levelRange = RangeValues(
-      draft.minimumWaterLevel ?? 0,
-      draft.maximumWaterLevel ?? 1000,
-    );
-    var filterLevel =
-        draft.minimumWaterLevel != null || draft.maximumWaterLevel != null;
-    final species = <String>[];
+    var draftRadiusKm = _localRadiusKm;
+    var draftCategories = {..._reportCategories};
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    final localRadiusLabel = isRo ? 'Rază' : 'Local radius';
+    final categoriesLabel = isRo
+        ? 'Categorii rapoarte comunitare'
+        : 'Community report categories';
+    final allLabel = isRo ? 'Toate' : 'All';
+    final entireMapLabel = isRo ? 'Toată harta' : 'Entire map';
 
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
+    await _showPremiumMapSheet<void>(
       builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  context.l10n.fishingFilters,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+        builder: (context, setSheetState) => _HomeMapSheet(
+          title: isRo ? 'Filtre hartă' : 'Map filters',
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                localRadiusLabel,
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<double>(
+                isExpanded: true,
+                style: const TextStyle(color: Colors.white),
+                dropdownColor: _HomeMapSheet._fieldSurface,
+                iconEnabledColor: Colors.white70,
+                iconDisabledColor: Colors.white38,
+                initialValue: draftRadiusKm,
+                decoration: InputDecoration(labelText: null),
+                items: [
+                  const DropdownMenuItem(value: 10, child: Text('10 km')),
+                  const DropdownMenuItem(value: 25, child: Text('25 km')),
+                  const DropdownMenuItem(value: 50, child: Text('50 km')),
+                  const DropdownMenuItem(value: 100, child: Text('100 km')),
+                  DropdownMenuItem(
+                    value: double.infinity,
+                    child: Text(entireMapLabel),
                   ),
-                ),
-                DropdownButtonFormField<WaterBodyType?>(
-                  initialValue: draft.waterBodyType,
-                  decoration: InputDecoration(
-                    labelText: context.l10n.waterType,
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: null,
-                      child: Text(context.l10n.riverAndLake),
-                    ),
-                    DropdownMenuItem(
-                      value: WaterBodyType.river,
-                      child: Text(context.l10n.river),
-                    ),
-                    DropdownMenuItem(
-                      value: WaterBodyType.lake,
-                      child: Text(context.l10n.lake),
-                    ),
-                  ],
-                  onChanged: (value) => setSheetState(
-                    () => draft = StationFilters(
-                      query: draft.query,
-                      waterBodyType: value,
-                      species: draft.species,
-                      radiusKm: draft.radiusKm,
-                      minimumWaterLevel: draft.minimumWaterLevel,
-                      maximumWaterLevel: draft.maximumWaterLevel,
-                      trends: draft.trends,
-                      difficulty: draft.difficulty,
-                      favoritesOnly: draft.favoritesOnly,
-                    ),
-                  ),
-                ),
-                DropdownButtonFormField<String?>(
-                  initialValue: draft.species,
-                  decoration: InputDecoration(labelText: context.l10n.species),
-                  items: [
-                    DropdownMenuItem(
-                      value: null,
-                      child: Text(context.l10n.allSpecies),
-                    ),
-                    ...species.map(
-                      (item) =>
-                          DropdownMenuItem(value: item, child: Text(item)),
-                    ),
-                  ],
-                  onChanged: (value) => setSheetState(
-                    () => draft = StationFilters(
-                      query: draft.query,
-                      waterBodyType: draft.waterBodyType,
-                      species: value,
-                      radiusKm: draft.radiusKm,
-                      minimumWaterLevel: draft.minimumWaterLevel,
-                      maximumWaterLevel: draft.maximumWaterLevel,
-                      trends: draft.trends,
-                      difficulty: draft.difficulty,
-                      favoritesOnly: draft.favoritesOnly,
-                    ),
-                  ),
-                ),
-                DropdownButtonFormField<double?>(
-                  initialValue: draft.radiusKm,
-                  decoration: InputDecoration(
-                    labelText: context.l10n.gpsRadius,
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: null,
-                      child: Text(context.l10n.anyDistance),
-                    ),
-                    DropdownMenuItem(value: 10, child: Text('10 km')),
-                    DropdownMenuItem(value: 25, child: Text('25 km')),
-                    DropdownMenuItem(value: 50, child: Text('50 km')),
-                    DropdownMenuItem(value: 100, child: Text('100 km')),
-                  ],
-                  onChanged: (value) => setSheetState(
-                    () => draft = StationFilters(
-                      query: draft.query,
-                      waterBodyType: draft.waterBodyType,
-                      species: draft.species,
-                      radiusKm: value,
-                      minimumWaterLevel: draft.minimumWaterLevel,
-                      maximumWaterLevel: draft.maximumWaterLevel,
-                      trends: draft.trends,
-                      difficulty: draft.difficulty,
-                      favoritesOnly: draft.favoritesOnly,
-                    ),
-                  ),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(context.l10n.filterByWaterLevel),
-                  value: filterLevel,
-                  onChanged: (value) =>
-                      setSheetState(() => filterLevel = value),
-                ),
-                if (filterLevel)
-                  RangeSlider(
-                    values: levelRange,
-                    max: 1000,
-                    divisions: 100,
-                    labels: RangeLabels(
-                      '${levelRange.start.round()} cm',
-                      '${levelRange.end.round()} cm',
-                    ),
-                    onChanged: (value) =>
-                        setSheetState(() => levelRange = value),
-                  ),
-                Text(context.l10n.waterTrend),
-                Wrap(
-                  spacing: 6,
-                  children: WaterTrend.values.map((trend) {
-                    return FilterChip(
-                      label: Text(_localizedTrendName(context, trend.name)),
-                      selected: draft.trends.contains(trend),
-                      onSelected: (selected) {
-                        setSheetState(() {
-                          final trends = {...draft.trends};
-                          if (selected) {
-                            trends.add(trend);
-                          } else {
-                            trends.remove(trend);
-                          }
-                          draft = StationFilters(
-                            query: draft.query,
-                            waterBodyType: draft.waterBodyType,
-                            species: draft.species,
-                            radiusKm: draft.radiusKm,
-                            minimumWaterLevel: draft.minimumWaterLevel,
-                            maximumWaterLevel: draft.maximumWaterLevel,
-                            trends: trends,
-                            difficulty: draft.difficulty,
-                            favoritesOnly: draft.favoritesOnly,
-                          );
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-                DropdownButtonFormField<FishingDifficulty?>(
-                  initialValue: draft.difficulty,
-                  decoration: InputDecoration(
-                    labelText: context.l10n.difficulty,
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: null,
-                      child: Text(context.l10n.anyDifficulty),
-                    ),
-                    DropdownMenuItem(
-                      value: FishingDifficulty.easy,
-                      child: Text(context.l10n.easy),
-                    ),
-                    DropdownMenuItem(
-                      value: FishingDifficulty.moderate,
-                      child: Text(context.l10n.moderate),
-                    ),
-                    DropdownMenuItem(
-                      value: FishingDifficulty.hard,
-                      child: Text(context.l10n.hard),
-                    ),
-                  ],
-                  onChanged: (value) => setSheetState(
-                    () => draft = StationFilters(
-                      query: draft.query,
-                      waterBodyType: draft.waterBodyType,
-                      species: draft.species,
-                      radiusKm: draft.radiusKm,
-                      minimumWaterLevel: draft.minimumWaterLevel,
-                      maximumWaterLevel: draft.maximumWaterLevel,
-                      trends: draft.trends,
-                      difficulty: value,
-                      favoritesOnly: draft.favoritesOnly,
-                    ),
-                  ),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(context.l10n.favoritesOnly),
-                  value: draft.favoritesOnly,
-                  onChanged: (value) => setSheetState(
-                    () => draft = StationFilters(
-                      query: draft.query,
-                      waterBodyType: draft.waterBodyType,
-                      species: draft.species,
-                      radiusKm: draft.radiusKm,
-                      minimumWaterLevel: draft.minimumWaterLevel,
-                      maximumWaterLevel: draft.maximumWaterLevel,
-                      trends: draft.trends,
-                      difficulty: draft.difficulty,
-                      favoritesOnly: value,
-                    ),
-                  ),
-                ),
-                Row(
-                  children: [
-                    TextButton(
-                      onPressed: () {
-                        _filterService.update(
-                          StationFilters(query: draft.query),
-                        );
-                        Navigator.pop(context);
-                      },
-                      child: Text(context.l10n.reset),
-                    ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: () {
-                        _filterService.update(
-                          StationFilters(
-                            query: draft.query,
-                            waterBodyType: draft.waterBodyType,
-                            species: draft.species,
-                            radiusKm: draft.radiusKm,
-                            minimumWaterLevel: filterLevel
-                                ? levelRange.start
-                                : null,
-                            maximumWaterLevel: filterLevel
-                                ? levelRange.end
-                                : null,
-                            trends: draft.trends,
-                            difficulty: draft.difficulty,
-                            favoritesOnly: draft.favoritesOnly,
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setSheetState(() => draftRadiusKm = value);
+                  }
+                },
+              ),
+              const Divider(height: 28),
+              Text(
+                categoriesLabel,
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 8),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  const spacing = 6.0;
+                  final columns = constraints.maxWidth < 340
+                      ? 1
+                      : constraints.maxWidth < 520
+                      ? 2
+                      : 3;
+                  final chipWidth =
+                      (constraints.maxWidth - spacing * (columns - 1)) /
+                      columns;
+
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: 6,
+                    children: [
+                      SizedBox(
+                        width: chipWidth,
+                        child: FilterChip(
+                          label: Text(allLabel),
+                          selected: draftCategories.isEmpty,
+                          onSelected: (_) {
+                            setSheetState(draftCategories.clear);
+                          },
+                        ),
+                      ),
+                      for (final category in ReportCategory.values)
+                        SizedBox(
+                          width: chipWidth,
+                          child: FilterChip(
+                            label: Text(
+                              _reportCategoryLabel(context, category),
+                            ),
+                            selected: draftCategories.contains(category),
+                            onSelected: (selected) {
+                              setSheetState(() {
+                                if (selected) {
+                                  draftCategories.add(category);
+                                } else {
+                                  draftCategories.remove(category);
+                                }
+                              });
+                            },
                           ),
-                        );
-                        Navigator.pop(context);
-                      },
-                      child: Text(context.l10n.apply),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+          actions: Row(
+            children: [
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _localRadiusKm = _defaultLocalRadiusKm;
+                    _reportCategories = const {};
+                  });
+                  Navigator.pop(context);
+                },
+                child: Text(context.l10n.reset),
+              ),
+              const Spacer(),
+              FilledButton(
+                onPressed: () {
+                  setState(() {
+                    _localRadiusKm = draftRadiusKm;
+                    _reportCategories = Set<ReportCategory>.unmodifiable(
+                      draftCategories,
+                    );
+                  });
+                  Navigator.pop(context);
+                },
+                child: Text(context.l10n.apply),
+              ),
+            ],
           ),
         ),
       ),
@@ -876,7 +737,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                       borderRadius: 15,
                       blur: 16,
                       child: SizedBox.square(
-                        dimension: 40,
+                        dimension: 38,
                         child: Center(
                           child: _isSearching
                               ? const SizedBox.square(
@@ -888,7 +749,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                                 )
                               : const Icon(
                                   Icons.search_rounded,
-                                  size: 23,
+                                  size: 21,
                                   color: Colors.white,
                                 ),
                         ),
@@ -903,120 +764,26 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
                   top: 44,
                   child: Column(
                     children: [
-                      _FloatingButton(
-                        Icons.my_location_rounded,
-                        onTap: _handleLocationAction,
-                        isLoading: _isLocating,
+                      Semantics(
+                        label: _locationLabel,
+                        button: true,
+                        child: _FloatingButton(
+                          Icons.my_location_rounded,
+                          onTap: _handleLocationAction,
+                          isLoading: _isLocating,
+                        ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       _FloatingButton(
                         Icons.layers_rounded,
                         onTap: _openMapOptions,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       _FloatingButton(
                         Icons.filter_alt_rounded,
-                        onTap: _openMapOptions,
+                        onTap: _openFilters,
                       ),
                     ],
-                  ),
-                ),
-
-                // LOCATION - compact overlay over the map, not separate layout space.
-                Positioned(
-                  left: 10,
-                  bottom: 36,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _handleLocationAction,
-                    child: _GlassSurface(
-                      borderRadius: 14,
-                      blur: 18,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 6,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_isLocating)
-                              const SizedBox.square(
-                                dimension: 13,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 1.8,
-                                  color: Color(0xFF67D04B),
-                                ),
-                              )
-                            else
-                              const Icon(
-                                Icons.location_on_rounded,
-                                color: Color(0xFF67D04B),
-                                size: 14,
-                              ),
-                            const SizedBox(width: 4),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 118),
-                              child: Text(
-                                _locationLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 10.5,
-                                  letterSpacing: .05,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // LIVE - small premium badge over the map.
-                Positioned(
-                  right: 12,
-                  bottom: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF67D04B),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF67D04B).withValues(alpha: .24),
-                          blurRadius: 8,
-                          spreadRadius: -3,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.sensors_rounded,
-                          size: 10,
-                          color: Colors.black,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'LIVE',
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 8.5,
-                            letterSpacing: .45,
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ],
@@ -1028,16 +795,338 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   }
 }
 
+class _HomeReportStreamBadge extends StatelessWidget {
+  const _HomeReportStreamBadge({required this.state, this.onRetry});
+
+  final _HomeReportStreamState state;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, icon, background, foreground) = switch (state) {
+      _HomeReportStreamState.sync => (
+        'SYNC',
+        Icons.sync_rounded,
+        const Color(0xE62B3742),
+        Colors.white70,
+      ),
+      _HomeReportStreamState.live => (
+        'LIVE',
+        Icons.sensors_rounded,
+        const Color(0xFF67D04B),
+        Colors.black,
+      ),
+      _HomeReportStreamState.offline => (
+        'OFFLINE',
+        Icons.cloud_off_rounded,
+        const Color(0xE64A2930),
+        const Color(0xFFFFA0A8),
+      ),
+    };
+
+    final badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: foreground.withValues(alpha: .22)),
+        boxShadow: [
+          BoxShadow(
+            color: background.withValues(alpha: .24),
+            blurRadius: 8,
+            spreadRadius: -3,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 9, color: foreground),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: foreground,
+              fontWeight: FontWeight.w800,
+              fontSize: 7.8,
+              letterSpacing: .40,
+            ),
+          ),
+        ],
+      ),
+    );
+    final retry = onRetry;
+    if (state != _HomeReportStreamState.offline || retry == null) {
+      return Semantics(label: label, child: badge);
+    }
+
+    return Semantics(
+      label: label,
+      hint: context.l10n.retryLoadingReports,
+      button: true,
+      child: Tooltip(
+        message: context.l10n.retryLoadingReports,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: retry,
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Align(alignment: Alignment.bottomRight, child: badge),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeMapSheet extends StatelessWidget {
+  const _HomeMapSheet({
+    required this.title,
+    required this.content,
+    required this.actions,
+  });
+
+  static const _background = Color(0xFF0B141D);
+  static const _fieldSurface = Color(0xFF111B24);
+  static const _accent = Color(0xFF12D8D6);
+
+  final String title;
+  final Widget content;
+  final Widget actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final isLandscape = media.orientation == Orientation.landscape;
+    final isTablet = media.size.shortestSide >= 600;
+    final availableHeight = (media.size.height - media.viewInsets.bottom)
+        .clamp(0.0, media.size.height)
+        .toDouble();
+    final maxHeight =
+        availableHeight *
+        (isLandscape
+            ? .94
+            : isTablet
+            ? .82
+            : .90);
+    final baseTheme = Theme.of(context);
+    final primaryTextColor = Colors.white.withValues(alpha: .92);
+    final secondaryTextColor = Colors.white.withValues(alpha: .70);
+    final disabledTextColor = Colors.white.withValues(alpha: .40);
+    final colorScheme = baseTheme.colorScheme.copyWith(
+      brightness: Brightness.dark,
+      primary: _accent,
+      onPrimary: const Color(0xFF041619),
+      surface: _background,
+      onSurface: primaryTextColor,
+      onSurfaceVariant: secondaryTextColor,
+      outline: Colors.white.withValues(alpha: .18),
+      outlineVariant: Colors.white.withValues(alpha: .12),
+    );
+    final sheetTheme = baseTheme.copyWith(
+      brightness: Brightness.dark,
+      colorScheme: colorScheme,
+      canvasColor: _background,
+      scaffoldBackgroundColor: _background,
+      disabledColor: disabledTextColor,
+      visualDensity: VisualDensity.compact,
+      textTheme: baseTheme.textTheme.apply(
+        bodyColor: primaryTextColor,
+        displayColor: primaryTextColor,
+      ),
+      primaryTextTheme: baseTheme.primaryTextTheme.apply(
+        bodyColor: primaryTextColor,
+        displayColor: primaryTextColor,
+      ),
+      dividerTheme: DividerThemeData(
+        color: Colors.white.withValues(alpha: .10),
+        thickness: 1,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: _fieldSurface,
+        labelStyle: TextStyle(color: secondaryTextColor),
+        floatingLabelStyle: const TextStyle(color: _accent),
+        hintStyle: TextStyle(color: secondaryTextColor),
+        helperStyle: TextStyle(color: disabledTextColor),
+        suffixIconColor: secondaryTextColor,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: .18)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: _accent, width: 1.2),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: .10)),
+        ),
+      ),
+      listTileTheme: ListTileThemeData(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        textColor: primaryTextColor,
+        iconColor: secondaryTextColor,
+        selectedColor: _accent,
+      ),
+      radioTheme: RadioThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return disabledTextColor;
+          if (states.contains(WidgetState.selected)) return _accent;
+          return secondaryTextColor;
+        }),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return disabledTextColor;
+          if (states.contains(WidgetState.selected)) return _accent;
+          return Colors.transparent;
+        }),
+        checkColor: const WidgetStatePropertyAll(Color(0xFF041619)),
+        side: BorderSide(color: secondaryTextColor, width: 1.4),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return disabledTextColor;
+          if (states.contains(WidgetState.selected)) return _accent;
+          return secondaryTextColor;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return _accent.withValues(alpha: .30);
+          }
+          return Colors.white.withValues(alpha: .18);
+        }),
+      ),
+      sliderTheme: baseTheme.sliderTheme.copyWith(
+        activeTrackColor: _accent,
+        inactiveTrackColor: Colors.white.withValues(alpha: .18),
+        thumbColor: _accent,
+        overlayColor: _accent.withValues(alpha: .14),
+        valueIndicatorColor: _fieldSurface,
+        valueIndicatorTextStyle: const TextStyle(color: Colors.white),
+      ),
+      chipTheme: baseTheme.chipTheme.copyWith(
+        backgroundColor: _fieldSurface,
+        selectedColor: _accent.withValues(alpha: .22),
+        disabledColor: Colors.white.withValues(alpha: .04),
+        checkmarkColor: _accent,
+        labelStyle: TextStyle(color: primaryTextColor),
+        secondaryLabelStyle: TextStyle(color: primaryTextColor),
+        side: BorderSide(color: Colors.white.withValues(alpha: .18)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: _accent,
+          foregroundColor: const Color(0xFF041619),
+          minimumSize: const Size(96, 44),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.white.withValues(alpha: .78),
+          minimumSize: const Size(88, 44),
+        ),
+      ),
+    );
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      child: SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Theme(
+            data: sheetTheme,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _background,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                border: Border.all(color: Colors.white.withValues(alpha: .10)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: .38),
+                    blurRadius: 28,
+                    offset: const Offset(0, -8),
+                  ),
+                ],
+              ),
+              child: Material(
+                type: MaterialType.transparency,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 8),
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .28),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Divider(
+                      height: 1,
+                      color: Colors.white.withValues(alpha: .10),
+                    ),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                        child: content,
+                      ),
+                    ),
+                    Divider(
+                      height: 1,
+                      color: Colors.white.withValues(alpha: .10),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                      child: actions,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
   _MapSearchDelegate({
     required this.searchService,
-    required this.stations,
     required String hintText,
     required this.noResultsText,
   }) : super(searchFieldLabel: hintText);
 
   final MapSearchService searchService;
-  final List<Station> stations;
   final String noResultsText;
 
   @override
@@ -1064,22 +1153,18 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
   @override
   Widget buildSuggestions(BuildContext context) {
     final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      return _buildStationSuggestions(stations.map(_stationResult));
-    }
+    if (trimmed.isEmpty) return const SizedBox.shrink();
 
     return FutureBuilder<List<MapSearchResult>>(
-      future: _combinedResults(trimmed),
+      future: searchService.search(trimmed),
       builder: (context, snapshot) {
-        final stationFallback = searchService.searchStations(trimmed, stations);
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildStationSuggestions(stationFallback);
+          return const Center(child: CircularProgressIndicator());
         }
 
-        final results =
-            snapshot.data ?? stationFallback.toList(growable: false);
+        final results = snapshot.data ?? const <MapSearchResult>[];
         if (results.isEmpty) return Center(child: Text(noResultsText));
-        return _buildStationSuggestions(results);
+        return _buildSearchResults(results);
       },
     );
   }
@@ -1090,7 +1175,7 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
     if (trimmed.isEmpty) return buildSuggestions(context);
 
     return FutureBuilder<List<MapSearchResult>>(
-      future: _combinedResults(trimmed),
+      future: searchService.search(trimmed),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -1100,17 +1185,17 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
         if (results.isEmpty) {
           return Center(child: Text(noResultsText));
         }
-        return _buildStationSuggestions(results);
+        return _buildSearchResults(results);
       },
     );
   }
 
-  Widget _buildStationSuggestions(Iterable<MapSearchResult> results) {
+  Widget _buildSearchResults(Iterable<MapSearchResult> results) {
     final items = results.toList(growable: false);
     if (items.isEmpty) return Center(child: Text(noResultsText));
     return ListView.separated(
       itemCount: items.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final result = items[index];
         return ListTile(
@@ -1122,28 +1207,6 @@ class _MapSearchDelegate extends SearchDelegate<MapSearchResult?> {
           onTap: () => close(context, result),
         );
       },
-    );
-  }
-
-  Future<List<MapSearchResult>> _combinedResults(String value) async {
-    final stationResults = searchService.searchStations(value, stations);
-    final remoteResults = await searchService.search(value);
-    final seen = <String>{};
-    final merged = <MapSearchResult>[];
-    for (final result in [...stationResults, ...remoteResults]) {
-      final key =
-          '${result.name.toLowerCase()}|${result.latitude.toStringAsFixed(4)}|${result.longitude.toStringAsFixed(4)}';
-      if (seen.add(key)) merged.add(result);
-    }
-    return merged;
-  }
-
-  static MapSearchResult _stationResult(Station station) {
-    return MapSearchResult(
-      name: station.name,
-      description: station.river.isEmpty ? null : station.river,
-      latitude: station.latitude,
-      longitude: station.longitude,
     );
   }
 }
@@ -1200,12 +1263,12 @@ class _FloatingButton extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(17),
           child: SizedBox(
-            width: 50,
-            height: 50,
+            width: 40,
+            height: 40,
             child: Center(
               child: isLoading
                   ? const SizedBox.square(
-                      dimension: 20,
+                      dimension: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: Colors.white,
@@ -1214,7 +1277,7 @@ class _FloatingButton extends StatelessWidget {
                   : Icon(
                       icon,
                       color: Colors.white.withValues(alpha: .92),
-                      size: 22,
+                      size: 18,
                     ),
             ),
           ),

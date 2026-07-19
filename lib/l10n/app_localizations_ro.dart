@@ -495,10 +495,10 @@ class AppLocalizationsRo extends AppLocalizations {
   String get searchStation => 'Caută numele stației…';
 
   @override
-  String get mapSearchHint => 'Caută stație sau locație…';
+  String get mapSearchHint => 'Caută o localitate sau o zonă…';
 
   @override
-  String get noMapSearchResult => 'Nu a fost găsită nicio stație sau locație.';
+  String get noMapSearchResult => 'Nu a fost găsită nicio locație.';
 
   @override
   String get noStationFound => 'Nu a fost găsită nicio stație.';
@@ -662,6 +662,9 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get reportCategoryOther => 'Altul';
+
+  @override
+  String get reportDetails => 'Detalii raport';
 
   @override
   String get abuseReasonSpam => 'Spam';

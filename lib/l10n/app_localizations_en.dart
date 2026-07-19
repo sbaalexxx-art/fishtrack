@@ -492,10 +492,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get searchStation => 'Search station name…';
 
   @override
-  String get mapSearchHint => 'Search station or location…';
+  String get mapSearchHint => 'Search for a place or area…';
 
   @override
-  String get noMapSearchResult => 'No station or location found.';
+  String get noMapSearchResult => 'No location found.';
 
   @override
   String get noStationFound => 'No station found.';
@@ -658,6 +658,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reportCategoryOther => 'Other';
+
+  @override
+  String get reportDetails => 'Report Details';
 
   @override
   String get abuseReasonSpam => 'Spam';
