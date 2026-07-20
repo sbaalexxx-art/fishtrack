@@ -19,6 +19,7 @@ class HomeMapRenderer extends StatefulWidget {
     this.onReportTap,
     this.onStationTap,
     this.currentLocation,
+    this.explorationCenter,
     this.onMapReady,
     this.onMapboxMapCreated,
     this.baseLayer = MapBaseLayer.standard,
@@ -35,6 +36,7 @@ class HomeMapRenderer extends StatefulWidget {
   final ValueChanged<CommunityPost>? onReportTap;
   final ValueChanged<Station>? onStationTap;
   final LatLng? currentLocation;
+  final LatLng? explorationCenter;
   final VoidCallback? onMapReady;
   final ValueChanged<mapbox.MapboxMap>? onMapboxMapCreated;
   final MapBaseLayer baseLayer;
@@ -63,6 +65,7 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
   mapbox.MapboxMap? _mapboxMap;
   mapbox.PointAnnotationManager? _reportAnnotationManager;
   mapbox.CircleAnnotationManager? _stationAnnotationManager;
+  mapbox.CircleAnnotationManager? _locationContextAnnotationManager;
   dynamic _reportTapEvents;
   dynamic _stationTapEvents;
   Future<void> _annotationSyncQueue = Future<void>.value();
@@ -94,7 +97,9 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     if (!listEquals(oldWidget.reports, widget.reports) ||
         !listEquals(oldWidget.stations, widget.stations) ||
         !setEquals(oldWidget.overlays, widget.overlays) ||
-        !setEquals(oldWidget.favoriteStationIds, widget.favoriteStationIds)) {
+        !setEquals(oldWidget.favoriteStationIds, widget.favoriteStationIds) ||
+        oldWidget.currentLocation != widget.currentLocation ||
+        oldWidget.explorationCenter != widget.explorationCenter) {
       _scheduleAnnotationSync();
     }
 
@@ -180,7 +185,9 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
 
   Future<void> _bindAnnotationManagers(mapbox.MapboxMap mapboxMap) async {
     if (!_isStyleLoaded || !_isCurrentMap(mapboxMap)) return;
-    if (_reportAnnotationManager != null && _stationAnnotationManager != null) {
+    if (_reportAnnotationManager != null &&
+        _stationAnnotationManager != null &&
+        _locationContextAnnotationManager != null) {
       _scheduleAnnotationSync();
       return;
     }
@@ -205,6 +212,13 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
       _stationTapEvents = _stationAnnotationManager?.tapEvents(
         onTap: _handleStationAnnotationTap,
       );
+
+      _locationContextAnnotationManager = await mapboxMap.annotations
+          .createCircleAnnotationManager();
+      if (!_isCurrentMap(mapboxMap)) {
+        await _releaseAnnotationManagers(mapboxMap);
+        return;
+      }
       _scheduleAnnotationSync();
     } on Exception {
       await _releaseAnnotationManagers(mapboxMap);
@@ -214,11 +228,13 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
   Future<void> _releaseAnnotationManagers(mapbox.MapboxMap mapboxMap) async {
     final reportManager = _reportAnnotationManager;
     final stationManager = _stationAnnotationManager;
+    final locationContextManager = _locationContextAnnotationManager;
     final reportTapEvents = _reportTapEvents;
     final stationTapEvents = _stationTapEvents;
 
     _reportAnnotationManager = null;
     _stationAnnotationManager = null;
+    _locationContextAnnotationManager = null;
     _reportTapEvents = null;
     _stationTapEvents = null;
 
@@ -241,6 +257,15 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     if (stationManager != null) {
       try {
         await mapboxMap.annotations.removeAnnotationManager(stationManager);
+      } on Exception {
+        // The native manager may already be released with the map or style.
+      }
+    }
+    if (locationContextManager != null) {
+      try {
+        await mapboxMap.annotations.removeAnnotationManager(
+          locationContextManager,
+        );
       } on Exception {
         // The native manager may already be released with the map or style.
       }
@@ -277,6 +302,13 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     } on Exception {
       // Stations can fail independently without affecting the base map.
     }
+    if (!_canSyncAnnotations(mapboxMap, revision)) return;
+
+    try {
+      await _syncLocationContextAnnotations(mapboxMap, revision);
+    } on Exception {
+      // Location context can fail without affecting the other map layers.
+    }
   }
 
   Future<void> _syncReportAnnotations(
@@ -310,6 +342,22 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     await manager.deleteAll();
     if (!_canSyncAnnotations(mapboxMap, revision) ||
         !identical(_stationAnnotationManager, manager)) {
+      return;
+    }
+    if (options.isNotEmpty) await manager.createMulti(options);
+  }
+
+  Future<void> _syncLocationContextAnnotations(
+    mapbox.MapboxMap mapboxMap,
+    int revision,
+  ) async {
+    final manager = _locationContextAnnotationManager;
+    if (manager == null || !_canSyncAnnotations(mapboxMap, revision)) return;
+
+    final options = _locationContextAnnotationOptions();
+    await manager.deleteAll();
+    if (!_canSyncAnnotations(mapboxMap, revision) ||
+        !identical(_locationContextAnnotationManager, manager)) {
       return;
     }
     if (options.isNotEmpty) await manager.createMulti(options);
@@ -601,6 +649,52 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
             'type': 'water_station',
             'stationId': station.id,
           },
+        ),
+      );
+    }
+    return options;
+  }
+
+  List<mapbox.CircleAnnotationOptions> _locationContextAnnotationOptions() {
+    final options = <mapbox.CircleAnnotationOptions>[];
+    final currentLocation = widget.currentLocation;
+    if (currentLocation != null) {
+      options.add(
+        mapbox.CircleAnnotationOptions(
+          geometry: mapbox.Point(
+            coordinates: mapbox.Position(
+              currentLocation.longitude,
+              currentLocation.latitude,
+            ),
+          ),
+          circleRadius: 8,
+          circleColor: _mapboxColor(const Color(0xFF67D04B)),
+          circleOpacity: 1,
+          circleStrokeColor: _mapboxColor(Colors.white),
+          circleStrokeWidth: 3,
+          circleSortKey: 60,
+          customData: const <String, Object>{'type': 'current_location'},
+        ),
+      );
+    }
+
+    final explorationCenter = widget.explorationCenter;
+    if (explorationCenter != null) {
+      options.add(
+        mapbox.CircleAnnotationOptions(
+          geometry: mapbox.Point(
+            coordinates: mapbox.Position(
+              explorationCenter.longitude,
+              explorationCenter.latitude,
+            ),
+          ),
+          circleRadius: 10,
+          circleColor: _mapboxColor(const Color(0xFF12D8D6)),
+          circleOpacity: 1,
+          circleStrokeColor: _mapboxColor(Colors.white),
+          circleStrokeWidth: 3,
+          circleSortKey: 70,
+          customData: const <String, Object>{'type': 'exploration_target'},
         ),
       );
     }

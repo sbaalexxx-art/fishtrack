@@ -314,14 +314,15 @@ class PremiumLoadingShimmer extends StatefulWidget {
 
 class _PremiumLoadingShimmerState extends State<PremiumLoadingShimmer>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  );
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
     if (widget.isLoading) _controller.repeat();
   }
 

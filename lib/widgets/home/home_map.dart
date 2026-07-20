@@ -23,6 +23,7 @@ class HomeMap extends StatelessWidget {
     this.onReportTap,
     this.onStationTap,
     this.currentLocation,
+    this.explorationCenter,
     this.onMapReady,
     this.onMapboxMapCreated,
     this.baseLayer = MapBaseLayer.standard,
@@ -39,6 +40,7 @@ class HomeMap extends StatelessWidget {
   final ValueChanged<CommunityPost>? onReportTap;
   final ValueChanged<Station>? onStationTap;
   final LatLng? currentLocation;
+  final LatLng? explorationCenter;
   final VoidCallback? onMapReady;
   final ValueChanged<mapbox.MapboxMap>? onMapboxMapCreated;
   final MapBaseLayer baseLayer;
@@ -54,6 +56,7 @@ class HomeMap extends StatelessWidget {
       onReportTap: onReportTap,
       onStationTap: onStationTap,
       currentLocation: currentLocation,
+      explorationCenter: explorationCenter,
       onMapReady: onMapReady,
       onMapboxMapCreated: onMapboxMapCreated,
       baseLayer: baseLayer,

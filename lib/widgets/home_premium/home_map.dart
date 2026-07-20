@@ -41,7 +41,8 @@ class HomePremiumMap extends StatefulWidget {
   State<HomePremiumMap> createState() => _HomePremiumMapState();
 }
 
-class _HomePremiumMapState extends State<HomePremiumMap> {
+class _HomePremiumMapState extends State<HomePremiumMap>
+    with WidgetsBindingObserver {
   static const _defaultLocalRadiusKm = 100.0;
   static const _homeLayerOptions = <MapOverlay>[
     MapOverlay.waterStations,
@@ -64,8 +65,12 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   LatLng? _explorationCenter;
   double _localRadiusKm = _defaultLocalRadiusKm;
   LatLng? _currentLocation;
+  String? _lastGpsLocationLabel;
   LocationFailureReason? _locationFailure;
   bool _isLocating = false;
+  bool _queuedRecenterLocationRequest = false;
+  int _locationRequestRevision = 0;
+  int _locationLabelRevision = 0;
   bool _isMapReady = false;
   bool _pendingRecenter = false;
   bool _didApplyInitialUserCamera = false;
@@ -78,6 +83,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _reportsStream = _communityService.watchReports();
     _filterService.filters.addListener(_onFiltersChanged);
     FavoriteStationsService.revision.addListener(_loadFavoriteIds);
@@ -91,9 +97,17 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _filterService.filters.removeListener(_onFiltersChanged);
     FavoriteStationsService.revision.removeListener(_loadFavoriteIds);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && widget.child == null) {
+      _locateUser();
+    }
   }
 
   void _onFiltersChanged() {
@@ -163,7 +177,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
 
       if (selected == null || !mounted) return;
       final explorationCenter = LatLng(selected.latitude, selected.longitude);
+      _locationLabelRevision++;
       setState(() => _explorationCenter = explorationCenter);
+      widget.onLocationLabelChanged?.call(selected.name);
       _moveCamera(explorationCenter, zoom: 13.5);
     } finally {
       if (mounted) setState(() => _isSearching = false);
@@ -246,15 +262,16 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   }
 
   Future<void> _locateUser({bool recenter = false}) async {
+    if (!mounted) return;
     if (_isLocating) {
+      if (recenter) {
+        _queuedRecenterLocationRequest = true;
+      }
       return;
     }
 
-    final knownLocation = _currentLocation;
-    if (knownLocation != null && recenter) {
-      _recenter(knownLocation);
-      return;
-    }
+    final requestRevision = ++_locationRequestRevision;
+    final labelRevision = ++_locationLabelRevision;
 
     setState(() {
       _isLocating = true;
@@ -264,11 +281,15 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
     widget.onLocationAvailabilityChanged?.call(
       HomeMapLocationAvailability.locating,
     );
-    widget.onLocationLabelChanged?.call(null);
+    if (!recenter &&
+        _explorationCenter == null &&
+        _lastGpsLocationLabel == null) {
+      widget.onLocationLabelChanged?.call(null);
+    }
 
     try {
       final position = await _locationService.determinePosition();
-      if (!mounted) {
+      if (!mounted || requestRevision != _locationRequestRevision) {
         return;
       }
 
@@ -289,8 +310,12 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
         position,
         languageCode: languageCode,
       );
-      if (!mounted) return;
-      widget.onLocationLabelChanged?.call(locationLabel);
+      if (!mounted || requestRevision != _locationRequestRevision) return;
+      _lastGpsLocationLabel = locationLabel;
+      if (labelRevision == _locationLabelRevision &&
+          _explorationCenter == null) {
+        widget.onLocationLabelChanged?.call(locationLabel);
+      }
       widget.onLocationAvailabilityChanged?.call(
         locationLabel == null
             ? HomeMapLocationAvailability.unavailable
@@ -305,13 +330,21 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
         widget.onLocationAvailabilityChanged?.call(
           HomeMapLocationAvailability.unavailable,
         );
-        widget.onLocationLabelChanged?.call(null);
+        if (requestRevision == _locationRequestRevision &&
+            labelRevision == _locationLabelRevision &&
+            _explorationCenter == null) {
+          widget.onLocationLabelChanged?.call(_lastGpsLocationLabel);
+        }
       }
     } finally {
-      if (mounted) {
+      if (mounted && requestRevision == _locationRequestRevision) {
         setState(() {
           _isLocating = false;
         });
+        if (_queuedRecenterLocationRequest) {
+          _queuedRecenterLocationRequest = false;
+          _locateUser(recenter: true);
+        }
       }
     }
   }
@@ -357,15 +390,9 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
   }
 
   void _handleLocationAction() {
-    if (_explorationCenter != null) {
-      setState(() => _explorationCenter = null);
-    }
-    final location = _currentLocation;
-    if (location != null) {
-      _recenter(location);
-      return;
-    }
-
+    _locationLabelRevision++;
+    setState(() => _explorationCenter = null);
+    widget.onLocationLabelChanged?.call(_lastGpsLocationLabel);
     _locateUser(recenter: true);
   }
 
@@ -497,6 +524,7 @@ class _HomePremiumMapState extends State<HomePremiumMap> {
           onReportTap: _openReport,
           onStationTap: _openStation,
           currentLocation: _currentLocation,
+          explorationCenter: _explorationCenter,
           onMapboxMapCreated: _onMapReady,
           baseLayer: _baseLayer,
           overlays: _overlays,
@@ -870,10 +898,14 @@ class _HomeReportStreamBadge extends StatelessWidget {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: retry,
-          child: SizedBox(
-            width: 48,
-            height: 48,
-            child: Align(alignment: Alignment.bottomRight, child: badge),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            child: Align(
+              widthFactor: 1,
+              heightFactor: 1,
+              alignment: Alignment.bottomRight,
+              child: badge,
+            ),
           ),
         ),
       ),
