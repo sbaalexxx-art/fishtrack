@@ -78,117 +78,125 @@ class _MainNavigationState extends State<MainNavigation> {
     final navigationHeight = layout.bottomNavHeight * .86;
     final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
     final keyboardIsOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
-    final showBottomNavigation = routeIsCurrent && !keyboardIsOpen;
+    final mediaSize = MediaQuery.sizeOf(context);
+    final isLandscape = mediaSize.width > mediaSize.height;
+    final isFullMapLandscape = _selectedIndex == 1 && isLandscape;
+    final showBottomNavigation =
+        routeIsCurrent && !keyboardIsOpen && !isFullMapLandscape;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F1115),
-      body: IndexedStack(index: _selectedIndex, children: _pages),
-
-      bottomNavigationBar: showBottomNavigation
-          ? SafeArea(
-              minimum: EdgeInsets.symmetric(
-                horizontal: layout.horizontalPadding * .50,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(21),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-                  child: Container(
-                    height: navigationHeight,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF171C24).withValues(alpha: .92),
-                      borderRadius: BorderRadius.circular(21),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: .09),
+    return PopScope<Object?>(
+      canPop: !isFullMapLandscape,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop || !isFullMapLandscape) return;
+        _selectPage(0);
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F1115),
+        body: IndexedStack(index: _selectedIndex, children: _pages),
+        bottomNavigationBar: showBottomNavigation
+            ? SafeArea(
+                minimum: EdgeInsets.symmetric(
+                  horizontal: layout.horizontalPadding * .50,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(21),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                    child: Container(
+                      height: navigationHeight,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF171C24).withValues(alpha: .92),
+                        borderRadius: BorderRadius.circular(21),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: .09),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: .34),
+                            blurRadius: 24,
+                            spreadRadius: -8,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: .34),
-                          blurRadius: 24,
-                          spreadRadius: -8,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _item(
-                            Icons.home_rounded,
-                            context.l10n.home,
-                            0,
-                            layout,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _item(
+                              Icons.home_rounded,
+                              context.l10n.home,
+                              0,
+                              layout,
+                            ),
                           ),
-                        ),
-
-                        Expanded(
-                          child: _item(
-                            Icons.map_rounded,
-                            context.l10n.map,
-                            1,
-                            layout,
+                          Expanded(
+                            child: _item(
+                              Icons.map_rounded,
+                              context.l10n.map,
+                              1,
+                              layout,
+                            ),
                           ),
-                        ),
-
-                        Expanded(
-                          child: Center(
-                            child: GestureDetector(
-                              onTap: _openAddCatchPage,
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 220),
-                                width: navigationHeight - 8,
-                                height: navigationHeight - 8,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF12D8D6),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: .22),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFF12D8D6,
-                                      ).withValues(alpha: .35),
-                                      blurRadius: 20,
-                                      spreadRadius: -1,
-                                      offset: const Offset(0, 6),
+                          Expanded(
+                            child: Center(
+                              child: GestureDetector(
+                                onTap: _openAddCatchPage,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 220),
+                                  width: navigationHeight - 8,
+                                  height: navigationHeight - 8,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF12D8D6),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: .22,
+                                      ),
                                     ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  Icons.add,
-                                  size: 24 * layout.iconScale,
-                                  color: const Color(0xFF0F1115),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(
+                                          0xFF12D8D6,
+                                        ).withValues(alpha: .35),
+                                        blurRadius: 20,
+                                        spreadRadius: -1,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    Icons.add,
+                                    size: 24 * layout.iconScale,
+                                    color: const Color(0xFF0F1115),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-
-                        Expanded(
-                          child: _item(
-                            Icons.bar_chart_rounded,
-                            context.l10n.reports,
-                            3,
-                            layout,
+                          Expanded(
+                            child: _item(
+                              Icons.bar_chart_rounded,
+                              context.l10n.reports,
+                              3,
+                              layout,
+                            ),
                           ),
-                        ),
-
-                        Expanded(
-                          child: _item(
-                            Icons.person_rounded,
-                            context.l10n.profile,
-                            5,
-                            layout,
+                          Expanded(
+                            child: _item(
+                              Icons.person_rounded,
+                              context.l10n.profile,
+                              5,
+                              layout,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            )
-          : null,
+              )
+            : null,
+      ),
     );
   }
 
