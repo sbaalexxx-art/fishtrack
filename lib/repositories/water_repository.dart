@@ -18,10 +18,31 @@ abstract interface class OfficialWaterDataSource {
   });
 }
 
+abstract interface class StationMetadataReader {
+  Future<List<Map<String, dynamic>>> readStations();
+}
+
+class SupabaseStationMetadataReader implements StationMetadataReader {
+  const SupabaseStationMetadataReader();
+
+  @override
+  Future<List<Map<String, dynamic>>> readStations() async {
+    final rows = await Supabase.instance.client.from('stations').select();
+    return rows
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+}
+
 abstract interface class DailyWaterSnapshotReader {
   Future<List<Map<String, Object?>>> readStationHistory(
     String stationId, {
     required int limit,
+  });
+
+  Future<List<Map<String, Object?>>> readRecentStationTrends(
+    Iterable<String> stationIds, {
+    required DateTime notBefore,
   });
 }
 
@@ -42,6 +63,33 @@ class SupabaseDailyWaterSnapshotReader implements DailyWaterSnapshotReader {
         .eq('station_id', stationId)
         .order('level_measured_at', ascending: false)
         .limit(limit);
+    return rows
+        .map((row) => Map<String, Object?>.from(row))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> readRecentStationTrends(
+    Iterable<String> stationIds, {
+    required DateTime notBefore,
+  }) async {
+    final ids = stationIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (ids.isEmpty) return const <Map<String, Object?>>[];
+
+    final notBeforeDate = notBefore.toUtc().toIso8601String().substring(0, 10);
+    final rows = await Supabase.instance.client
+        .from('daily_water_snapshots')
+        .select(
+          'station_id,observation_date,daily_delta_cm,delta_source,'
+          'delta_measured_at,delta_method,quality',
+        )
+        .inFilter('station_id', ids)
+        .gte('observation_date', notBeforeDate)
+        .order('observation_date', ascending: false);
     return rows
         .map((row) => Map<String, Object?>.from(row))
         .toList(growable: false);
@@ -76,12 +124,14 @@ class WaterRepository implements OfficialWaterDataSource {
     this.afdjProvider = const AfdjWaterProvider(),
     this.danubeHisProvider = const DanubeHisWaterProvider(),
     this.danubeFisProvider = const DanubeFisWaterProvider(),
+    this.stationMetadataReader = const SupabaseStationMetadataReader(),
     this.snapshotReader = const SupabaseDailyWaterSnapshotReader(),
   });
 
   final AfdjWaterProvider afdjProvider;
   final DanubeHisWaterProvider danubeHisProvider;
   final DanubeFisWaterProvider danubeFisProvider;
+  final StationMetadataReader stationMetadataReader;
   final DailyWaterSnapshotReader snapshotReader;
 
   static const defaultFreshnessThreshold = Duration(hours: 36);
@@ -164,6 +214,7 @@ class WaterRepository implements OfficialWaterDataSource {
 
   Future<List<Station>> getStations() async {
     final stationRows = await _getStationRows();
+    final snapshotTrendsFuture = _loadRecentSnapshotTrends(stationRows);
     Map<String, List<WaterLevel>> afdjLevels = const {};
     try {
       afdjLevels = await afdjProvider.getLevels(
@@ -198,6 +249,7 @@ class WaterRepository implements OfficialWaterDataSource {
       afdjLevels: afdjLevels,
       danubeHisLevels: danubeHisLevels,
       danubeFisLevels: danubeFisLevels,
+      snapshotTrendsByStationId: await snapshotTrendsFuture,
     );
   }
 
@@ -217,22 +269,91 @@ class WaterRepository implements OfficialWaterDataSource {
       afdjLevels: const {},
       danubeHisLevels: const {},
       danubeFisLevels: danubeFisLevels,
+      snapshotTrendsByStationId: const <String, WaterTrend>{},
     );
   }
 
-  Future<List<Map<String, dynamic>>> _getStationRows() async {
-    final client = Supabase.instance.client;
-    late final List<Map<String, dynamic>> stationRows;
+  Future<Map<String, WaterTrend>> _loadRecentSnapshotTrends(
+    List<Map<String, dynamic>> stationRows,
+  ) async {
+    final stationIds = stationRows
+        .map((row) => row['id']?.toString().trim() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (stationIds.isEmpty) return const <String, WaterTrend>{};
+
+    final now = DateTime.now().toUtc();
     try {
-      stationRows = await client
-          .from('stations')
-          .select()
-          .timeout(const Duration(seconds: 12));
+      final rows = await snapshotReader.readRecentStationTrends(
+        stationIds,
+        notBefore: now.subtract(defaultFreshnessThreshold),
+      );
+      return _snapshotTrendsFromRows(rows, now: now);
+    } on Exception catch (error, stackTrace) {
+      _logFailure('daily water snapshot trends', error, stackTrace);
+      return const <String, WaterTrend>{};
+    }
+  }
+
+  static Map<String, WaterTrend> _snapshotTrendsFromRows(
+    List<Map<String, Object?>> rows, {
+    required DateTime now,
+  }) {
+    final latest = <String, ({WaterTrend trend, DateTime measuredAt})>{};
+    for (final row in rows) {
+      final stationId = row['station_id']?.toString().trim() ?? '';
+      final quality = row['quality']?.toString().trim().toLowerCase();
+      final method = row['delta_method']?.toString().trim().toLowerCase();
+      final delta = row['daily_delta_cm'] is num
+          ? (row['daily_delta_cm'] as num).toDouble()
+          : double.tryParse(row['daily_delta_cm']?.toString() ?? '');
+      final measuredAt = DateTime.tryParse(
+        row['delta_measured_at']?.toString() ?? '',
+      );
+      final source = _snapshotSource(row['delta_source']);
+      if (stationId.isEmpty ||
+          (quality != 'valid' && quality != 'partial') ||
+          (method != 'provider_reported' && method != 'computed_same_source') ||
+          delta == null ||
+          !delta.isFinite ||
+          measuredAt == null ||
+          measuredAt.millisecondsSinceEpoch <= 0 ||
+          source == null) {
+        continue;
+      }
+
+      final measuredAtUtc = measuredAt.toUtc();
+      final age = now.difference(measuredAtUtc);
+      if (age < const Duration(minutes: -5) ||
+          age > defaultFreshnessThreshold) {
+        continue;
+      }
+
+      final trend = delta == 0
+          ? WaterTrend.stable
+          : delta > 0
+          ? WaterTrend.rising
+          : WaterTrend.falling;
+      final existing = latest[stationId];
+      if (existing == null || measuredAtUtc.isAfter(existing.measuredAt)) {
+        latest[stationId] = (trend: trend, measuredAt: measuredAtUtc);
+      }
+    }
+
+    return Map<String, WaterTrend>.unmodifiable({
+      for (final entry in latest.entries) entry.key: entry.value.trend,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> _getStationRows() async {
+    try {
+      return await stationMetadataReader.readStations().timeout(
+        const Duration(seconds: 12),
+      );
     } on Exception catch (error, stackTrace) {
       _logFailure('station metadata', error, stackTrace);
       rethrow;
     }
-    return stationRows;
   }
 
   List<Station> _stationsFromRows(
@@ -240,6 +361,7 @@ class WaterRepository implements OfficialWaterDataSource {
     required Map<String, List<WaterLevel>> afdjLevels,
     required Map<String, List<WaterLevel>> danubeHisLevels,
     required Map<String, List<WaterLevel>> danubeFisLevels,
+    required Map<String, WaterTrend> snapshotTrendsByStationId,
   }) {
     final stationsByName = stationRows
         .map((row) {
@@ -272,15 +394,21 @@ class WaterRepository implements OfficialWaterDataSource {
             final latest = readings.first;
             data['level'] = latest.value;
             data['last_update'] = latest.timestamp.toIso8601String();
-            final trend = _trendFromHistory(readings);
-            data['trend'] = (trend ?? WaterTrend.stable).name;
-            data['has_known_trend'] = trend != null;
             data['has_water_level'] = true;
             data['water_level_unit'] = latest.unit;
             data['water_level_source'] = latest.source.name;
           } else {
             data['has_water_level'] = false;
           }
+
+          final stationId = data['id']?.toString().trim() ?? '';
+          final liveTrend = readings.isEmpty
+              ? null
+              : _trendFromHistory(readings);
+          final effectiveTrend =
+              liveTrend ?? snapshotTrendsByStationId[stationId];
+          data['trend'] = (effectiveTrend ?? WaterTrend.stable).name;
+          data['has_known_trend'] = effectiveTrend != null;
           return Station.tryFromJson(data);
         })
         .whereType<Station>()

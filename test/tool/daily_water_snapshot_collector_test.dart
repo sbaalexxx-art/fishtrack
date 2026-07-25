@@ -77,6 +77,72 @@ void main() {
     expect(payload.deltaBaseMeasuredAt, now.subtract(const Duration(days: 1)));
   });
 
+  test('builder refuses a base younger than 12 hours', () {
+    final payload = builder.build(
+      stationId: 'bazias',
+      nowUtc: now,
+      readings: [
+        reading(
+          SnapshotSource.danubeHis,
+          500,
+          now.subtract(const Duration(hours: 11)),
+        ),
+        reading(SnapshotSource.danubeHis, 510, now),
+      ],
+    );
+    expect(payload.deltaMethod, 'unavailable');
+    expect(payload.dailyDeltaCm, isNull);
+    expect(payload.quality, 'partial');
+  });
+
+  test('builder refuses a base older than 36 hours', () {
+    final payload = builder.build(
+      stationId: 'bazias',
+      nowUtc: now,
+      readings: [
+        reading(
+          SnapshotSource.danubeHis,
+          500,
+          now.subtract(const Duration(hours: 37)),
+        ),
+        reading(SnapshotSource.danubeHis, 510, now),
+      ],
+    );
+    expect(payload.deltaMethod, 'unavailable');
+    expect(payload.dailyDeltaCm, isNull);
+    expect(payload.quality, 'partial');
+  });
+
+  test('builder chooses the eligible base closest to 24 hours', () {
+    final payload = builder.build(
+      stationId: 'bazias',
+      nowUtc: now,
+      readings: [
+        reading(
+          SnapshotSource.danubeHis,
+          490,
+          now.subtract(const Duration(hours: 36)),
+        ),
+        reading(
+          SnapshotSource.danubeHis,
+          500,
+          now.subtract(const Duration(hours: 24)),
+        ),
+        reading(
+          SnapshotSource.danubeHis,
+          505,
+          now.subtract(const Duration(hours: 12)),
+        ),
+        reading(SnapshotSource.danubeHis, 510, now),
+      ],
+    );
+    expect(payload.dailyDeltaCm, 10);
+    expect(
+      payload.deltaBaseMeasuredAt,
+      now.subtract(const Duration(hours: 24)),
+    );
+  });
+
   test('different sources do not compute a delta', () {
     final payload = builder.build(
       stationId: 'bazias',
@@ -131,6 +197,132 @@ void main() {
     expect(payload.levelMeasuredAt, now);
     expect(payload.deltaMeasuredAt, now);
     expect(payload.deltaBaseMeasuredAt, base);
+  });
+
+  test('persistent same-source level computes an honest daily delta', () {
+    final current = builder.build(
+      stationId: 'bazias',
+      nowUtc: now,
+      readings: [reading(SnapshotSource.danubeFis, 510, now)],
+    );
+    final previous = DailyWaterSnapshotPayload(
+      stationId: 'bazias',
+      observationDate: '2026-01-14',
+      levelCm: 500,
+      levelSource: 'DanubeFIS',
+      levelMeasuredAt: now.subtract(const Duration(hours: 24)),
+      dailyDeltaCm: null,
+      deltaSource: null,
+      deltaMeasuredAt: null,
+      deltaBaseMeasuredAt: null,
+      deltaMethod: 'unavailable',
+      quality: 'partial',
+    );
+
+    final bridged = const DailyWaterSnapshotTrendBridge().apply(
+      current: current,
+      previous: previous,
+    );
+
+    expect(bridged.dailyDeltaCm, 10);
+    expect(bridged.deltaSource, 'DanubeFIS');
+    expect(bridged.deltaMethod, 'computed_same_source');
+    expect(
+      bridged.deltaBaseMeasuredAt,
+      now.subtract(const Duration(hours: 24)),
+    );
+    expect(bridged.quality, 'valid');
+  });
+
+  test('persistent bridge never mixes provider sources', () {
+    final current = builder.build(
+      stationId: 'bazias',
+      nowUtc: now,
+      readings: [reading(SnapshotSource.afdj, 510, now)],
+    );
+    final previous = DailyWaterSnapshotPayload(
+      stationId: 'bazias',
+      observationDate: '2026-01-14',
+      levelCm: 500,
+      levelSource: 'DanubeFIS',
+      levelMeasuredAt: now.subtract(const Duration(hours: 24)),
+      dailyDeltaCm: null,
+      deltaSource: null,
+      deltaMeasuredAt: null,
+      deltaBaseMeasuredAt: null,
+      deltaMethod: 'unavailable',
+      quality: 'partial',
+    );
+
+    expect(
+      const DailyWaterSnapshotTrendBridge()
+          .apply(current: current, previous: previous)
+          .deltaMethod,
+      'unavailable',
+    );
+  });
+
+  test('persistent bridge refuses a base older than 36 hours', () {
+    final current = builder.build(
+      stationId: 'bazias',
+      nowUtc: now,
+      readings: [reading(SnapshotSource.danubeFis, 510, now)],
+    );
+    final previous = DailyWaterSnapshotPayload(
+      stationId: 'bazias',
+      observationDate: '2026-01-13',
+      levelCm: 500,
+      levelSource: 'DanubeFIS',
+      levelMeasuredAt: now.subtract(const Duration(hours: 37)),
+      dailyDeltaCm: null,
+      deltaSource: null,
+      deltaMeasuredAt: null,
+      deltaBaseMeasuredAt: null,
+      deltaMethod: 'unavailable',
+      quality: 'partial',
+    );
+
+    expect(
+      const DailyWaterSnapshotTrendBridge()
+          .apply(current: current, previous: previous)
+          .deltaMethod,
+      'unavailable',
+    );
+  });
+
+  test('persistent bridge preserves an existing provider delta', () {
+    final current = builder.build(
+      stationId: 'bazias',
+      nowUtc: now,
+      readings: [reading(SnapshotSource.danubeFis, 510, now)],
+      reportedDeltas: [
+        ProviderReportedDelta(
+          deltaCm: 4,
+          source: SnapshotSource.danubeFis,
+          measuredAt: now,
+        ),
+      ],
+    );
+    final previous = DailyWaterSnapshotPayload(
+      stationId: 'bazias',
+      observationDate: '2026-01-14',
+      levelCm: 500,
+      levelSource: 'DanubeFIS',
+      levelMeasuredAt: now.subtract(const Duration(hours: 24)),
+      dailyDeltaCm: null,
+      deltaSource: null,
+      deltaMeasuredAt: null,
+      deltaBaseMeasuredAt: null,
+      deltaMethod: 'unavailable',
+      quality: 'partial',
+    );
+
+    final bridged = const DailyWaterSnapshotTrendBridge().apply(
+      current: current,
+      previous: previous,
+    );
+    expect(bridged.dailyDeltaCm, 4);
+    expect(bridged.deltaMethod, 'provider_reported');
   });
 
   test('valid level is not replaced by failure', () {
@@ -290,7 +482,7 @@ void main() {
           reading(
             SnapshotSource.danubeHis,
             1,
-            now.subtract(const Duration(hours: 1)),
+            now.subtract(const Duration(hours: 24)),
           ),
           reading(SnapshotSource.danubeHis, 2, now),
         ],
@@ -319,7 +511,7 @@ void main() {
       reading(
         SnapshotSource.danubeHis,
         500,
-        now.subtract(const Duration(hours: 2)),
+        now.subtract(const Duration(hours: 24)),
       ),
       reading(SnapshotSource.danubeHis, 503, now),
     ],
@@ -544,7 +736,7 @@ void main() {
       stationId: stationId,
       nowUtc: now,
       readings: [
-        reading(source, 500, now.subtract(const Duration(hours: 2))),
+        reading(source, 500, now.subtract(const Duration(hours: 24))),
         reading(source, 503, now),
       ],
     ),
@@ -1166,6 +1358,188 @@ void main() {
         throwsA(isA<SnapshotWriteException>()),
       );
       expect(client.requests.single.method, 'GET');
+    },
+  );
+
+  test(
+    'writer bridges a current level with the previous persisted level',
+    () async {
+      final current = snapshot(
+        levelCm: 510,
+        deltaMethod: 'unavailable',
+        quality: 'partial',
+      );
+      final previous = DailyWaterSnapshotPayload(
+        stationId: 'bazias',
+        observationDate: '2026-01-14',
+        levelCm: 500,
+        levelSource: 'DanubeHIS',
+        levelMeasuredAt: now.subtract(const Duration(hours: 24)),
+        dailyDeltaCm: null,
+        deltaSource: null,
+        deltaMeasuredAt: null,
+        deltaBaseMeasuredAt: null,
+        deltaMethod: 'unavailable',
+        quality: 'partial',
+      );
+      final desired = const DailyWaterSnapshotTrendBridge().apply(
+        current: current,
+        previous: previous,
+      );
+      final client = _RecordingClient.json([
+        [
+          const {'id': 'bazias'},
+        ],
+        [previous.toJson()],
+        const [],
+        [desired.toJson()],
+        [desired.toJson()],
+      ]);
+
+      final result = await writer(client).writeIfAbsent(current);
+      final post =
+          client.requests.singleWhere((request) => request.method == 'POST')
+              as http.Request;
+      final body = jsonDecode(post.body) as Map<String, dynamic>;
+
+      expect(result.outcome, SnapshotWriteOutcome.inserted);
+      expect(body['daily_delta_cm'], 10);
+      expect(body['delta_source'], 'DanubeHIS');
+      expect(body['delta_method'], 'computed_same_source');
+      expect(
+        body['delta_base_measured_at'],
+        now.subtract(const Duration(hours: 24)).toIso8601String(),
+      );
+      expect(body['quality'], 'valid');
+    },
+  );
+
+  test(
+    'writer skips an ineligible recent row and uses the next eligible persisted level',
+    () async {
+      final current = snapshot(
+        levelCm: 510,
+        deltaMethod: 'unavailable',
+        quality: 'partial',
+      );
+      final recent = DailyWaterSnapshotPayload(
+        stationId: 'bazias',
+        observationDate: '2026-01-14',
+        levelCm: 505,
+        levelSource: 'DanubeHIS',
+        levelMeasuredAt: now.subtract(const Duration(hours: 5)),
+        dailyDeltaCm: null,
+        deltaSource: null,
+        deltaMeasuredAt: null,
+        deltaBaseMeasuredAt: null,
+        deltaMethod: 'unavailable',
+        quality: 'partial',
+      );
+      final eligible = DailyWaterSnapshotPayload(
+        stationId: 'bazias',
+        observationDate: '2026-01-13',
+        levelCm: 500,
+        levelSource: 'DanubeHIS',
+        levelMeasuredAt: now.subtract(const Duration(hours: 24)),
+        dailyDeltaCm: null,
+        deltaSource: null,
+        deltaMeasuredAt: null,
+        deltaBaseMeasuredAt: null,
+        deltaMethod: 'unavailable',
+        quality: 'partial',
+      );
+      final desired = const DailyWaterSnapshotTrendBridge().apply(
+        current: current,
+        previous: eligible,
+      );
+      final client = _RecordingClient.json([
+        [
+          const {'id': 'bazias'},
+        ],
+        [recent.toJson(), eligible.toJson()],
+        const [],
+        [desired.toJson()],
+        [desired.toJson()],
+      ]);
+
+      final result = await writer(client).writeIfAbsent(current);
+      final post =
+          client.requests.singleWhere((request) => request.method == 'POST')
+              as http.Request;
+      final body = jsonDecode(post.body) as Map<String, dynamic>;
+
+      expect(result.outcome, SnapshotWriteOutcome.inserted);
+      expect(body['daily_delta_cm'], 10);
+      expect(body['delta_source'], 'DanubeHIS');
+      expect(body['delta_method'], 'computed_same_source');
+      expect(
+        body['delta_base_measured_at'],
+        now.subtract(const Duration(hours: 24)).toIso8601String(),
+      );
+      expect(body['quality'], 'valid');
+    },
+  );
+
+  test(
+    'writer preserves unavailable delta when no persisted candidate is eligible',
+    () async {
+      final current = snapshot(
+        levelCm: 510,
+        deltaMethod: 'unavailable',
+        quality: 'partial',
+      );
+      final tooRecent = DailyWaterSnapshotPayload(
+        stationId: 'bazias',
+        observationDate: '2026-01-14',
+        levelCm: 505,
+        levelSource: 'DanubeHIS',
+        levelMeasuredAt: now.subtract(const Duration(hours: 5)),
+        dailyDeltaCm: null,
+        deltaSource: null,
+        deltaMeasuredAt: null,
+        deltaBaseMeasuredAt: null,
+        deltaMethod: 'unavailable',
+        quality: 'partial',
+      );
+      final tooOld = DailyWaterSnapshotPayload(
+        stationId: 'bazias',
+        observationDate: '2026-01-13',
+        levelCm: 490,
+        levelSource: 'DanubeHIS',
+        levelMeasuredAt: now.subtract(const Duration(hours: 37)),
+        dailyDeltaCm: null,
+        deltaSource: null,
+        deltaMeasuredAt: null,
+        deltaBaseMeasuredAt: null,
+        deltaMethod: 'unavailable',
+        quality: 'partial',
+      );
+      final client = _RecordingClient.json([
+        [
+          const {'id': 'bazias'},
+        ],
+        [
+          {...tooRecent.toJson(), 'level_measured_at': 'not-a-timestamp'},
+          tooRecent.toJson(),
+          tooOld.toJson(),
+        ],
+        const [],
+        [current.toJson()],
+        [current.toJson()],
+      ]);
+
+      final result = await writer(client).writeIfAbsent(current);
+      final post =
+          client.requests.singleWhere((request) => request.method == 'POST')
+              as http.Request;
+      final body = jsonDecode(post.body) as Map<String, dynamic>;
+
+      expect(result.outcome, SnapshotWriteOutcome.inserted);
+      expect(body['daily_delta_cm'], isNull);
+      expect(body['delta_source'], isNull);
+      expect(body['delta_base_measured_at'], isNull);
+      expect(body['delta_method'], 'unavailable');
+      expect(body['quality'], current.quality);
     },
   );
 

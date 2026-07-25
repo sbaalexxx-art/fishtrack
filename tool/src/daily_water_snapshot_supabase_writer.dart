@@ -86,28 +86,33 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
     validatePayload(payload);
     await _ensureStationExists(payload.stationId);
 
-    final existing = await _readSnapshots(payload);
+    final enriched = await _withPersistentDelta(payload);
+    validatePayload(enriched);
+
+    final existing = await _readSnapshots(enriched);
     if (existing.length > 1) {
       throw const SnapshotWriteException(
         'Snapshot integrity anomaly: more than one row exists for this station and observation date.',
       );
     }
-    if (existing.length == 1) return _mergeAndWrite(existing.single, payload);
+    if (existing.length == 1) {
+      return _mergeAndWrite(existing.single, enriched);
+    }
 
-    final inserted = await _insert(payload);
-    if (_differingFields(payload.toJson(), inserted).isNotEmpty) {
+    final inserted = await _insert(enriched);
+    if (_differingFields(enriched.toJson(), inserted).isNotEmpty) {
       throw const SnapshotWriteException(
         'Snapshot insert returned data that differs from the requested contract fields.',
       );
     }
 
-    final readBack = await _readSnapshots(payload);
+    final readBack = await _readSnapshots(enriched);
     if (readBack.length != 1) {
       throw const SnapshotWriteException(
         'Snapshot read-back integrity check did not return exactly one row.',
       );
     }
-    if (_differingFields(payload.toJson(), readBack.single).isNotEmpty) {
+    if (_differingFields(enriched.toJson(), readBack.single).isNotEmpty) {
       throw const SnapshotWriteException(
         'Snapshot read-back differs from the requested contract fields.',
       );
@@ -293,6 +298,59 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
         'Remote station was not found or is not uniquely identifiable.',
       );
     }
+  }
+
+  Future<DailyWaterSnapshotPayload> _withPersistentDelta(
+    DailyWaterSnapshotPayload current,
+  ) async {
+    if (current.deltaMethod != SnapshotDeltaMethod.unavailable.databaseValue ||
+        current.levelCm == null ||
+        current.levelSource == null ||
+        current.levelMeasuredAt == null) {
+      return current;
+    }
+
+    final previousSnapshots = await _readPreviousLevelSnapshots(current);
+    for (final previous in previousSnapshots) {
+      final enriched = const DailyWaterSnapshotTrendBridge().apply(
+        current: current,
+        previous: previous,
+      );
+      if (enriched.deltaMethod !=
+          SnapshotDeltaMethod.unavailable.databaseValue) {
+        return enriched;
+      }
+    }
+    return current;
+  }
+
+  Future<List<DailyWaterSnapshotPayload>> _readPreviousLevelSnapshots(
+    DailyWaterSnapshotPayload current,
+  ) async {
+    final response = await _get(
+      'previous snapshot read',
+      _endpoint('daily_water_snapshots', {
+        'select':
+            'station_id,observation_date,level_cm,level_source,'
+            'level_measured_at,quality',
+        'station_id': 'eq.${current.stationId}',
+        'observation_date': 'lt.${current.observationDate}',
+        'level_source': 'eq.${current.levelSource}',
+        'level_measured_at':
+            'lt.${current.levelMeasuredAt!.toUtc().toIso8601String()}',
+        'quality': 'in.(valid,partial,stale)',
+        'order': 'level_measured_at.desc',
+        'limit': '5',
+      }),
+      stationId: current.stationId,
+    );
+    final rows = _decodeRows(response, 'previous snapshot read');
+    final snapshots = <DailyWaterSnapshotPayload>[];
+    for (final row in rows) {
+      final parsed = _previousLevelPayloadFromRow(row);
+      if (parsed != null) snapshots.add(parsed);
+    }
+    return snapshots;
   }
 
   Future<List<Map<String, Object?>>> _readSnapshots(
@@ -596,6 +654,49 @@ class SupabaseDailyWaterSnapshotWriter implements DailyWaterSnapshotWriter {
       deltaBaseMeasuredAt: timestamp('delta_base_measured_at'),
       deltaMethod: requiredString('delta_method'),
       quality: requiredString('quality'),
+    );
+  }
+
+  static DailyWaterSnapshotPayload? _previousLevelPayloadFromRow(
+    Map<String, Object?> row,
+  ) {
+    final stationId = row['station_id']?.toString().trim();
+    final observationDate = row['observation_date']?.toString().trim();
+    final source = row['level_source']?.toString().trim();
+    final measuredAt = DateTime.tryParse(
+      row['level_measured_at']?.toString() ?? '',
+    )?.toUtc();
+    final levelValue = row['level_cm'];
+    final level = levelValue is num
+        ? levelValue.toInt()
+        : int.tryParse(levelValue?.toString() ?? '');
+    final quality = row['quality']?.toString().trim();
+    if (stationId == null ||
+        stationId.isEmpty ||
+        observationDate == null ||
+        !_isIsoDate(observationDate) ||
+        source == null ||
+        !_sources.contains(source) ||
+        measuredAt == null ||
+        measuredAt.millisecondsSinceEpoch <= 0 ||
+        level == null ||
+        quality == null ||
+        !_qualities.contains(quality)) {
+      return null;
+    }
+
+    return DailyWaterSnapshotPayload(
+      stationId: stationId,
+      observationDate: observationDate,
+      levelCm: level,
+      levelSource: source,
+      levelMeasuredAt: measuredAt,
+      dailyDeltaCm: null,
+      deltaSource: null,
+      deltaMeasuredAt: null,
+      deltaBaseMeasuredAt: null,
+      deltaMethod: SnapshotDeltaMethod.unavailable.databaseValue,
+      quality: quality,
     );
   }
 

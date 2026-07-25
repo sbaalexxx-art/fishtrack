@@ -1,5 +1,9 @@
 import 'package:timezone/timezone.dart' as tz;
 
+const _minimumDailyDeltaAge = Duration(hours: 12);
+const _targetDailyDeltaAge = Duration(hours: 24);
+const _maximumDailyDeltaAge = Duration(hours: 36);
+
 enum SnapshotSource {
   afdj('AFDJ', authorityRank: 3),
   danubeHis('DanubeHIS', authorityRank: 2),
@@ -152,9 +156,13 @@ class SnapshotRunSummary {
 class DailyWaterSnapshotBuilder {
   const DailyWaterSnapshotBuilder({
     this.freshnessThreshold = const Duration(hours: 36),
+    this.minimumDeltaAge = _minimumDailyDeltaAge,
+    this.maximumDeltaAge = _maximumDailyDeltaAge,
   });
 
   final Duration freshnessThreshold;
+  final Duration minimumDeltaAge;
+  final Duration maximumDeltaAge;
 
   DailyWaterSnapshotPayload build({
     required String stationId,
@@ -234,12 +242,28 @@ class DailyWaterSnapshotBuilder {
             (a, b) => a.measuredAt.toUtc().compareTo(b.measuredAt.toUtc()),
           );
       if (sourceReadings.length < 2) continue;
-      final base = sourceReadings[sourceReadings.length - 2];
+
       final current = sourceReadings.last;
-      if (!base.measuredAt.toUtc().isBefore(current.measuredAt.toUtc())) {
-        continue;
-      }
-      candidates.add(_DeltaSelection.computed(current, base));
+      final currentMeasuredAt = current.measuredAt.toUtc();
+      final eligibleBases = sourceReadings.where((reading) {
+        final measuredAt = reading.measuredAt.toUtc();
+        if (!measuredAt.isBefore(currentMeasuredAt)) return false;
+        final age = currentMeasuredAt.difference(measuredAt);
+        return age >= minimumDeltaAge && age <= maximumDeltaAge;
+      }).toList();
+
+      if (eligibleBases.isEmpty) continue;
+      eligibleBases.sort((a, b) {
+        final aAge = currentMeasuredAt.difference(a.measuredAt.toUtc());
+        final bAge = currentMeasuredAt.difference(b.measuredAt.toUtc());
+        final distance = (aAge.inSeconds - _targetDailyDeltaAge.inSeconds)
+            .abs()
+            .compareTo((bAge.inSeconds - _targetDailyDeltaAge.inSeconds).abs());
+        if (distance != 0) return distance;
+        return b.measuredAt.toUtc().compareTo(a.measuredAt.toUtc());
+      });
+
+      candidates.add(_DeltaSelection.computed(current, eligibleBases.first));
     }
     if (candidates.isEmpty) return const _DeltaSelection.unavailable();
     candidates.sort((a, b) {
@@ -279,6 +303,83 @@ class DailyWaterSnapshotBuilder {
     final source = a.source.index.compareTo(b.source.index);
     if (source != 0) return source;
     return a.levelCm.compareTo(b.levelCm);
+  }
+}
+
+/// Adds an honest day-over-day delta by pairing the current level with the
+/// latest persisted level from the same station and provider. The bridge never
+/// mixes providers and refuses bases that are too recent or too old to
+/// represent an approximately daily change.
+class DailyWaterSnapshotTrendBridge {
+  const DailyWaterSnapshotTrendBridge({
+    this.minimumBaseAge = _minimumDailyDeltaAge,
+    this.maximumBaseAge = _maximumDailyDeltaAge,
+  });
+
+  final Duration minimumBaseAge;
+  final Duration maximumBaseAge;
+
+  DailyWaterSnapshotPayload apply({
+    required DailyWaterSnapshotPayload current,
+    required DailyWaterSnapshotPayload? previous,
+  }) {
+    if (current.deltaMethod != SnapshotDeltaMethod.unavailable.databaseValue ||
+        previous == null ||
+        !_hasCompleteLevel(current) ||
+        !_hasCompleteLevel(previous) ||
+        current.stationId != previous.stationId ||
+        current.levelSource != previous.levelSource) {
+      return current;
+    }
+
+    final currentDate = _parseObservationDate(current.observationDate);
+    final previousDate = _parseObservationDate(previous.observationDate);
+    final currentMeasuredAt = current.levelMeasuredAt!.toUtc();
+    final previousMeasuredAt = previous.levelMeasuredAt!.toUtc();
+    final source = _sourceFromDatabaseValue(current.levelSource);
+    if (currentDate == null ||
+        previousDate == null ||
+        !previousDate.isBefore(currentDate) ||
+        !previousMeasuredAt.isBefore(currentMeasuredAt) ||
+        source == null) {
+      return current;
+    }
+
+    final baseAge = currentMeasuredAt.difference(previousMeasuredAt);
+    if (baseAge < minimumBaseAge || baseAge > maximumBaseAge) {
+      return current;
+    }
+
+    return DailyWaterSnapshotPayload(
+      stationId: current.stationId,
+      observationDate: current.observationDate,
+      levelCm: current.levelCm,
+      levelSource: current.levelSource,
+      levelMeasuredAt: current.levelMeasuredAt,
+      dailyDeltaCm: current.levelCm! - previous.levelCm!,
+      deltaSource: source.databaseValue,
+      deltaMeasuredAt: current.levelMeasuredAt,
+      deltaBaseMeasuredAt: previous.levelMeasuredAt,
+      deltaMethod: SnapshotDeltaMethod.computedSameSource.databaseValue,
+      quality: current.quality == SnapshotQuality.partial.databaseValue
+          ? SnapshotQuality.valid.databaseValue
+          : current.quality,
+    );
+  }
+
+  static bool _hasCompleteLevel(DailyWaterSnapshotPayload payload) =>
+      payload.levelCm != null &&
+      payload.levelSource != null &&
+      payload.levelMeasuredAt != null;
+
+  static DateTime? _parseObservationDate(String value) =>
+      DateTime.tryParse('${value}T00:00:00Z')?.toUtc();
+
+  static SnapshotSource? _sourceFromDatabaseValue(String? value) {
+    for (final source in SnapshotSource.values) {
+      if (source.databaseValue == value) return source;
+    }
+    return null;
   }
 }
 

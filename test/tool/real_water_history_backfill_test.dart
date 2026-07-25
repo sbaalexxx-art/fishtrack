@@ -223,7 +223,7 @@ void main() {
 
       expect(result, 1);
       expect(writerFactoryCalls, 1);
-      expect(client.requestCount, 15);
+      expect(client.requestCount, 17);
       expect(client.insertedKeys, {
         'station-a/2026-07-15',
         'station-b/2026-07-15',

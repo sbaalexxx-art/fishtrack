@@ -1511,8 +1511,9 @@ void main() {
       }
 
       await pumpDetails(const Size(320, 700), const Locale('ro'));
+      expect(find.text('1 zi'), findsAtLeastNWidgets(1));
+      expect(find.text('3 zile'), findsAtLeastNWidgets(1));
       expect(find.text('7 zile'), findsAtLeastNWidgets(1));
-      expect(find.text('14 zile'), findsAtLeastNWidgets(1));
       expect(find.text('30 zile'), findsAtLeastNWidgets(1));
       expect(
         find.byKey(const Key('water-details-primary-delta')),
@@ -1526,14 +1527,25 @@ void main() {
         find.byKey(const Key('water-details-period-trend-badge')),
         findsOneWidget,
       );
-      expect(find.textContaining('7 zile ·'), findsOneWidget);
+      expect(
+        (tester.widget<Text>(
+          find.byKey(const Key('water-details-period-trend-badge')),
+        )).data,
+        startsWith('24h'),
+      );
       expect(tester.takeException(), isNull);
 
       await pumpDetails(const Size(700, 320), const Locale('en'));
-      expect(find.text('7 zile'), findsAtLeastNWidgets(1));
-      expect(find.text('14 zile'), findsAtLeastNWidgets(1));
-      expect(find.text('30 zile'), findsAtLeastNWidgets(1));
-      expect(find.textContaining('7 days ·'), findsOneWidget);
+      expect(find.text('1 day'), findsAtLeastNWidgets(1));
+      expect(find.text('3 days'), findsAtLeastNWidgets(1));
+      expect(find.text('7 days'), findsAtLeastNWidgets(1));
+      expect(find.text('30 days'), findsAtLeastNWidgets(1));
+      expect(
+        (tester.widget<Text>(
+          find.byKey(const Key('water-details-period-trend-badge')),
+        )).data,
+        startsWith('24h'),
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -1997,6 +2009,14 @@ class _FakeSnapshotReader implements DailyWaterSnapshotReader {
     stationIds.add(stationId);
     limits.add(limit);
     return rows;
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> readRecentStationTrends(
+    Iterable<String> stationIds, {
+    required DateTime notBefore,
+  }) async {
+    return const <Map<String, Object?>>[];
   }
 }
 

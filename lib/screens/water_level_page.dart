@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../core/formatters/water_freshness_formatter.dart';
@@ -12,7 +14,10 @@ import '../services/water_service.dart';
 import '../services/weather_service.dart';
 
 enum WaterDetailsPeriod {
+  oneDay(Duration(days: 1)),
+  threeDays(Duration(days: 3)),
   sevenDays(Duration(days: 7)),
+  @Deprecated('Kept only for source compatibility; use 7 or 30 days.')
   fourteenDays(Duration(days: 14)),
   thirtyDays(Duration(days: 30));
 
@@ -31,10 +36,9 @@ String waterDetailsPeriodLabel(
   WaterDetailsPeriod period,
 ) {
   final days = period.duration.inDays;
-  final unit = Localizations.localeOf(context).languageCode == 'ro'
-      ? 'zile'
-      : 'days';
-  return '$days $unit';
+  final isRo = Localizations.localeOf(context).languageCode == 'ro';
+  if (days == 1) return isRo ? '1 zi' : '1 day';
+  return isRo ? '$days zile' : '$days days';
 }
 
 WaterHomeStationSelection waterDetailsSelectionForHandoff(
@@ -742,7 +746,19 @@ class _WaterDetailsHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final result = this.result;
     final reading = result?.latestReading;
-    final trend = result?.trend;
+    final daySummary = result == null
+        ? null
+        : WaterDetailsSummary.fromHistory(
+            result.history,
+            WaterDetailsPeriod.oneDay,
+            stationId: station.id,
+          );
+    final delta = daySummary?.change ?? result?.deltaCm;
+    final comparisonDuration =
+        daySummary?.coverage ?? result?.comparisonDuration;
+    final trend = delta == null
+        ? result?.trend
+        : waterTrendFromRealDelta(delta);
     final color = _trendColor(trend);
     final hasReading = reading != null && reading.value.isFinite;
     final freshness = result?.measurementTimestamp == null
@@ -760,7 +776,6 @@ class _WaterDetailsHero extends StatelessWidget {
       result?.source,
       result?.sourceName ?? reading?.sourceName,
     );
-    final delta = result?.deltaCm;
     final absoluteLevel = hasReading
         ? '${reading.value.toStringAsFixed(0)} ${reading.unit}'
         : null;
@@ -880,7 +895,7 @@ class _WaterDetailsHero extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${_comparisonContextLabel(context, result?.comparisonDuration)} · ${_trendLabel(context, trend)}',
+                          '${_comparisonContextLabel(context, comparisonDuration)} · ${_trendLabel(context, trend)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall
@@ -1011,8 +1026,8 @@ class _WaterHistorySection extends StatelessWidget {
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerRight,
                     child: _PeriodTrendBadge(
-                      period: period,
-                      delta: resolvedSummary!.change!,
+                      coverage: resolvedSummary!.coverage!,
+                      delta: resolvedSummary.change!,
                       unit: resolvedSummary.readings.last.unit,
                       trend: periodTrend!,
                       color: trendColor,
@@ -1027,18 +1042,39 @@ class _WaterHistorySection extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: SegmentedButton<WaterDetailsPeriod>(
               showSelectedIcon: false,
-              segments: const [
+              segments: [
                 ButtonSegment(
-                  value: WaterDetailsPeriod.sevenDays,
-                  label: Text('7 zile'),
+                  value: WaterDetailsPeriod.oneDay,
+                  label: Text(
+                    waterDetailsPeriodLabel(context, WaterDetailsPeriod.oneDay),
+                  ),
                 ),
                 ButtonSegment(
-                  value: WaterDetailsPeriod.fourteenDays,
-                  label: Text('14 zile'),
+                  value: WaterDetailsPeriod.threeDays,
+                  label: Text(
+                    waterDetailsPeriodLabel(
+                      context,
+                      WaterDetailsPeriod.threeDays,
+                    ),
+                  ),
+                ),
+                ButtonSegment(
+                  value: WaterDetailsPeriod.sevenDays,
+                  label: Text(
+                    waterDetailsPeriodLabel(
+                      context,
+                      WaterDetailsPeriod.sevenDays,
+                    ),
+                  ),
                 ),
                 ButtonSegment(
                   value: WaterDetailsPeriod.thirtyDays,
-                  label: Text('30 zile'),
+                  label: Text(
+                    waterDetailsPeriodLabel(
+                      context,
+                      WaterDetailsPeriod.thirtyDays,
+                    ),
+                  ),
                 ),
               ],
               selected: {period},
@@ -1079,7 +1115,9 @@ class _WaterHistorySection extends StatelessWidget {
             ),
           ] else ...[
             SizedBox(
-              height: 250,
+              height: MediaQuery.orientationOf(context) == Orientation.landscape
+                  ? 230
+                  : 210,
               width: double.infinity,
               child: _InteractiveWaterHistoryChart(
                 readings: resolvedSummary.readings,
@@ -1087,7 +1125,9 @@ class _WaterHistorySection extends StatelessWidget {
                 period: period,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
+            _RealObservationCaption(summary: resolvedSummary),
+            const SizedBox(height: 14),
             _HistorySummary(summary: resolvedSummary, color: trendColor),
           ],
           const SizedBox(height: 16),
@@ -1097,6 +1137,48 @@ class _WaterHistorySection extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RealObservationCaption extends StatelessWidget {
+  const _RealObservationCaption({required this.summary});
+
+  final WaterDetailsSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    final count = summary.readings.length;
+    final observations = isRo
+        ? '$count ${count == 1 ? 'măsurătoare reală' : 'măsurători reale'}'
+        : '$count real ${count == 1 ? 'observation' : 'observations'}';
+    final coverage = summary.coverage;
+    final coverageLabel = coverage == null
+        ? null
+        : coverage.inHours < 48
+        ? '${coverage.inHours}h'
+        : '${coverage.inDays} ${isRo ? 'zile' : 'days'}';
+
+    return Row(
+      children: [
+        const Icon(Icons.verified_outlined, size: 14, color: Color(0xFF12D8D6)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            coverageLabel == null
+                ? observations
+                : '$observations · $coverageLabel',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1127,7 +1209,7 @@ class _HistorySummary extends StatelessWidget {
         ),
         _SummaryValue(
           icon: _trendIconFromDelta(summary.change),
-          label: context.l10n.waterComparedWithLastReading,
+          label: _intervalChangeLabel(context),
           value: _formatDelta(summary.change, unit),
           color: color,
         ),
@@ -1143,14 +1225,14 @@ class _HistorySummary extends StatelessWidget {
 
 class _PeriodTrendBadge extends StatelessWidget {
   const _PeriodTrendBadge({
-    required this.period,
+    required this.coverage,
     required this.delta,
     required this.unit,
     required this.trend,
     required this.color,
   });
 
-  final WaterDetailsPeriod period;
+  final Duration coverage;
   final double delta;
   final String unit;
   final WaterTrend trend;
@@ -1170,7 +1252,8 @@ class _PeriodTrendBadge extends StatelessWidget {
         Icon(_trendIcon(trend), size: 15, color: color),
         const SizedBox(width: 4),
         Text(
-          '${waterDetailsPeriodLabel(context, period)} · ${_formatDelta(delta, unit)}',
+          '${_compactCoverageLabel(context, coverage)} · '
+          '${_formatDelta(delta, unit)}',
           key: const Key('water-details-period-trend-badge'),
           style: TextStyle(
             color: color,
@@ -1181,6 +1264,20 @@ class _PeriodTrendBadge extends StatelessWidget {
       ],
     ),
   );
+}
+
+String _compactCoverageLabel(BuildContext context, Duration coverage) {
+  final isRo = Localizations.localeOf(context).languageCode == 'ro';
+  final minutes = coverage.inMinutes.abs();
+  if (minutes < 90) return '${math.max(1, minutes)}m';
+
+  final hours = coverage.inHours.abs();
+  if (hours < 72) return '${math.max(1, hours)}h';
+
+  final days = math.max(1, hours ~/ 24);
+  return isRo
+      ? '$days ${days == 1 ? 'zi' : 'zile'}'
+      : '$days ${days == 1 ? 'day' : 'days'}';
 }
 
 class _InsufficientHistoryMessage extends StatelessWidget {
@@ -1266,10 +1363,12 @@ class _IntervalDeltaSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
     final intervals = <(String, Duration)>[
       ('24h', const Duration(hours: 24)),
-      ('48h', const Duration(hours: 48)),
-      ('7 zile', const Duration(days: 7)),
+      (isRo ? '3 zile' : '3 days', const Duration(days: 3)),
+      (isRo ? '7 zile' : '7 days', const Duration(days: 7)),
+      (isRo ? '30 zile' : '30 days', const Duration(days: 30)),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1695,7 +1794,7 @@ class _DataStatus extends StatelessWidget {
   }
 }
 
-class _InteractiveWaterHistoryChart extends StatefulWidget {
+class _InteractiveWaterHistoryChart extends StatelessWidget {
   const _InteractiveWaterHistoryChart({
     required this.readings,
     required this.color,
@@ -1707,297 +1806,420 @@ class _InteractiveWaterHistoryChart extends StatefulWidget {
   final WaterDetailsPeriod period;
 
   @override
-  State<_InteractiveWaterHistoryChart> createState() =>
-      _InteractiveWaterHistoryChartState();
+  Widget build(BuildContext context) {
+    if (readings.length < 2) return const SizedBox.shrink();
+
+    final scale = _WaterChartGeometry.scaleBounds(readings, period);
+    final bounds = _WaterChartGeometry.timeBounds(readings, period);
+    final segments = _WaterChartGeometry.contiguousSegments(readings, period);
+    final readingByTimestamp = <int, WaterLevel>{
+      for (final reading in readings)
+        reading.timestamp.toUtc().millisecondsSinceEpoch: reading,
+    };
+    final firstTimestamp = readings.first.timestamp
+        .toUtc()
+        .millisecondsSinceEpoch
+        .toDouble();
+    final lastTimestamp = readings.last.timestamp
+        .toUtc()
+        .millisecondsSinceEpoch
+        .toDouble();
+    final yRange = scale.maximum - scale.minimum;
+    final yInterval = yRange / 3;
+    final xRange = bounds.maximum - bounds.minimum;
+    final midpointX = bounds.minimum + (xRange / 2);
+    final includeTime =
+        Duration(milliseconds: xRange.round()) <= const Duration(days: 3);
+
+    WaterLevel readingForX(double x) =>
+        readingByTimestamp[x.round()] ??
+        readings.reduce((nearest, candidate) {
+          final nearestDistance =
+              (nearest.timestamp.toUtc().millisecondsSinceEpoch - x).abs();
+          final candidateDistance =
+              (candidate.timestamp.toUtc().millisecondsSinceEpoch - x).abs();
+          return candidateDistance < nearestDistance ? candidate : nearest;
+        });
+
+    bool showObservationDot(FlSpot spot) {
+      if (readings.length <= 10) return true;
+      final index = readings.indexWhere(
+        (reading) =>
+            reading.timestamp.toUtc().millisecondsSinceEpoch == spot.x.round(),
+      );
+      return index <= 0 || index == readings.length - 1 || index % 4 == 0;
+    }
+
+    final bars = <LineChartBarData>[
+      for (final segment in segments)
+        if (segment.isNotEmpty)
+          LineChartBarData(
+            spots: segment
+                .map(
+                  (reading) => FlSpot(
+                    reading.timestamp.toUtc().millisecondsSinceEpoch.toDouble(),
+                    reading.value,
+                  ),
+                )
+                .toList(growable: false),
+            isCurved: segment.length >= 4,
+            curveSmoothness: .12,
+            preventCurveOverShooting: true,
+            color: color,
+            barWidth: segment.length >= 2 ? 2.6 : 0,
+            isStrokeCapRound: true,
+            isStrokeJoinRound: true,
+            belowBarData: BarAreaData(
+              show: segment.length >= 3,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  color.withValues(alpha: .18),
+                  color.withValues(alpha: .008),
+                ],
+              ),
+            ),
+            dotData: FlDotData(
+              show: true,
+              checkToShowDot: (spot, _) => showObservationDot(spot),
+              getDotPainter: (spot, _, _, _) {
+                final isLatest = spot.x == lastTimestamp;
+                final isFirst = spot.x == firstTimestamp;
+                return FlDotCirclePainter(
+                  radius: isLatest
+                      ? 4.2
+                      : isFirst
+                      ? 3.2
+                      : 2.4,
+                  color: color,
+                  strokeColor: isLatest
+                      ? Colors.white.withValues(alpha: .92)
+                      : color.withValues(alpha: .18),
+                  strokeWidth: isLatest ? 1.4 : 1,
+                );
+              },
+            ),
+          ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showMiddleLabel = constraints.maxWidth >= 430;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              left: 43,
+              right: 7,
+              top: 6,
+              bottom: 26,
+              child: LineChart(
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOutCubic,
+                LineChartData(
+                  minX: bounds.minimum,
+                  maxX: bounds.maximum,
+                  minY: scale.minimum,
+                  maxY: scale.maximum,
+                  clipData: const FlClipData.all(),
+                  borderData: FlBorderData(show: false),
+                  titlesData: const FlTitlesData(show: false),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: yInterval,
+                    getDrawingHorizontalLine: (_) => FlLine(
+                      color: const Color(0xFF12D8D6).withValues(alpha: .10),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  lineTouchData: LineTouchData(
+                    enabled: true,
+                    handleBuiltInTouches: true,
+                    touchSpotThreshold: 22,
+                    getTouchedSpotIndicator: (barData, spotIndexes) =>
+                        spotIndexes
+                            .map(
+                              (_) => TouchedSpotIndicatorData(
+                                FlLine(
+                                  color: color.withValues(alpha: .34),
+                                  strokeWidth: 1.1,
+                                  dashArray: const [4, 3],
+                                ),
+                                FlDotData(
+                                  getDotPainter: (_, _, _, _) =>
+                                      FlDotCirclePainter(
+                                        radius: 4.2,
+                                        color: color,
+                                        strokeColor: Colors.white,
+                                        strokeWidth: 1.3,
+                                      ),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                    touchTooltipData: LineTouchTooltipData(
+                      fitInsideHorizontally: true,
+                      fitInsideVertically: true,
+                      tooltipPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      tooltipMargin: 9,
+                      tooltipBorderRadius: BorderRadius.circular(11),
+                      tooltipBorder: BorderSide(
+                        color: color.withValues(alpha: .38),
+                        width: 1,
+                      ),
+                      getTooltipColor: (_) =>
+                          const Color(0xFF07131C).withValues(alpha: .96),
+                      getTooltipItems: (touchedSpots) => touchedSpots
+                          .map((spot) {
+                            final reading = readingForX(spot.x);
+                            final value =
+                                reading.value == reading.value.roundToDouble()
+                                ? reading.value.toStringAsFixed(0)
+                                : reading.value.toStringAsFixed(1);
+                            return LineTooltipItem(
+                              '$value ${reading.unit}\n',
+                              const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                height: 1.15,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text:
+                                      '${_chartDateTimeLabel(reading.timestamp)}\n',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.2,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: _readingSourceLabel(reading),
+                                  style: TextStyle(
+                                    color: color.withValues(alpha: .92),
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ],
+                            );
+                          })
+                          .toList(growable: false),
+                    ),
+                  ),
+                  lineBarsData: bars,
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              child: _ChartAxisText('${scale.maximum.ceil()} cm'),
+            ),
+            Positioned(
+              left: 0,
+              top: (constraints.maxHeight - 26) / 2 - 5,
+              child: _ChartAxisText(
+                '${((scale.minimum + scale.maximum) / 2).round()} cm',
+              ),
+            ),
+            Positioned(
+              left: 0,
+              bottom: 22,
+              child: _ChartAxisText('${scale.minimum.floor()} cm'),
+            ),
+            Positioned(
+              left: 43,
+              bottom: 1,
+              child: _ChartAxisText(
+                _chartAxisLabel(
+                  DateTime.fromMillisecondsSinceEpoch(
+                    bounds.minimum.round(),
+                    isUtc: true,
+                  ),
+                  includeTime: includeTime,
+                ),
+              ),
+            ),
+            if (showMiddleLabel)
+              Positioned(
+                left: constraints.maxWidth / 2 - 28,
+                bottom: 1,
+                width: 56,
+                child: _ChartAxisText(
+                  _chartAxisLabel(
+                    DateTime.fromMillisecondsSinceEpoch(
+                      midpointX.round(),
+                      isUtc: true,
+                    ),
+                    includeTime: includeTime,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            Positioned(
+              right: 7,
+              bottom: 1,
+              child: _ChartAxisText(
+                _chartAxisLabel(
+                  DateTime.fromMillisecondsSinceEpoch(
+                    bounds.maximum.round(),
+                    isUtc: true,
+                  ),
+                  includeTime: includeTime,
+                ),
+                textAlign: TextAlign.right,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
-class _InteractiveWaterHistoryChartState
-    extends State<_InteractiveWaterHistoryChart> {
-  int? _selectedIndex;
+class _ChartAxisText extends StatelessWidget {
+  const _ChartAxisText(this.value, {this.textAlign = TextAlign.left});
+
+  final String value;
+  final TextAlign textAlign;
 
   @override
-  void didUpdateWidget(covariant _InteractiveWaterHistoryChart oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.period != widget.period ||
-        oldWidget.readings.length != widget.readings.length ||
-        (oldWidget.readings.isNotEmpty &&
-            widget.readings.isNotEmpty &&
-            oldWidget.readings.last.timestamp !=
-                widget.readings.last.timestamp)) {
-      _selectedIndex = null;
-    }
-  }
-
-  void _selectNearest(Offset localPosition, Size size) {
-    final points = _WaterChartGeometry.points(size, widget.readings);
-    if (points.isEmpty) return;
-    var nearest = 0;
-    var distance = (points.first.dx - localPosition.dx).abs();
-    for (var index = 1; index < points.length; index++) {
-      final candidate = (points[index].dx - localPosition.dx).abs();
-      if (candidate < distance) {
-        nearest = index;
-        distance = candidate;
-      }
-    }
-    if (_selectedIndex != nearest) setState(() => _selectedIndex = nearest);
-  }
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final size = Size(constraints.maxWidth, constraints.maxHeight);
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (details) => _selectNearest(details.localPosition, size),
-        onLongPressStart: (details) =>
-            _selectNearest(details.localPosition, size),
-        onHorizontalDragUpdate: (details) =>
-            _selectNearest(details.localPosition, size),
-        child: CustomPaint(
-          painter: _WaterDetailsHistoryPainter(
-            readings: widget.readings,
-            color: widget.color,
-            period: widget.period,
-            selectedIndex: _selectedIndex,
-          ),
-          child: const SizedBox.expand(),
-        ),
-      );
-    },
+  Widget build(BuildContext context) => Text(
+    value,
+    maxLines: 1,
+    textAlign: textAlign,
+    style: TextStyle(
+      color: Colors.white.withValues(alpha: .46),
+      fontSize: 8.5,
+      fontWeight: FontWeight.w500,
+      height: 1,
+    ),
   );
 }
 
 class _WaterChartGeometry {
-  static const left = 45.0;
-  static const right = 8.0;
-  static const top = 12.0;
-  static const bottom = 30.0;
-
-  static Rect plotRect(Size size) => Rect.fromLTRB(
-    left,
-    top,
-    (size.width - right).clamp(left, size.width),
-    (size.height - bottom).clamp(top, size.height),
-  );
-
   static ({double minimum, double maximum}) scaleBounds(
     List<WaterLevel> readings,
+    WaterDetailsPeriod period,
   ) {
     final values = readings.map((reading) => reading.value);
-    final minimum = values.reduce((a, b) => a < b ? a : b);
-    final maximum = values.reduce((a, b) => a > b ? a : b);
+    final minimum = values.reduce(math.min);
+    final maximum = values.reduce(math.max);
     final rawRange = maximum - minimum;
-    final padding = rawRange == 0
-        ? (maximum.abs() * .01).clamp(1.0, 20.0)
-        : (rawRange * .12).clamp(1.0, double.infinity);
-    return (minimum: minimum - padding, maximum: maximum + padding);
+    final midpoint = (minimum + maximum) / 2;
+    final periodDays = period.duration.inDays;
+
+    final minimumVisualRange = periodDays <= 1
+        ? 12.0
+        : periodDays <= 3
+        ? 18.0
+        : periodDays <= 7
+        ? 30.0
+        : periodDays <= 14
+        ? 40.0
+        : 50.0;
+    final visualRange = math
+        .max(minimumVisualRange, rawRange * 1.35)
+        .toDouble();
+
+    const axisStep = 5.0;
+    final lower =
+        ((midpoint - (visualRange / 2)) / axisStep).floor() * axisStep;
+    final upper = ((midpoint + (visualRange / 2)) / axisStep).ceil() * axisStep;
+    return (minimum: lower, maximum: upper);
   }
 
-  static List<Offset> points(Size size, List<WaterLevel> readings) {
-    if (readings.isEmpty || size.isEmpty) return const <Offset>[];
-    final rect = plotRect(size);
-    final scale = scaleBounds(readings);
-    final scaleRange = scale.maximum - scale.minimum;
-    final first = readings.first.timestamp.millisecondsSinceEpoch;
-    final last = readings.last.timestamp.millisecondsSinceEpoch;
-    final timeRange = last - first;
-    return List<Offset>.generate(readings.length, (index) {
-      final reading = readings[index];
-      final xFactor = timeRange <= 0
-          ? .5
-          : (reading.timestamp.millisecondsSinceEpoch - first) / timeRange;
-      final yFactor = (reading.value - scale.minimum) / scaleRange;
-      return Offset(
-        rect.left + rect.width * xFactor,
-        rect.bottom - rect.height * yFactor,
-      );
-    }, growable: false);
-  }
-}
-
-class _WaterDetailsHistoryPainter extends CustomPainter {
-  const _WaterDetailsHistoryPainter({
-    required this.readings,
-    required this.color,
-    required this.period,
-    required this.selectedIndex,
-  });
-
-  final List<WaterLevel> readings;
-  final Color color;
-  final WaterDetailsPeriod period;
-  final int? selectedIndex;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (readings.length < 2 || size.isEmpty) return;
-    final rect = _WaterChartGeometry.plotRect(size);
-    final points = _WaterChartGeometry.points(size, readings);
-    final scale = _WaterChartGeometry.scaleBounds(readings);
-
-    final gridPaint = Paint()
-      ..color = const Color(0xFF12D8D6).withValues(alpha: .10)
-      ..strokeWidth = 1;
-    for (var index = 0; index <= 3; index++) {
-      final y = rect.top + rect.height * index / 3;
-      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
-    }
-    _paintText(
-      canvas,
-      '${scale.maximum.ceil()} cm',
-      Offset(0, rect.top - 5),
-      color: Colors.white38,
-      fontSize: 9,
-    );
-    _paintText(
-      canvas,
-      '${scale.minimum.floor()} cm',
-      Offset(0, rect.bottom - 6),
-      color: Colors.white38,
-      fontSize: 9,
-    );
-
-    final path = Path()..moveTo(points.first.dx, points.first.dy);
-    for (final point in points.skip(1)) {
-      path.lineTo(point.dx, point.dy);
-    }
-    final fillPath = Path.from(path)
-      ..lineTo(points.last.dx, rect.bottom)
-      ..lineTo(points.first.dx, rect.bottom)
-      ..close();
-    canvas.drawPath(
-      fillPath,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [color.withValues(alpha: .25), color.withValues(alpha: .015)],
-        ).createShader(rect)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..strokeWidth = 2.7
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
-    for (var index = 0; index < points.length; index++) {
-      canvas.drawCircle(
-        points[index],
-        index == selectedIndex ? 5 : 2.8,
-        Paint()..color = color,
-      );
-    }
-
-    final labelIndexes = <int>{0, readings.length ~/ 2, readings.length - 1};
-    final dateCounts = <String, int>{};
-    for (final index in labelIndexes) {
-      final date = _chartAxisDateLabel(readings[index].timestamp);
-      dateCounts[date] = (dateCounts[date] ?? 0) + 1;
-    }
-    for (final index in labelIndexes) {
-      final date = _chartAxisDateLabel(readings[index].timestamp);
-      final label = _chartAxisLabel(
-        readings[index].timestamp,
-        includeTime: (dateCounts[date] ?? 0) > 1,
-      );
-      final painter = _textPainter(
-        label,
-        color: Colors.white.withValues(alpha: .46),
-        fontSize: 9,
-      );
-      final x = (points[index].dx - painter.width / 2).clamp(
-        rect.left,
-        rect.right - painter.width,
-      );
-      painter.paint(canvas, Offset(x, rect.bottom + 7));
-    }
-
-    final selected = selectedIndex;
-    if (selected != null && selected >= 0 && selected < readings.length) {
-      _paintTooltip(canvas, size, rect, points[selected], selected);
-    }
-  }
-
-  void _paintTooltip(
-    Canvas canvas,
-    Size size,
-    Rect rect,
-    Offset point,
-    int index,
+  static ({double minimum, double maximum}) timeBounds(
+    List<WaterLevel> readings,
+    WaterDetailsPeriod period,
   ) {
-    canvas.drawLine(
-      Offset(point.dx, rect.top),
-      Offset(point.dx, rect.bottom),
-      Paint()
-        ..color = color.withValues(alpha: .38)
-        ..strokeWidth = 1,
-    );
-    canvas.drawCircle(point, 8, Paint()..color = color.withValues(alpha: .16));
-    canvas.drawCircle(point, 4.5, Paint()..color = color);
+    final actualMinimum = readings.first.timestamp
+        .toUtc()
+        .millisecondsSinceEpoch
+        .toDouble();
+    final maximum = readings.last.timestamp
+        .toUtc()
+        .millisecondsSinceEpoch
+        .toDouble();
+    final selectedMinimum = maximum - period.duration.inMilliseconds;
+    final coverage = maximum - actualMinimum;
+    final selectedSpan = period.duration.inMilliseconds.toDouble();
+    final sparseCoverage = coverage / selectedSpan < .45;
 
-    final reading = readings[index];
-    final previousDelta = index == 0
-        ? null
-        : reading.value - readings[index - 1].value;
-    final lines = <String>[
-      '${reading.value.toStringAsFixed(0)} ${reading.unit}',
-      _chartDateTimeLabel(reading.timestamp),
-      if (previousDelta != null)
-        '${_formatDelta(previousDelta, reading.unit)} vs. anterior',
-    ];
-    final painters = lines
-        .asMap()
-        .entries
-        .map(
-          (entry) => _textPainter(
-            entry.value,
-            color: entry.key == 0 ? Colors.white : Colors.white60,
-            fontSize: entry.key == 0 ? 11 : 9,
-            fontWeight: entry.key == 0 ? FontWeight.w800 : FontWeight.w500,
-          ),
-        )
-        .toList(growable: false);
-    final width =
-        painters
-            .map((painter) => painter.width)
-            .reduce((a, b) => a > b ? a : b) +
-        18;
-    final height = painters.fold<double>(
-      12,
-      (sum, painter) => sum + painter.height + 2,
-    );
-    final left = (point.dx - width / 2).clamp(4.0, size.width - width - 4);
-    final top = (point.dy - height - 14).clamp(2.0, rect.bottom - height - 2);
-    final tooltipRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(left, top, width, height),
-      const Radius.circular(9),
-    );
-    canvas.drawRRect(tooltipRect, Paint()..color = const Color(0xFF07131C));
-    canvas.drawRRect(
-      tooltipRect,
-      Paint()
-        ..color = color.withValues(alpha: .78)
-        ..strokeWidth = 1
-        ..style = PaintingStyle.stroke,
-    );
-    var y = top + 6;
-    for (final painter in painters) {
-      painter.paint(canvas, Offset(left + 9, y));
-      y += painter.height + 2;
+    if (period.duration > const Duration(days: 1) &&
+        (sparseCoverage || readings.length <= 3)) {
+      final padding = math.max(
+        const Duration(hours: 1).inMilliseconds.toDouble(),
+        coverage * .10,
+      );
+      return (
+        minimum: math.max(selectedMinimum, actualMinimum - padding),
+        maximum: maximum,
+      );
     }
+
+    return (minimum: selectedMinimum, maximum: maximum);
   }
 
-  @override
-  bool shouldRepaint(_WaterDetailsHistoryPainter oldDelegate) =>
-      oldDelegate.readings != readings ||
-      oldDelegate.color != color ||
-      oldDelegate.period != period ||
-      oldDelegate.selectedIndex != selectedIndex;
+  static List<List<WaterLevel>> contiguousSegments(
+    List<WaterLevel> readings,
+    WaterDetailsPeriod period,
+  ) {
+    if (readings.isEmpty) return const <List<WaterLevel>>[];
+    if (readings.length == 1) {
+      return <List<WaterLevel>>[List<WaterLevel>.unmodifiable(readings)];
+    }
+
+    final gaps = <int>[];
+    for (var index = 1; index < readings.length; index++) {
+      final gap = readings[index].timestamp
+          .toUtc()
+          .difference(readings[index - 1].timestamp.toUtc())
+          .inMilliseconds;
+      if (gap > 0) gaps.add(gap);
+    }
+    gaps.sort();
+    final medianGap = gaps.isEmpty ? 0 : gaps[gaps.length ~/ 2];
+
+    final minimumBreak = period.duration <= const Duration(days: 1)
+        ? const Duration(hours: 10)
+        : period.duration <= const Duration(days: 3)
+        ? const Duration(hours: 24)
+        : period.duration <= const Duration(days: 7)
+        ? const Duration(hours: 72)
+        : const Duration(hours: 120);
+    final dynamicBreak = Duration(milliseconds: (medianGap * 3.5).round());
+    final breakAfter = dynamicBreak > minimumBreak
+        ? dynamicBreak
+        : minimumBreak;
+
+    final segments = <List<WaterLevel>>[];
+    var current = <WaterLevel>[readings.first];
+    for (var index = 1; index < readings.length; index++) {
+      final previous = readings[index - 1];
+      final reading = readings[index];
+      final gap = reading.timestamp.toUtc().difference(
+        previous.timestamp.toUtc(),
+      );
+      if (gap > breakAfter) {
+        segments.add(List<WaterLevel>.unmodifiable(current));
+        current = <WaterLevel>[reading];
+      } else {
+        current.add(reading);
+      }
+    }
+    segments.add(List<WaterLevel>.unmodifiable(current));
+    return List<List<WaterLevel>>.unmodifiable(segments);
+  }
 }
 
 class _WaterDetailsSkeleton extends StatelessWidget {
@@ -2093,6 +2315,23 @@ String? _sourceLabel(WaterLevelSource? source, String? sourceName) {
   };
 }
 
+String _intervalChangeLabel(BuildContext context) =>
+    Localizations.localeOf(context).languageCode == 'ro'
+    ? 'Schimbare în interval'
+    : 'Change in interval';
+
+String _readingSourceLabel(WaterLevel reading) {
+  final sourceName = reading.sourceName.trim();
+  if (sourceName.isNotEmpty) return sourceName;
+  return switch (reading.source) {
+    WaterLevelSource.afdj => 'AFDJ',
+    WaterLevelSource.danubeHis => 'DanubeHIS',
+    WaterLevelSource.danubeFis => 'DanubeFIS',
+    WaterLevelSource.inhga => 'INHGA',
+    WaterLevelSource.manualFallback => 'Manual',
+  };
+}
+
 String _comparisonContextLabel(BuildContext context, Duration? duration) {
   if (duration != null &&
       duration >= const Duration(hours: 20) &&
@@ -2122,29 +2361,6 @@ String _chartDateTimeLabel(DateTime timestamp) {
       '${local.month.toString().padLeft(2, '0')}.${local.year}  '
       '${local.hour.toString().padLeft(2, '0')}:'
       '${local.minute.toString().padLeft(2, '0')}';
-}
-
-TextPainter _textPainter(
-  String value, {
-  required Color color,
-  required double fontSize,
-  FontWeight fontWeight = FontWeight.w500,
-}) => TextPainter(
-  text: TextSpan(
-    text: value,
-    style: TextStyle(color: color, fontSize: fontSize, fontWeight: fontWeight),
-  ),
-  textDirection: TextDirection.ltr,
-)..layout();
-
-void _paintText(
-  Canvas canvas,
-  String value,
-  Offset offset, {
-  required Color color,
-  required double fontSize,
-}) {
-  _textPainter(value, color: color, fontSize: fontSize).paint(canvas, offset);
 }
 
 String _formatValue(double? value, String unit) =>

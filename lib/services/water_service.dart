@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,6 +31,18 @@ class WaterHomeStationSelection {
   final Station? station;
   final List<Station> candidates;
   final List<Station> canonicalStations;
+}
+
+class WaterHomeCachedSnapshot {
+  const WaterHomeCachedSnapshot({
+    required this.station,
+    required this.result,
+    required this.savedAt,
+  });
+
+  final Station station;
+  final WaterUiResult result;
+  final DateTime savedAt;
 }
 
 enum WaterStationDetailsRange {
@@ -163,6 +176,9 @@ class WaterService {
   static const _maxBatchConcurrency = 4;
   static const _selectionModeKey = 'water_home_station_selection_mode';
   static const _pinnedStationIdKey = 'water_home_pinned_station_id';
+  static const _homeSnapshotKey = 'water_home_last_valid_snapshot_v1';
+  static const _homeSnapshotSchemaVersion = 1;
+  static const _maxPersistedHomeHistoryPoints = 30;
   static final StreamController<Station> _stationSelectionController =
       StreamController<Station>.broadcast(sync: true);
   static final TimedCache<List<Station>> _stationsCache =
@@ -185,6 +201,8 @@ class WaterService {
 
   final WaterRepository _repository;
   final LocationService _locationService;
+  Future<WaterHomeCachedSnapshot?>? _persistedHomeSnapshotRestore;
+  String? _lastPersistedHomeSnapshotSignature;
 
   static const supportedSources = <WaterLevelSource>{
     WaterLevelSource.afdj,
@@ -211,6 +229,10 @@ class WaterService {
   Station? get selectedStation => _selectedStation;
   Station? get lastAutomaticStation => _lastAutomaticStation;
   WaterStationSelectionMode get selectionMode => _selectionMode;
+
+  Future<WaterHomeCachedSnapshot?> restorePersistedHomeSnapshot() {
+    return _persistedHomeSnapshotRestore ??= _restorePersistedHomeSnapshot();
+  }
 
   void selectStation(Station station) {
     _selectedStation = station;
@@ -484,6 +506,390 @@ class WaterService {
     await preferences.setString(_pinnedStationIdKey, stationId);
   }
 
+  Future<WaterHomeCachedSnapshot?> _restorePersistedHomeSnapshot() async {
+    final preferences = await SharedPreferences.getInstance();
+    final encoded = preferences.getString(_homeSnapshotKey);
+    if (encoded == null || encoded.trim().isEmpty) return null;
+
+    try {
+      final payload = _stringKeyedMap(jsonDecode(encoded));
+      final schemaVersion = payload?['schema_version'];
+      final savedAt = DateTime.tryParse(payload?['saved_at']?.toString() ?? '');
+      final stationMap = _stringKeyedMap(payload?['station']);
+      final resultMap = _stringKeyedMap(payload?['result']);
+      if (payload == null ||
+          schemaVersion is! num ||
+          schemaVersion.toInt() != _homeSnapshotSchemaVersion ||
+          savedAt == null ||
+          stationMap == null ||
+          resultMap == null) {
+        await preferences.remove(_homeSnapshotKey);
+        return null;
+      }
+
+      final now = DateTime.now();
+      if (savedAt.isAfter(now.add(const Duration(minutes: 5)))) {
+        await preferences.remove(_homeSnapshotKey);
+        return null;
+      }
+
+      final station = Station.tryFromJson(stationMap);
+      if (station == null ||
+          !station.hasWaterLevel ||
+          !station.level.isFinite ||
+          station.lastUpdate.millisecondsSinceEpoch <= 0) {
+        await preferences.remove(_homeSnapshotKey);
+        return null;
+      }
+
+      final restored = _waterUiResultFromPersistedMap(
+        resultMap,
+        stationId: station.id,
+      );
+      if (restored == null || !_hasValidReading(restored)) {
+        await preferences.remove(_homeSnapshotKey);
+        return null;
+      }
+
+      final result = _withCurrentFreshness(restored, now);
+      await _restoreSelection();
+      if (_selectionMode == WaterStationSelectionMode.pinned &&
+          _selectedStation?.id == station.id) {
+        _selectedStation = station;
+      } else if (_selectionMode == WaterStationSelectionMode.automatic) {
+        _lastAutomaticStation = station;
+      }
+
+      _lastKnownGoodByStation[_lastKnownGoodKey(station)] = result;
+      final cacheAge = now.difference(savedAt);
+      if (!cacheAge.isNegative && cacheAge < cacheDuration) {
+        _waterUiCache[_waterUiCacheKey(
+          station,
+          72,
+          const Duration(hours: 24),
+        )] = _WaterUiCacheEntry(
+          result: result,
+          savedAt: savedAt,
+        );
+      }
+      _lastPersistedHomeSnapshotSignature = _homeSnapshotSignature(
+        station,
+        result,
+      );
+
+      return WaterHomeCachedSnapshot(
+        station: station,
+        result: result,
+        savedAt: savedAt,
+      );
+    } on FormatException {
+      await preferences.remove(_homeSnapshotKey);
+      return null;
+    } on Exception {
+      return null;
+    }
+  }
+
+  Future<void> _persistHomeSnapshot(
+    Station station,
+    WaterUiResult result,
+  ) async {
+    if (!_shouldPersistHomeSnapshot(station) || !_hasValidReading(result)) {
+      return;
+    }
+
+    final latest = result.latestReading!;
+    if (!_isOfficialSource(latest.source) ||
+        latest.unit.trim().toLowerCase() != 'cm' ||
+        station.id.trim().isEmpty ||
+        station.name.trim().isEmpty ||
+        !station.latitude.isFinite ||
+        !station.longitude.isFinite ||
+        station.latitude.abs() > 90 ||
+        station.longitude.abs() > 180) {
+      return;
+    }
+
+    final signature = _homeSnapshotSignature(station, result);
+    if (signature == _lastPersistedHomeSnapshotSignature) return;
+
+    final historyByTimestamp = <int, WaterLevel>{};
+    for (final reading in result.history) {
+      if (!_isValidReading(reading) ||
+          reading.stationId != station.id ||
+          reading.unit.trim().toLowerCase() != 'cm' ||
+          !_isOfficialSource(reading.source) ||
+          !_sourcesCanShareHistory(reading.source, latest.source) ||
+          reading.timestamp.isAfter(latest.timestamp)) {
+        continue;
+      }
+      historyByTimestamp[reading.timestamp.toUtc().microsecondsSinceEpoch] =
+          reading;
+    }
+    historyByTimestamp[latest.timestamp.toUtc().microsecondsSinceEpoch] =
+        latest;
+    final chronological = historyByTimestamp.values.toList(growable: false)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final persistedHistory =
+        chronological.length <= _maxPersistedHomeHistoryPoints
+        ? chronological
+        : chronological.sublist(
+            chronological.length - _maxPersistedHomeHistoryPoints,
+          );
+
+    final payload = <String, Object?>{
+      'schema_version': _homeSnapshotSchemaVersion,
+      'saved_at': DateTime.now().toUtc().toIso8601String(),
+      'station': _stationToPersistedMap(station, latest),
+      'result': <String, Object?>{
+        'latest_reading': _waterLevelToPersistedMap(latest),
+        'history': persistedHistory
+            .map(_waterLevelToPersistedMap)
+            .toList(growable: false),
+        'source': (result.source ?? latest.source).name,
+        'source_name': result.sourceName ?? latest.sourceName,
+        'measurement_timestamp': latest.timestamp.toUtc().toIso8601String(),
+        'previous_reading': result.previousReading == null
+            ? null
+            : _waterLevelToPersistedMap(result.previousReading!),
+        'delta_cm': result.deltaCm,
+        'comparison_duration_microseconds':
+            result.comparisonDuration?.inMicroseconds,
+        'trend': result.trend?.name,
+        'has_enough_history': result.hasEnoughHistory,
+      },
+    };
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = await preferences.setString(
+        _homeSnapshotKey,
+        jsonEncode(payload),
+      );
+      if (saved) _lastPersistedHomeSnapshotSignature = signature;
+    } catch (_) {
+      // Persistence is an optimization. Live water loading remains authoritative.
+    }
+  }
+
+  bool _shouldPersistHomeSnapshot(Station station) {
+    if (_selectionMode == WaterStationSelectionMode.pinned) {
+      return _selectedStation?.id == station.id;
+    }
+    return _lastAutomaticStation == null ||
+        _lastAutomaticStation?.id == station.id;
+  }
+
+  String _homeSnapshotSignature(Station station, WaterUiResult result) {
+    final latest = result.latestReading!;
+    final lastHistoryTimestamp = result.history.isEmpty
+        ? latest.timestamp
+        : result.history.last.timestamp;
+    return '${station.id}:${latest.timestamp.toUtc().microsecondsSinceEpoch}:'
+        '${latest.value}:${latest.source.name}:${result.history.length}:'
+        '${lastHistoryTimestamp.toUtc().microsecondsSinceEpoch}';
+  }
+
+  static Map<String, dynamic>? _stringKeyedMap(Object? value) {
+    if (value is! Map) return null;
+    try {
+      return Map<String, dynamic>.from(value);
+    } on TypeError {
+      return null;
+    }
+  }
+
+  static Map<String, Object?> _stationToPersistedMap(
+    Station station,
+    WaterLevel latest,
+  ) {
+    return <String, Object?>{
+      'id': station.id,
+      'name': station.name,
+      'river': station.river,
+      'latitude': station.latitude,
+      'longitude': station.longitude,
+      'level': latest.value,
+      'trend': latest.trend.name,
+      'last_update': latest.timestamp.toUtc().toIso8601String(),
+      'water_type': station.waterBodyType.name,
+      'species': station.species,
+      'difficulty': station.difficulty.name,
+      'is_favorite': station.isFavorite,
+      'has_water_level': true,
+      'has_known_trend': latest.hasKnownTrend,
+      'water_level_unit': latest.unit,
+      'water_level_source': latest.source.name,
+    };
+  }
+
+  static Map<String, Object?> _waterLevelToPersistedMap(WaterLevel reading) {
+    return <String, Object?>{
+      'station_id': reading.stationId,
+      'value': reading.value,
+      'timestamp': reading.timestamp.toUtc().toIso8601String(),
+      'trend': reading.trend.name,
+      'source': reading.source.name,
+      'unit': reading.unit,
+      'source_name': reading.sourceName,
+      'has_known_trend': reading.hasKnownTrend,
+    };
+  }
+
+  static WaterUiResult? _waterUiResultFromPersistedMap(
+    Map<String, dynamic> map, {
+    required String stationId,
+  }) {
+    final latest = _waterLevelFromPersistedMap(
+      map['latest_reading'],
+      stationId: stationId,
+    );
+    if (latest == null ||
+        !_isOfficialSource(latest.source) ||
+        latest.unit.trim().toLowerCase() != 'cm') {
+      return null;
+    }
+
+    final historyByTimestamp = <int, WaterLevel>{};
+    final rawHistory = map['history'];
+    if (rawHistory is Iterable) {
+      for (final rawReading in rawHistory) {
+        final reading = _waterLevelFromPersistedMap(
+          rawReading,
+          stationId: stationId,
+        );
+        if (reading == null ||
+            !_isOfficialSource(reading.source) ||
+            reading.unit.trim().toLowerCase() != 'cm' ||
+            !_sourcesCanShareHistory(reading.source, latest.source) ||
+            reading.timestamp.isAfter(latest.timestamp)) {
+          continue;
+        }
+        historyByTimestamp[reading.timestamp.toUtc().microsecondsSinceEpoch] =
+            reading;
+      }
+    }
+    historyByTimestamp[latest.timestamp.toUtc().microsecondsSinceEpoch] =
+        latest;
+    final chronological = historyByTimestamp.values.toList(growable: false)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final history = chronological.length <= _maxPersistedHomeHistoryPoints
+        ? chronological
+        : chronological.sublist(
+            chronological.length - _maxPersistedHomeHistoryPoints,
+          );
+
+    WaterLevel? previous = _waterLevelFromPersistedMap(
+      map['previous_reading'],
+      stationId: stationId,
+    );
+    if (previous == null ||
+        !previous.timestamp.isBefore(latest.timestamp) ||
+        !_sourcesCanShareHistory(previous.source, latest.source)) {
+      previous = null;
+      for (final candidate in history.reversed) {
+        if (candidate.timestamp.isBefore(latest.timestamp) &&
+            _sourcesCanShareHistory(candidate.source, latest.source)) {
+          previous = candidate;
+          break;
+        }
+      }
+    }
+
+    final persistedDelta = map['delta_cm'];
+    final deltaCm = persistedDelta is num && persistedDelta.toDouble().isFinite
+        ? persistedDelta.toDouble()
+        : previous == null
+        ? null
+        : latest.value - previous.value;
+    final persistedDuration = map['comparison_duration_microseconds'];
+    final comparisonDuration =
+        persistedDuration is num && persistedDuration.toInt() > 0
+        ? Duration(microseconds: persistedDuration.toInt())
+        : previous == null
+        ? null
+        : latest.timestamp.difference(previous.timestamp);
+    final persistedTrend = _waterTrendFromName(map['trend']);
+    final source = WaterLevelSource.parse(
+      map['source'],
+      fallback: latest.source,
+    );
+    final sourceName = map['source_name']?.toString().trim();
+
+    return WaterUiResult(
+      latestReading: latest,
+      history: List<WaterLevel>.unmodifiable(history),
+      source: source,
+      sourceName: sourceName == null || sourceName.isEmpty
+          ? latest.sourceName
+          : sourceName,
+      measurementTimestamp: latest.timestamp,
+      dataAge: null,
+      isStale: false,
+      status: history.length >= 2
+          ? WaterUiStatus.availableHistory
+          : WaterUiStatus.insufficientHistory,
+      safeDiagnosticMessage: null,
+      previousReading: previous,
+      deltaCm: deltaCm,
+      comparisonDuration: comparisonDuration,
+      trend: persistedTrend ?? (latest.hasKnownTrend ? latest.trend : null),
+      hasEnoughHistory: previous != null,
+      providerError: false,
+    );
+  }
+
+  static WaterLevel? _waterLevelFromPersistedMap(
+    Object? raw, {
+    required String stationId,
+  }) {
+    final map = _stringKeyedMap(raw);
+    if (map == null) return null;
+
+    final readingStationId = map['station_id']?.toString().trim();
+    final value = map['value'] is num
+        ? (map['value'] as num).toDouble()
+        : double.tryParse(map['value']?.toString() ?? '');
+    final timestamp = DateTime.tryParse(map['timestamp']?.toString() ?? '');
+    final unit = map['unit']?.toString().trim();
+    final source = WaterLevelSource.parse(map['source']);
+    final parsedTrend = _waterTrendFromName(map['trend']);
+    final hasKnownTrend = map['has_known_trend'] == true && parsedTrend != null;
+    final sourceName = map['source_name']?.toString().trim();
+
+    if (readingStationId != stationId ||
+        value == null ||
+        !value.isFinite ||
+        timestamp == null ||
+        unit == null ||
+        unit.isEmpty) {
+      return null;
+    }
+
+    final reading = WaterLevel(
+      stationId: stationId,
+      value: value,
+      timestamp: timestamp,
+      trend: parsedTrend ?? WaterTrend.stable,
+      source: source,
+      unit: unit,
+      sourceName: sourceName == null || sourceName.isEmpty
+          ? _canonicalSourceName(source)
+          : sourceName,
+      hasKnownTrend: hasKnownTrend,
+    );
+    return _isValidReading(reading) ? reading : null;
+  }
+
+  static WaterTrend? _waterTrendFromName(Object? value) {
+    return switch (value?.toString().trim().toLowerCase()) {
+      'rising' => WaterTrend.rising,
+      'falling' => WaterTrend.falling,
+      'stable' => WaterTrend.stable,
+      _ => null,
+    };
+  }
+
   static String _normalizeStationName(String value) => value
       .trim()
       .toLowerCase()
@@ -664,6 +1070,9 @@ class WaterService {
                   result: resolved,
                   savedAt: DateTime.now(),
                 );
+                if (_hasValidReading(resolved)) {
+                  unawaited(_persistHomeSnapshot(station, resolved));
+                }
               }
               return _withCurrentFreshness(resolved, DateTime.now());
             })
