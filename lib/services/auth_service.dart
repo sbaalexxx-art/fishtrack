@@ -15,8 +15,8 @@ class AuthService {
   const AuthService({
     SupabaseClient? client,
     MediaProcessingService mediaProcessor = const MediaProcessingService(),
-  })  : _client = client,
-        _mediaProcessor = mediaProcessor;
+  }) : _client = client,
+       _mediaProcessor = mediaProcessor;
 
   static const _avatarBucket = 'avatars';
 
