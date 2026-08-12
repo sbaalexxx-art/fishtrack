@@ -4,6 +4,17 @@ on:
   push:
     branches:
       - agent/media-storage-policy-v1
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'lib/repositories/catch_repository.dart'
+      - 'lib/services/auth_service.dart'
+      - 'lib/services/media_processing_service.dart'
+      - 'lib/services/report_spam_service.dart'
+      - 'pubspec.yaml'
+      - 'supabase/migrations/**'
+      - 'test/media_processing_policy_test.dart'
   workflow_dispatch:
 
 permissions:
