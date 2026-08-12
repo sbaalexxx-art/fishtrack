@@ -17,8 +17,8 @@ class CatchRepository {
   const CatchRepository({
     SupabaseClient? client,
     MediaProcessingService mediaProcessor = const MediaProcessingService(),
-  })  : _client = client,
-        _mediaProcessor = mediaProcessor;
+  }) : _client = client,
+       _mediaProcessor = mediaProcessor;
 
   static const _bucket = 'catch-images';
   final SupabaseClient? _client;
