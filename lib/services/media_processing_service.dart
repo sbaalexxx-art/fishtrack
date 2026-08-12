@@ -41,10 +41,10 @@ class MediaPolicy {
   );
 
   static MediaPolicy forPurpose(MediaPurpose purpose) => switch (purpose) {
-        MediaPurpose.catchPhoto => catchPhoto,
-        MediaPurpose.reportPhoto => reportPhoto,
-        MediaPurpose.avatar => avatar,
-      };
+    MediaPurpose.catchPhoto => catchPhoto,
+    MediaPurpose.reportPhoto => reportPhoto,
+    MediaPurpose.avatar => avatar,
+  };
 }
 
 class ProcessedMedia {
@@ -123,7 +123,8 @@ class MediaProcessingService {
         );
         if (candidate == null || candidate.isEmpty) continue;
 
-        if (smallest == null || candidate.lengthInBytes < smallest.lengthInBytes) {
+        if (smallest == null ||
+            candidate.lengthInBytes < smallest.lengthInBytes) {
           smallest = candidate;
           smallestDimension = dimension;
           smallestQuality = quality;
