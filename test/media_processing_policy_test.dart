@@ -25,7 +25,10 @@ void main() {
       for (var i = 1; i < policy.qualities.length; i++) {
         expect(policy.qualities[i], lessThan(policy.qualities[i - 1]));
       }
-      expect(policy.qualities.every((value) => value >= 60 && value <= 90), isTrue);
+      expect(
+        policy.qualities.every((value) => value >= 60 && value <= 90),
+        isTrue,
+      );
     }
   });
 
