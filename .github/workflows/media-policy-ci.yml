@@ -33,13 +33,19 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
       - name: Format gate
-        run: >-
-          dart format --output=none --set-exit-if-changed
-          lib/services/media_processing_service.dart
-          lib/services/report_spam_service.dart
-          lib/services/auth_service.dart
-          lib/repositories/catch_repository.dart
-          test/media_processing_policy_test.dart
+        run: |
+          dart format \
+            lib/services/media_processing_service.dart \
+            lib/services/report_spam_service.dart \
+            lib/services/auth_service.dart \
+            lib/repositories/catch_repository.dart \
+            test/media_processing_policy_test.dart
+          git diff --exit-code -- \
+            lib/services/media_processing_service.dart \
+            lib/services/report_spam_service.dart \
+            lib/services/auth_service.dart \
+            lib/repositories/catch_repository.dart \
+            test/media_processing_policy_test.dart
       - name: Analyze
         run: flutter analyze
       - name: Media policy tests
