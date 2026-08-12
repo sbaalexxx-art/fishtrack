@@ -21,21 +21,21 @@ class MediaPolicy {
 
   static const catchPhoto = MediaPolicy(
     dimensionLimits: [1920, 1600, 1440],
-    qualities: [84, 78, 72, 66],
+    qualities: [84, 72],
     targetBytes: 1468006, // ~1.4 MiB; bucket hard limit is 2 MiB.
     hardLimitBytes: 2097152,
   );
 
   static const reportPhoto = MediaPolicy(
     dimensionLimits: [1600, 1440, 1280],
-    qualities: [80, 74, 68, 62],
+    qualities: [82, 70],
     targetBytes: 943718, // ~0.9 MiB; bucket hard limit is 1.5 MiB.
     hardLimitBytes: 1572864,
   );
 
   static const avatar = MediaPolicy(
     dimensionLimits: [768, 640, 512],
-    qualities: [82, 76, 70],
+    qualities: [82, 70],
     targetBytes: 471859, // ~0.45 MiB; bucket hard limit is 1 MiB.
     hardLimitBytes: 1048576,
   );
@@ -107,6 +107,8 @@ class MediaProcessingService {
     var smallestDimension = policy.dimensionLimits.first;
     var smallestQuality = policy.qualities.first;
 
+    // At most six native encode attempts per upload. Typical camera captures
+    // return on the first attempt; later attempts are only a hard-size fallback.
     for (final dimension in policy.dimensionLimits) {
       for (final quality in policy.qualities) {
         final candidate = await FlutterImageCompress.compressWithFile(
