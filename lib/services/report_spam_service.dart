@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'media_processing_service.dart';
+
 class SpamReportHistory {
   const SpamReportHistory({
     required this.category,
@@ -30,20 +32,27 @@ class SpamAssessment {
 /// Explainable, rule-based report moderation. It only labels reports; it never
 /// blocks publication or changes a user's account.
 class ReportSpamService {
-  const ReportSpamService();
+  const ReportSpamService({
+    MediaProcessingService mediaProcessor = const MediaProcessingService(),
+  }) : _mediaProcessor = mediaProcessor;
 
+  final MediaProcessingService _mediaProcessor;
+
+  /// Compatibility entry point for the existing report submission pipeline.
+  ///
+  /// Reports are camera-only, and [image] is an app-owned temporary capture.
+  /// Before CommunityService uploads it, this method replaces those temporary
+  /// bytes with the canonical privacy-sanitized JPEG and returns the SHA-256 of
+  /// the exact bytes that will be uploaded. This keeps moderation/dedupe and
+  /// Storage on one representation while preventing EXIF/GPS leakage.
   Future<String?> imageHash(File? image) async {
     if (image == null) return null;
-    // FNV-1a 32-bit is sufficient for detecting identical uploaded bytes and
-    // avoids retaining or transmitting the image solely for moderation.
-    var hash = 0x811c9dc5;
-    await for (final chunk in image.openRead()) {
-      for (final byte in chunk) {
-        hash ^= byte;
-        hash = (hash * 0x01000193) & 0xffffffff;
-      }
-    }
-    return hash.toRadixString(16).padLeft(8, '0');
+    final processed = await _mediaProcessor.processFile(
+      path: image.path,
+      purpose: MediaPurpose.reportPhoto,
+    );
+    await image.writeAsBytes(processed.bytes, flush: true);
+    return processed.sha256Hex;
   }
 
   SpamAssessment assess({
