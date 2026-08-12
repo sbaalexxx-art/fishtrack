@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/catch.dart';
+import '../services/media_processing_service.dart';
 
 class CatchSubmissionException implements Exception {
   const CatchSubmissionException(this.message);
@@ -13,10 +14,15 @@ class CatchSubmissionException implements Exception {
 }
 
 class CatchRepository {
-  const CatchRepository({SupabaseClient? client}) : _client = client;
+  const CatchRepository({
+    SupabaseClient? client,
+    MediaProcessingService mediaProcessor = const MediaProcessingService(),
+  })  : _client = client,
+        _mediaProcessor = mediaProcessor;
 
   static const _bucket = 'catch-images';
   final SupabaseClient? _client;
+  final MediaProcessingService _mediaProcessor;
 
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
@@ -33,28 +39,50 @@ class CatchRepository {
     required String locationPrivacy,
     required String? stationId,
   }) async {
-    final imageFile = File(imagePath);
-    if (!await imageFile.exists()) {
-      throw const CatchSubmissionException(
-        'The selected image is no longer available.',
-      );
-    }
-
-    final fileName = imagePath.split(RegExp(r'[/\\]')).last;
-    final extension = fileName.contains('.')
-        ? '.${fileName.split('.').last.toLowerCase()}'
-        : '.jpg';
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) {
       throw const CatchSubmissionException('Your session has expired.');
     }
+
+    late final ProcessedMedia media;
+    try {
+      media = await _mediaProcessor.processFile(
+        path: imagePath,
+        purpose: MediaPurpose.catchPhoto,
+      );
+    } on MediaProcessingException catch (error, stackTrace) {
+      _logFailure('catch image processing', error, stackTrace);
+      throw CatchSubmissionException(error.message);
+    } on Exception catch (error, stackTrace) {
+      _logFailure('catch image processing', error, stackTrace);
+      throw const CatchSubmissionException(
+        'The image could not be processed. Please try again.',
+      );
+    }
+
     final storagePath =
-        '$userId/${DateTime.now().microsecondsSinceEpoch}$extension';
+        '$userId/${DateTime.now().microsecondsSinceEpoch}${ProcessedMedia.extension}';
 
     try {
       await _supabase.storage
           .from(_bucket)
-          .upload(storagePath, imageFile)
+          .uploadBinary(
+            storagePath,
+            media.bytes,
+            fileOptions: FileOptions(
+              cacheControl: '31536000',
+              contentType: ProcessedMedia.contentType,
+              upsert: false,
+              metadata: {
+                'sha256': media.sha256Hex,
+                'original_bytes': media.originalBytes,
+                'processed_bytes': media.outputBytes,
+                'dimension_limit': media.dimensionLimit,
+                'quality': media.quality,
+                'exif_preserved': false,
+              },
+            ),
+          )
           .timeout(const Duration(seconds: 45));
     } on SocketException catch (error, stackTrace) {
       _logFailure('catch image upload', error, stackTrace);
@@ -91,6 +119,7 @@ class CatchRepository {
         'water_type': waterType,
         'location_privacy': locationPrivacy,
         'image': _supabase.storage.from(_bucket).getPublicUrl(storagePath),
+        'image_sha256': media.sha256Hex,
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       };
       data['user_id'] = userId;
@@ -113,6 +142,11 @@ class CatchRepository {
     } on PostgrestException catch (error, stackTrace) {
       _logFailure('catch database insert', error, stackTrace);
       await _removeImage(storagePath);
+      if (error.code == '23505') {
+        throw const CatchSubmissionException(
+          'This photo is already saved as one of your catches.',
+        );
+      }
       throw const CatchSubmissionException(
         'The catch could not be saved. Please try again.',
       );
