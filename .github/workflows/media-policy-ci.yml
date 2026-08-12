@@ -1,0 +1,35 @@
+name: Media Storage Policy CI
+
+on:
+  push:
+    branches:
+      - agent/media-storage-policy-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Format gate
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib/services/media_processing_service.dart
+          lib/services/report_spam_service.dart
+          lib/services/auth_service.dart
+          lib/repositories/catch_repository.dart
+          test/media_processing_policy_test.dart
+      - name: Analyze
+        run: flutter analyze
+      - name: Media policy tests
+        run: flutter test test/media_processing_policy_test.dart
