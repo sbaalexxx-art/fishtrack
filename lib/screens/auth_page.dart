@@ -1,402 +1,475 @@
 import 'package:flutter/material.dart';
 
-import '../l10n/l10n.dart';
+import '../features/figma_complete/presentation/figma_foundation.dart';
 import '../services/auth_service.dart';
 
-enum _AuthMode { login, register, forgotPassword }
-
 class AuthPage extends StatefulWidget {
-  const AuthPage({super.key});
+  const AuthPage({super.key, this.authService = const AuthService()});
+
+  final AuthService authService;
 
   @override
   State<AuthPage> createState() => _AuthPageState();
 }
 
 class _AuthPageState extends State<AuthPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  final _authService = const AuthService();
-
-  _AuthMode _mode = _AuthMode.login;
-  bool _loading = false;
-  bool _obscurePassword = true;
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _showAccess = false;
+  bool _register = false;
+  bool _working = false;
+  bool _obscure = true;
   String? _message;
-  bool _messageIsError = false;
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
+    _name.dispose();
+    _email.dispose();
+    _password.dispose();
     super.dispose();
-  }
-
-  void _setMode(_AuthMode mode) {
-    setState(() {
-      _mode = mode;
-      _message = null;
-      _messageIsError = false;
-    });
   }
 
   Future<void> _submit() async {
-    FocusScope.of(context).unfocus();
-    if (!_formKey.currentState!.validate()) return;
+    if (_working) return;
+    final email = _email.text.trim();
+    final password = _password.text;
+    final name = _name.text.trim();
+    if (email.isEmpty || password.length < 6 || (_register && name.isEmpty)) {
+      setState(
+        () => _message = _register
+            ? 'Completează numele, emailul și o parolă de minimum 6 caractere.'
+            : 'Completează emailul și o parolă de minimum 6 caractere.',
+      );
+      return;
+    }
     setState(() {
-      _loading = true;
+      _working = true;
       _message = null;
     });
-
     try {
-      switch (_mode) {
-        case _AuthMode.login:
-          await _authService.login(
-            email: _emailController.text,
-            password: _passwordController.text,
+      if (_register) {
+        await widget.authService.register(
+          name: name,
+          email: email,
+          password: password,
+        );
+        if (mounted && widget.authService.currentSession == null) {
+          setState(
+            () => _message =
+                'Contul a fost creat. Verifică emailul dacă este necesară confirmarea.',
           );
-        case _AuthMode.register:
-          final response = await _authService.register(
-            name: _nameController.text,
-            email: _emailController.text,
-            password: _passwordController.text,
-          );
-          if (response.session == null && mounted) {
-            setState(() {
-              _mode = _AuthMode.login;
-              _messageIsError = false;
-              _message = context.l10n.checkEmailConfirmation;
-            });
-          }
-        case _AuthMode.forgotPassword:
-          await _authService.sendPasswordReset(_emailController.text);
-          if (mounted) {
-            setState(() {
-              _mode = _AuthMode.login;
-              _messageIsError = false;
-              _message = context.l10n.passwordResetSent;
-            });
-          }
+        }
+      } else {
+        await widget.authService.login(email: email, password: password);
       }
     } on AuthException catch (error) {
-      if (mounted) {
-        setState(() {
-          _messageIsError = true;
-          _message = error.message;
-        });
-      }
+      if (mounted) setState(() => _message = error.message);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _working = false);
     }
   }
 
-  String? _required(String? value) =>
-      value == null || value.trim().isEmpty ? context.l10n.requiredField : null;
-
-  String? _emailValidator(String? value) {
-    final email = value?.trim() ?? '';
-    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-      return context.l10n.validEmailRequired;
+  Future<void> _resetPassword() async {
+    final email = _email.text.trim();
+    if (email.isEmpty) {
+      setState(() => _message = 'Introdu emailul contului.');
+      return;
     }
-    return null;
-  }
-
-  String? _passwordValidator(String? value) {
-    if ((value ?? '').length < 8) return context.l10n.minimumEightCharacters;
-    return null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isRegister = _mode == _AuthMode.register;
-    final isForgot = _mode == _AuthMode.forgotPassword;
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Theme(
-      data: theme.copyWith(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF12D8D6),
-          brightness: theme.brightness,
-        ),
-        scaffoldBackgroundColor: theme.scaffoldBackgroundColor,
-        textTheme: theme.textTheme.apply(
-          bodyColor: scheme.onSurface,
-          displayColor: scheme.onSurface,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
-          labelStyle: TextStyle(color: scheme.onSurfaceVariant),
-          hintStyle: TextStyle(color: scheme.onSurfaceVariant),
-          prefixIconColor: scheme.onSurfaceVariant,
-          suffixIconColor: scheme.onSurfaceVariant,
-          enabledBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: scheme.outline),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: Color(0xFF12D8D6), width: 2),
-          ),
-        ),
-      ),
-      child: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Icon(Icons.phishing_rounded, size: 54),
-                      const SizedBox(height: 16),
-                      Text(
-                        isRegister
-                            ? context.l10n.createAccountTitle
-                            : isForgot
-                            ? context.l10n.resetPassword
-                            : context.l10n.welcomeBack,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.headlineMedium?.copyWith(
-                          color: scheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        isForgot
-                            ? context.l10n.recoveryInstructionsHint
-                            : context.l10n.signInToContinue,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 28),
-                      if (isRegister) ...[
-                        TextFormField(
-                          controller: _nameController,
-                          enabled: !_loading,
-                          textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            labelText: context.l10n.name,
-                            prefixIcon: Icon(Icons.person_outline),
-                          ),
-                          validator: _required,
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      TextFormField(
-                        controller: _emailController,
-                        enabled: !_loading,
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: isForgot
-                            ? TextInputAction.done
-                            : TextInputAction.next,
-                        decoration: InputDecoration(
-                          labelText: context.l10n.email,
-                          prefixIcon: Icon(Icons.email_outlined),
-                        ),
-                        validator: _emailValidator,
-                      ),
-                      if (!isForgot) ...[
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _passwordController,
-                          enabled: !_loading,
-                          obscureText: _obscurePassword,
-                          textInputAction: isRegister
-                              ? TextInputAction.next
-                              : TextInputAction.done,
-                          decoration: InputDecoration(
-                            labelText: context.l10n.password,
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(
-                              onPressed: () => setState(
-                                () => _obscurePassword = !_obscurePassword,
-                              ),
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                              ),
-                            ),
-                          ),
-                          validator: _passwordValidator,
-                          onFieldSubmitted: isRegister
-                              ? null
-                              : (_) => _submit(),
-                        ),
-                      ],
-                      if (isRegister) ...[
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _confirmPasswordController,
-                          enabled: !_loading,
-                          obscureText: true,
-                          decoration: InputDecoration(
-                            labelText: context.l10n.confirmPassword,
-                            prefixIcon: Icon(Icons.lock_outline),
-                          ),
-                          validator: (value) =>
-                              value != _passwordController.text
-                              ? context.l10n.passwordsDoNotMatch
-                              : null,
-                          onFieldSubmitted: (_) => _submit(),
-                        ),
-                      ],
-                      if (_message != null) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          _message!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: _messageIsError
-                                ? Theme.of(context).colorScheme.error
-                                : Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      FilledButton(
-                        onPressed: _loading ? null : _submit,
-                        child: _loading
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(
-                                isRegister
-                                    ? context.l10n.register
-                                    : isForgot
-                                    ? context.l10n.sendResetEmail
-                                    : context.l10n.login,
-                              ),
-                      ),
-                      if (_mode == _AuthMode.login) ...[
-                        TextButton(
-                          onPressed: _loading
-                              ? null
-                              : () => _setMode(_AuthMode.forgotPassword),
-                          child: Text(context.l10n.forgotPassword),
-                        ),
-                        TextButton(
-                          onPressed: _loading
-                              ? null
-                              : () => _setMode(_AuthMode.register),
-                          child: Text(context.l10n.createAccount),
-                        ),
-                      ] else
-                        TextButton(
-                          onPressed: _loading
-                              ? null
-                              : () => _setMode(_AuthMode.login),
-                          child: Text(context.l10n.backToLogin),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class UpdatePasswordPage extends StatefulWidget {
-  const UpdatePasswordPage({super.key});
-
-  @override
-  State<UpdatePasswordPage> createState() => _UpdatePasswordPageState();
-}
-
-class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _passwordController = TextEditingController();
-  final _authService = const AuthService();
-  bool _loading = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
     setState(() {
-      _loading = true;
-      _error = null;
+      _working = true;
+      _message = null;
     });
     try {
-      await _authService.updatePassword(_passwordController.text);
-      await _authService.logout();
+      await widget.authService.sendPasswordReset(email);
+      if (mounted) {
+        setState(
+          () => _message = 'Instrucțiunile de recuperare au fost trimise.',
+        );
+      }
     } on AuthException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted) setState(() => _message = error.message);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _working = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.setNewPassword)),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      enabled: !_loading,
-                      decoration: InputDecoration(
-                        labelText: context.l10n.newPassword,
-                        prefixIcon: Icon(Icons.lock_outline),
-                      ),
-                      validator: (value) => (value ?? '').length < 8
-                          ? context.l10n.minimumEightCharacters
-                          : null,
+      backgroundColor: FigmaFluviTokens.background,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: FigmaFluviTokens.pageGradient,
+        ),
+        child: SafeArea(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: _showAccess
+                ? _buildAccess(context)
+                : _buildOnboarding(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOnboarding(BuildContext context) {
+    return ListView(
+      key: const ValueKey('figma-auth-onboarding'),
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
+      children: [
+        const Text(
+          'FluviAI',
+          style: TextStyle(
+            color: FigmaFluviTokens.white,
+            fontSize: 30,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -.6,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Apele, vremea și comunitatea într-un singur loc',
+          style: figmaBody(size: 14),
+        ),
+        const SizedBox(height: 18),
+        FigmaSurface(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: FigmaFluviTokens.cyan.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(36),
+                  border: Border.all(
+                    color: FigmaFluviTokens.cyan.withValues(alpha: .24),
+                  ),
+                ),
+                child: const Center(
+                  child: Text(
+                    '≈',
+                    style: TextStyle(
+                      color: FigmaFluviTokens.cyan,
+                      fontSize: 42,
+                      fontWeight: FontWeight.w900,
                     ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: _loading ? null : _save,
-                      child: Text(
-                        _loading
-                            ? context.l10n.updating
-                            : context.l10n.updatePassword,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Planifică mai bine. Pescuiește mai sigur.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: FigmaFluviTokens.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const _OnboardingPoint(label: 'Niveluri și trenduri Water'),
+              const _OnboardingPoint(label: 'Weather, Solunar și FluviScore'),
+              const _OnboardingPoint(
+                label: 'Rapoarte, capturi și locuri salvate',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        const FigmaSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FigmaSectionLabel('Experiența ta locală'),
+              SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Limba interfeței',
+                      style: TextStyle(
+                        color: FigmaFluviTokens.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ],
+                  ),
+                  Text(
+                    'Română  ›',
+                    style: TextStyle(
+                      color: FigmaFluviTokens.cyan,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Țara conținutului',
+                      style: TextStyle(
+                        color: FigmaFluviTokens.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'România  ›',
+                    style: TextStyle(
+                      color: FigmaFluviTokens.cyan,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        FigmaPrimaryButton(
+          label: 'Continuă',
+          onPressed: () => setState(() => _showAccess = true),
+        ),
+        const SizedBox(height: 10),
+        FigmaPrimaryButton(
+          label: 'Am deja cont',
+          secondary: true,
+          onPressed: () => setState(() => _showAccess = true),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Continuând, accepți Termenii și confirmi că ai citit Politica de confidențialitate.',
+          textAlign: TextAlign.center,
+          style: figmaBody(size: 9),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAccess(BuildContext context) {
+    return ListView(
+      key: const ValueKey('figma-auth-access'),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+      children: [
+        Row(
+          children: [
+            FigmaRoundButton(
+              icon: Icons.chevron_left_rounded,
+              tooltip: 'Înapoi',
+              onPressed: () => setState(() => _showAccess = false),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _register ? 'Creează cont' : 'Bine ai revenit',
+                style: const TextStyle(
+                  color: FigmaFluviTokens.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _register
+              ? 'Salvează capturi, favorite și alerte personale.'
+              : 'Conectează-te la contul tău FluviAI.',
+          style: figmaBody(size: 12),
+        ),
+        const SizedBox(height: 22),
+        Row(
+          children: [
+            Expanded(
+              child: FigmaPill(
+                label: 'Autentificare',
+                active: !_register,
+                onTap: () => setState(() => _register = false),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FigmaPill(
+                label: 'Cont nou',
+                active: _register,
+                onTap: () => setState(() => _register = true),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        FigmaSurface(
+          child: Column(
+            children: [
+              if (_register) ...[
+                TextField(
+                  controller: _name,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(labelText: 'Nume'),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(labelText: 'Email'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _password,
+                obscureText: _obscure,
+                onSubmitted: (_) => _submit(),
+                decoration: InputDecoration(
+                  labelText: 'Parolă',
+                  suffixIcon: IconButton(
+                    tooltip: _obscure ? 'Afișează parola' : 'Ascunde parola',
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+        if (_message != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _message!,
+            textAlign: TextAlign.center,
+            style: figmaBody(color: FigmaFluviTokens.amber, size: 11),
+          ),
+        ],
+        const SizedBox(height: 18),
+        FigmaPrimaryButton(
+          label: _working
+              ? 'Se procesează…'
+              : (_register ? 'Creează contul' : 'Autentificare'),
+          onPressed: _working ? null : _submit,
+        ),
+        if (!_register) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _working ? null : _resetPassword,
+            child: const Text('Am uitat parola'),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _OnboardingPoint extends StatelessWidget {
+  const _OnboardingPoint({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: const BoxDecoration(
+            color: FigmaFluviTokens.cyanSoft,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: Text(label, style: figmaBody(size: 11))),
+      ],
+    ),
+  );
+}
+
+class UpdatePasswordPage extends StatefulWidget {
+  const UpdatePasswordPage({super.key, this.authService = const AuthService()});
+
+  final AuthService authService;
+
+  @override
+  State<UpdatePasswordPage> createState() => _UpdatePasswordPageState();
+}
+
+class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
+  final _password = TextEditingController();
+  bool _working = false;
+  String? _message;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _update() async {
+    if (_password.text.length < 6) {
+      setState(() => _message = 'Parola trebuie să aibă minimum 6 caractere.');
+      return;
+    }
+    setState(() {
+      _working = true;
+      _message = null;
+    });
+    try {
+      await widget.authService.updatePassword(_password.text);
+      if (mounted) setState(() => _message = 'Parola a fost actualizată.');
+    } on AuthException catch (error) {
+      if (mounted) setState(() => _message = error.message);
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FigmaCanonicalScaffold(
+      key: const ValueKey('figma-update-password'),
+      title: 'Recuperare cont',
+      eyebrow: 'SECURITATE',
+      showBack: false,
+      child: ListView(
+        children: [
+          const FigmaTruthfulEmpty(
+            icon: Icons.lock_reset_rounded,
+            title: 'Alege o parolă nouă',
+            message: 'Linkul de recuperare a deschis o sesiune protejată.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _password,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Parolă nouă'),
+          ),
+          if (_message != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _message!,
+              textAlign: TextAlign.center,
+              style: figmaBody(size: 11),
+            ),
+          ],
+          const SizedBox(height: 18),
+          FigmaPrimaryButton(
+            label: _working ? 'Se actualizează…' : 'Actualizează parola',
+            onPressed: _working ? null : _update,
+          ),
+        ],
       ),
     );
   }

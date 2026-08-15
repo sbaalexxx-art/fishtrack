@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/water/water_history_analysis.dart';
 import '../models/station.dart';
 import '../models/water_level.dart';
 import 'afdj_water_provider.dart';
@@ -96,6 +97,51 @@ class SupabaseDailyWaterSnapshotReader implements DailyWaterSnapshotReader {
   }
 }
 
+abstract interface class WaterMobileContractReader {
+  Future<List<Map<String, dynamic>>> readLatestStations({String? stationId});
+
+  Future<List<Map<String, dynamic>>> readStationHistory(
+    String stationId, {
+    required int days,
+  });
+}
+
+class SupabaseWaterMobileContractReader implements WaterMobileContractReader {
+  const SupabaseWaterMobileContractReader();
+
+  @override
+  Future<List<Map<String, dynamic>>> readLatestStations({
+    String? stationId,
+  }) async {
+    final response = await Supabase.instance.client.rpc(
+      'get_water_station_latest_v2',
+      params: <String, Object?>{'p_station_id': stationId},
+    );
+    return _rows(response);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> readStationHistory(
+    String stationId, {
+    required int days,
+  }) async {
+    final response = await Supabase.instance.client.rpc(
+      'get_water_station_history_v2',
+      params: <String, Object?>{'p_station_id': stationId, 'p_days': days},
+    );
+    return _rows(response);
+  }
+
+  static List<Map<String, dynamic>> _rows(Object? response) {
+    if (response is! List) return const <Map<String, dynamic>>[];
+
+    return response
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+}
+
 enum WaterHistoryResultStatus {
   success,
   insufficientHistory,
@@ -126,6 +172,7 @@ class WaterRepository implements OfficialWaterDataSource {
     this.danubeFisProvider = const DanubeFisWaterProvider(),
     this.stationMetadataReader = const SupabaseStationMetadataReader(),
     this.snapshotReader = const SupabaseDailyWaterSnapshotReader(),
+    this.mobileContractReader = const SupabaseWaterMobileContractReader(),
   });
 
   final AfdjWaterProvider afdjProvider;
@@ -133,6 +180,7 @@ class WaterRepository implements OfficialWaterDataSource {
   final DanubeFisWaterProvider danubeFisProvider;
   final StationMetadataReader stationMetadataReader;
   final DailyWaterSnapshotReader snapshotReader;
+  final WaterMobileContractReader mobileContractReader;
 
   static const defaultFreshnessThreshold = Duration(hours: 36);
   static const maxSnapshotHistoryPoints = 30;
@@ -163,56 +211,31 @@ class WaterRepository implements OfficialWaterDataSource {
     'Sulina',
   ];
 
-  // Metadata-only fallbacks for official AFDJ stations missing from the
-  // current Supabase seed. Coordinates are published by AFDJ; levels remain
-  // unavailable until a real reading exists.
-  static final _missingSeedStations = <String, Station>{
-    _normalizedName('Drencova'): Station(
-      id: 'afdj-drencova',
-      name: 'Drencova',
-      river: 'Dunărea',
-      level: 0,
-      trend: WaterTrend.stable,
-      latitude: 44.6377707,
-      longitude: 21.9723364,
-      lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-    ),
-    _normalizedName('Gruia'): Station(
-      id: 'afdj-gruia',
-      name: 'Gruia',
-      river: 'Dunărea',
-      level: 0,
-      trend: WaterTrend.stable,
-      latitude: 44.2665732,
-      longitude: 22.7046852,
-      lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-    ),
-    _normalizedName('Cetate'): Station(
-      id: 'afdj-cetate',
-      name: 'Cetate',
-      river: 'Dunărea',
-      level: 0,
-      trend: WaterTrend.stable,
-      latitude: 44.1114259,
-      longitude: 23.0475514,
-      lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-    ),
-    _normalizedName('Rast'): Station(
-      id: 'afdj-rast',
-      name: 'Rast',
-      river: 'Dunărea',
-      level: 0,
-      trend: WaterTrend.stable,
-      latitude: 43.8851672,
-      longitude: 23.2813472,
-      lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-    ),
-  };
-
   @override
   WaterLevelSource get source => WaterLevelSource.manualFallback;
 
   Future<List<Station>> getStations() async {
+    try {
+      final rows = await mobileContractReader.readLatestStations();
+      final stations = await _stationsFromMobileContract(rows);
+
+      if (stations.isNotEmpty) {
+        return stations;
+      }
+
+      _logProviderFallback(
+        'Water mobile contract',
+        'the backend returned no valid station rows',
+      );
+    } catch (error, stackTrace) {
+      _logFailure('Water mobile latest contract', error, stackTrace);
+    }
+
+    return _getStationsFromDirectProviders();
+  }
+
+  Future<List<Station>> getFastStations() => getStations();
+  Future<List<Station>> _getStationsFromDirectProviders() async {
     final stationRows = await _getStationRows();
     final snapshotTrendsFuture = _loadRecentSnapshotTrends(stationRows);
     Map<String, List<WaterLevel>> afdjLevels = const {};
@@ -250,26 +273,6 @@ class WaterRepository implements OfficialWaterDataSource {
       danubeHisLevels: danubeHisLevels,
       danubeFisLevels: danubeFisLevels,
       snapshotTrendsByStationId: await snapshotTrendsFuture,
-    );
-  }
-
-  Future<List<Station>> getFastStations() async {
-    final stationRows = await _getStationRows();
-    Map<String, List<WaterLevel>> danubeFisLevels = const {};
-    try {
-      danubeFisLevels = await danubeFisProvider.getLevels(
-        stationRows.map((row) => row['name']?.toString() ?? ''),
-      );
-    } on Exception catch (error, stackTrace) {
-      _logFailure('DanubeFIS fast levels', error, stackTrace);
-    }
-
-    return _stationsFromRows(
-      stationRows,
-      afdjLevels: const {},
-      danubeHisLevels: const {},
-      danubeFisLevels: danubeFisLevels,
-      snapshotTrendsByStationId: const <String, WaterTrend>{},
     );
   }
 
@@ -394,9 +397,14 @@ class WaterRepository implements OfficialWaterDataSource {
             final latest = readings.first;
             data['level'] = latest.value;
             data['last_update'] = latest.timestamp.toIso8601String();
+            data['water_freshness_timestamp'] = latest
+                .effectiveFreshnessTimestamp
+                .toIso8601String();
             data['has_water_level'] = true;
             data['water_level_unit'] = latest.unit;
             data['water_level_source'] = latest.source.name;
+            data['water_measurement_precision'] =
+                latest.measurementPrecision.name;
           } else {
             data['has_water_level'] = false;
           }
@@ -420,7 +428,7 @@ class WaterRepository implements OfficialWaterDataSource {
     return officialAfdjStationOrder
         .map((name) {
           final key = _normalizedName(name);
-          return stationsByName[key] ?? _missingSeedStations[key];
+          return stationsByName[key];
         })
         .whereType<Station>()
         .toList(growable: false);
@@ -513,12 +521,82 @@ class WaterRepository implements OfficialWaterDataSource {
     int limit = 30,
     WaterLevel? prefetchedCurrentReading,
   }) async {
+    WaterLevel? retainedMobileReading;
+    if (stationId.trim().isNotEmpty && limit > 0) {
+      // The mobile v2 contract intentionally exposes at most 30 days.
+      // UI point limits are a separate concern and must never be forwarded as
+      // an invalid p_days value (Home currently asks for up to 72 points).
+      final requestedDays = limit > 30 ? 30 : limit;
+
+      try {
+        final rows = await mobileContractReader.readStationHistory(
+          stationId,
+          days: requestedDays,
+        );
+        final readings = _mobileContractHistoryReadings(
+          rows,
+          stationId: stationId,
+          limit: limit,
+        );
+
+        if (readings.length >= 2) {
+          return WaterHistoryResult(
+            status: WaterHistoryResultStatus.success,
+            readings: List<WaterLevel>.unmodifiable(readings),
+            source: readings.last.source,
+            hadProviderError: false,
+          );
+        }
+
+        if (readings.length == 1) {
+          retainedMobileReading = readings.single;
+          _logProviderFallback(
+            stationName ?? stationId,
+            'Water mobile history contract returned one valid observation; '
+            'continuing with snapshot and legacy history',
+          );
+        }
+
+        if (readings.isEmpty) {
+          _logProviderFallback(
+            stationName ?? stationId,
+            'Water mobile history contract returned no valid observations',
+          );
+        }
+      } catch (error, stackTrace) {
+        _logFailure('Water mobile history contract', error, stackTrace);
+      }
+    }
+
+    return _getLegacyHistoryResult(
+      stationId,
+      stationName: stationName,
+      limit: limit,
+      prefetchedCurrentReading: prefetchedCurrentReading,
+      retainedLiveReading: retainedMobileReading,
+    );
+  }
+
+  Future<WaterHistoryResult> _getLegacyHistoryResult(
+    String stationId, {
+    String? stationName,
+    int limit = 30,
+    WaterLevel? prefetchedCurrentReading,
+    WaterLevel? retainedLiveReading,
+  }) async {
     final snapshotResult = await getSnapshotHistoryResult(
       stationId,
       limit: limit,
     );
     final failedProviders = <String>[];
-    List<WaterLevel> liveReadings = const <WaterLevel>[];
+    final retainedLiveReadings = <WaterLevel>[
+      if (prefetchedCurrentReading != null &&
+          _isValidReading(prefetchedCurrentReading))
+        prefetchedCurrentReading,
+      if (retainedLiveReading != null && _isValidReading(retainedLiveReading))
+        retainedLiveReading,
+    ];
+    List<WaterLevel> liveReadings = retainedLiveReadings;
     if (stationName != null && stationName.trim().isNotEmpty) {
       final normalized = DanubeHisWaterProvider.normalizedName(stationName);
       List<WaterLevel> afdjReadings = const [];
@@ -561,7 +639,7 @@ class WaterRepository implements OfficialWaterDataSource {
         hisReadings,
         fisReadings,
       );
-      liveReadings = selectedReadings;
+      liveReadings = <WaterLevel>[...selectedReadings, ...retainedLiveReadings];
     }
 
     final readings = _mergeSnapshotHistoryWithLiveReadings(
@@ -688,6 +766,244 @@ class WaterRepository implements OfficialWaterDataSource {
     );
   }
 
+  Future<List<Station>> _stationsFromMobileContract(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final candidates =
+        <
+          ({
+            int sourceIndex,
+            int displayOrder,
+            Map<String, dynamic> metadata,
+            WaterLevel reading,
+          })
+        >[];
+    final stationRows = <Map<String, dynamic>>[];
+    final seenStationIds = <String>{};
+
+    for (var sourceIndex = 0; sourceIndex < rows.length; sourceIndex++) {
+      final row = rows[sourceIndex];
+      final stationId = row['station_id']?.toString().trim() ?? '';
+      final stationName = row['station_name']?.toString().trim() ?? '';
+      final riverName = row['river_name']?.toString().trim() ?? '';
+      final latitude = _contractDouble(row['latitude']);
+      final longitude = _contractDouble(row['longitude']);
+
+      if (stationId.isEmpty ||
+          stationName.isEmpty ||
+          latitude == null ||
+          longitude == null ||
+          latitude < -90 ||
+          latitude > 90 ||
+          longitude < -180 ||
+          longitude > 180) {
+        continue;
+      }
+
+      final reading = _mobileContractReading(row, expectedStationId: stationId);
+
+      if (reading == null ||
+          row['is_stale'] == true ||
+          !_isWithinDefaultFreshness(reading, DateTime.now().toUtc()) ||
+          !seenStationIds.add(stationId)) {
+        continue;
+      }
+
+      final metadata = <String, dynamic>{
+        'id': stationId,
+        'name': stationName,
+        'river': riverName,
+        'latitude': latitude,
+        'longitude': longitude,
+      };
+      stationRows.add(metadata);
+      candidates.add((
+        sourceIndex: sourceIndex,
+        displayOrder: _contractInt(row['display_order']) ?? sourceIndex,
+        metadata: metadata,
+        reading: reading,
+      ));
+    }
+
+    if (candidates.isEmpty) return const <Station>[];
+
+    final snapshotTrendsByStationId = await _loadRecentSnapshotTrends(
+      stationRows,
+    );
+    final stations = <({int displayOrder, int sourceIndex, Station station})>[];
+
+    for (final candidate in candidates) {
+      final stationId = candidate.metadata['id']!.toString();
+      final effectiveTrend = snapshotTrendsByStationId[stationId];
+      final station = Station.tryFromJson(<String, dynamic>{
+        ...candidate.metadata,
+        'level': candidate.reading.value,
+        'last_update': candidate.reading.timestamp.toIso8601String(),
+        'water_freshness_timestamp': candidate
+            .reading
+            .effectiveFreshnessTimestamp
+            .toIso8601String(),
+        'has_water_level': true,
+        'water_level_unit': candidate.reading.unit,
+        'water_level_source': candidate.reading.source.name,
+        'water_measurement_precision':
+            candidate.reading.measurementPrecision.name,
+        'reported_delta_cm_24h': candidate.reading.reportedDeltaCm24h,
+        'water_temperature_c': candidate.reading.waterTemperatureC,
+        'trend':
+            (candidate.reading.knownTrend ?? effectiveTrend ?? WaterTrend.stable)
+                .name,
+        'has_known_trend':
+            candidate.reading.knownTrend != null || effectiveTrend != null,
+      });
+      if (station == null) continue;
+
+      stations.add((
+        displayOrder: candidate.displayOrder,
+        sourceIndex: candidate.sourceIndex,
+        station: station,
+      ));
+    }
+
+    stations.sort((left, right) {
+      final byDisplayOrder = left.displayOrder.compareTo(right.displayOrder);
+      if (byDisplayOrder != 0) return byDisplayOrder;
+      final bySourceOrder = left.sourceIndex.compareTo(right.sourceIndex);
+      if (bySourceOrder != 0) return bySourceOrder;
+      return left.station.id.compareTo(right.station.id);
+    });
+
+    return List<Station>.unmodifiable(stations.map((entry) => entry.station));
+  }
+
+  static List<WaterLevel> _mobileContractHistoryReadings(
+    List<Map<String, dynamic>> rows, {
+    required String stationId,
+    required int limit,
+  }) {
+    final readingsByTimestamp = <int, WaterLevel>{};
+
+    for (final row in rows) {
+      final reading = _mobileContractReading(row, expectedStationId: stationId);
+      if (reading == null) continue;
+
+      readingsByTimestamp.putIfAbsent(
+        reading.timestamp.toUtc().microsecondsSinceEpoch,
+        () => reading,
+      );
+    }
+
+    final chronological = readingsByTimestamp.values.toList(growable: false)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    final effectiveLimit = limit <= 0
+        ? 0
+        : limit > maxSnapshotHistoryPoints
+        ? maxSnapshotHistoryPoints
+        : limit;
+
+    if (effectiveLimit == 0) return const <WaterLevel>[];
+
+    final limited = chronological.length <= effectiveLimit
+        ? chronological
+        : chronological.sublist(chronological.length - effectiveLimit);
+
+    return List<WaterLevel>.unmodifiable(
+      _withCalculatedTrends(limited, stationId),
+    );
+  }
+
+  static WaterLevel? _mobileContractReading(
+    Map<String, dynamic> row, {
+    required String expectedStationId,
+  }) {
+    final stationId = row['station_id']?.toString().trim() ?? '';
+    final quality = row['quality_status']?.toString().trim().toLowerCase();
+    final value = _contractDouble(row['level_cm']);
+    final observedAt = DateTime.tryParse(row['observed_at']?.toString() ?? '');
+    final freshnessAt = DateTime.tryParse(
+      row['freshness_at']?.toString() ?? '',
+    );
+    final source = _mobileContractSource(row['source_key']);
+    final reportedDeltaCm24h = _contractDouble(
+      row['reported_delta_cm_24h'],
+    );
+    final waterTemperatureC = _contractDouble(row['water_temperature_c']);
+    final forecast = WaterForecastPoint.listFromJson(row['forecast']);
+    final forecastUpdatedAt = DateTime.tryParse(
+      row['forecast_updated_at']?.toString() ?? '',
+    );
+    final reportedTrend = waterTrendFromRealDelta(reportedDeltaCm24h);
+
+    if (stationId != expectedStationId ||
+        (quality != 'validated' &&
+            quality != 'corrected' &&
+            quality != 'raw') ||
+        value == null ||
+        !value.isFinite ||
+        observedAt == null ||
+        source == null) {
+      return null;
+    }
+
+    final reading = WaterLevel(
+      stationId: stationId,
+      value: value,
+      timestamp: observedAt.toUtc(),
+      freshnessTimestamp: freshnessAt?.toUtc(),
+      measurementPrecision: WaterMeasurementPrecision.parse(
+        row['observed_at_precision'],
+      ),
+      trend: reportedTrend ?? WaterTrend.stable,
+      source: source,
+      unit: 'cm',
+      sourceName: row['source_name']?.toString().trim().isNotEmpty == true
+          ? row['source_name'].toString().trim()
+          : _sourceLabel(source),
+      metricCode: 'water_level',
+      measurementDatum:
+          row['measurement_datum']?.toString().trim().isNotEmpty == true
+          ? row['measurement_datum'].toString().trim()
+          : 'source_native',
+      historyContract:
+          row['history_contract']?.toString().trim().isNotEmpty == true
+          ? row['history_contract'].toString().trim()
+          : 'canonical_water_level',
+      isQualityValid: true,
+      measurementResolution: _contractDouble(row['measurement_resolution']),
+      hasKnownTrend: reportedTrend != null,
+      reportedDeltaCm24h: reportedDeltaCm24h,
+      waterTemperatureC: waterTemperatureC,
+      forecast: forecast,
+      forecastUpdatedAt: forecastUpdatedAt?.toUtc(),
+    );
+
+    return _isValidReading(reading) ? reading : null;
+  }
+
+  static WaterLevelSource? _mobileContractSource(Object? value) {
+    return switch (value?.toString().trim().toLowerCase()) {
+      'afdj' => WaterLevelSource.afdj,
+      'danubehis' || 'danube_his' => WaterLevelSource.danubeHis,
+      'danubefis' || 'danube_fis' => WaterLevelSource.danubeFis,
+      'inhga' => WaterLevelSource.inhga,
+      _ => null,
+    };
+  }
+
+  static int? _contractInt(Object? value) {
+    if (value is int) return value;
+    if (value is num && value.isFinite) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static double? _contractDouble(Object? value) {
+    final parsed = value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '');
+    return parsed?.isFinite == true ? parsed : null;
+  }
+
   static WaterLevel? _snapshotReading(
     Map<String, Object?> row, {
     required String expectedStationId,
@@ -750,11 +1066,22 @@ class WaterRepository implements OfficialWaterDataSource {
           stationId: stationId,
           value: reading.value,
           timestamp: reading.timestamp,
+          freshnessTimestamp: reading.freshnessTimestamp,
+          measurementPrecision: reading.measurementPrecision,
           trend: reading.trend,
           source: reading.source,
           unit: reading.unit,
           sourceName: reading.sourceName,
           hasKnownTrend: reading.hasKnownTrend,
+          metricCode: reading.metricCode,
+          measurementDatum: reading.measurementDatum,
+          historyContract: reading.historyContract,
+          isQualityValid: reading.isQualityValid,
+          measurementResolution: reading.measurementResolution,
+          reportedDeltaCm24h: reading.reportedDeltaCm24h,
+          waterTemperatureC: reading.waterTemperatureC,
+          forecast: reading.forecast,
+          forecastUpdatedAt: reading.forecastUpdatedAt,
         );
       }
     }
@@ -785,22 +1112,44 @@ class WaterRepository implements OfficialWaterDataSource {
         stationId: stationId,
         value: reading.value,
         timestamp: reading.timestamp,
+        freshnessTimestamp: reading.freshnessTimestamp,
+        measurementPrecision: reading.measurementPrecision,
         trend: trend ?? WaterTrend.stable,
         source: reading.source,
         unit: reading.unit,
         sourceName: reading.sourceName,
         hasKnownTrend: reading.hasKnownTrend || trend != null,
+        metricCode: reading.metricCode,
+        measurementDatum: reading.measurementDatum,
+        historyContract: reading.historyContract,
+        isQualityValid: reading.isQualityValid,
+        measurementResolution: reading.measurementResolution,
+        reportedDeltaCm24h: reading.reportedDeltaCm24h,
+        waterTemperatureC: reading.waterTemperatureC,
+        forecast: reading.forecast,
+        forecastUpdatedAt: reading.forecastUpdatedAt,
       );
     }, growable: false);
   }
 
   static WaterTrend? _trendFromHistory(List<WaterLevel> readings) {
-    if (readings.isEmpty) return null;
-    if (readings.first.hasKnownTrend) return readings.first.trend;
     if (readings.length < 2) return null;
+    if (readings.first.hasKnownTrend) return readings.first.trend;
     final difference = readings[0].value - readings[1].value;
-    if (difference.abs() <= .01) return WaterTrend.stable;
-    return difference > 0 ? WaterTrend.rising : WaterTrend.falling;
+    final resolutions = <double>[
+      if (readings[0].measurementResolution case final value?
+          when value.isFinite && value > 0)
+        value,
+      if (readings[1].measurementResolution case final value?
+          when value.isFinite && value > 0)
+        value,
+    ];
+    return waterTrendFromRealDelta(
+      difference,
+      measurementResolution: resolutions.isEmpty
+          ? null
+          : resolutions.reduce((a, b) => a > b ? a : b),
+    );
   }
 
   static List<WaterLevel> _selectCurrentProviderReadings(
@@ -840,10 +1189,19 @@ class WaterRepository implements OfficialWaterDataSource {
     for (var index = 0; index < providers.length; index++) {
       if (providers[index].isEmpty) continue;
       final candidate = providers[index].first;
-      if (freshestReading == null ||
-          candidate.timestamp.isAfter(freshestReading.timestamp)) {
+      if (!_isWithinDefaultFreshness(candidate, now)) continue;
+      if (freshestReading == null) {
         freshestReading = candidate;
         freshestProviderIndex = index;
+      }
+    }
+
+    if (freshestReading == null) {
+      for (var index = 0; index < providers.length; index++) {
+        if (providers[index].isEmpty) continue;
+        freshestReading = providers[index].first;
+        freshestProviderIndex = index;
+        break;
       }
     }
 
@@ -896,7 +1254,9 @@ class WaterRepository implements OfficialWaterDataSource {
   }
 
   static bool _isWithinDefaultFreshness(WaterLevel reading, DateTime now) {
-    final age = now.toUtc().difference(reading.timestamp.toUtc());
+    final age = now.toUtc().difference(
+      reading.effectiveFreshnessTimestamp.toUtc(),
+    );
     return age >= const Duration(minutes: -5) &&
         age <= defaultFreshnessThreshold;
   }
@@ -965,7 +1325,9 @@ class WaterRepository implements OfficialWaterDataSource {
     WaterLevel reading,
     String reason,
   ) {
-    final age = DateTime.now().difference(reading.timestamp.toLocal());
+    final age = DateTime.now().difference(
+      reading.effectiveFreshnessTimestamp.toLocal(),
+    );
     final ageMinutes = age.isNegative ? 0 : age.inMinutes;
     developer.log(
       'Provider used: ${reading.sourceName}; station matched: $stationName; '

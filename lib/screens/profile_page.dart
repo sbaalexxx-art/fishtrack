@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../l10n/l10n.dart';
+import '../core/navigation/app_destination.dart';
+import '../core/navigation/app_navigator.dart';
 import '../services/auth_service.dart';
 import '../services/reputation_service.dart';
 import '../widgets/trust_badge.dart';
@@ -111,7 +113,17 @@ class _ProfilePageState extends State<ProfilePage> {
     final hasAvatar = (_avatarUrl?.isNotEmpty ?? false) && !_avatarLoadFailed;
 
     return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.profile)),
+      appBar: AppBar(
+        title: Text(context.l10n.profile),
+        actions: [
+          IconButton(
+            key: const Key('profile-premium-action'),
+            tooltip: 'FluviAI Premium',
+            onPressed: () => AppNavigator.open(context, AppDestination.premium),
+            icon: const Icon(Icons.workspace_premium_rounded),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),

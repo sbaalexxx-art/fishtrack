@@ -6,7 +6,7 @@ void main() {
 
   String format(Duration age, {String locale = 'ro', bool isStale = false}) =>
       WaterFreshnessFormatter.format(
-        measurementTimestamp: now.subtract(age),
+        freshnessTimestamp: now.subtract(age),
         now: now,
         isStale: isStale,
         locale: locale,

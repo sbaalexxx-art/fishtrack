@@ -19,6 +19,7 @@ class AuthService {
 
   Session? get currentSession => _supabase.auth.currentSession;
   User? get currentUser => _supabase.auth.currentUser;
+  bool get isAuthenticated => currentSession != null && currentUser != null;
   Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
 
   Future<AuthResponse> login({
@@ -81,6 +82,32 @@ class AuthService {
       return avatarUrl;
     });
   }
+
+  Future<Map<String, dynamic>> exportMyData() => _guard(() async {
+    final response = await _supabase.functions.invoke('export-my-data');
+    final data = response.data;
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw const AuthException('Data export returned an invalid response.');
+  });
+
+  Future<void> deleteAccount() => _guard(() async {
+    final response = await _supabase.functions.invoke(
+      'delete-account',
+      body: const <String, Object?>{'confirm': 'DELETE'},
+    );
+    final data = response.data;
+    final deleted = data is Map && data['deleted'] == true;
+    if (!deleted) {
+      throw const AuthException('The account could not be deleted.');
+    }
+    try {
+      await _supabase.auth.signOut();
+    } on Exception {
+      // The server-side account is already deleted. Session cleanup is
+      // best-effort; the next auth refresh cannot restore the deleted user.
+    }
+  });
 
   Future<void> logout() => _guard(_supabase.auth.signOut);
 

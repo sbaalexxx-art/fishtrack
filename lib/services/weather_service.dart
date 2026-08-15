@@ -57,7 +57,6 @@ class WeatherService {
        _waterService = waterService ?? WaterService();
 
   static const cacheDuration = Duration(minutes: 30);
-  static const _defaultRomaniaCoordinates = _Coordinates(43.90, 25.97);
   static final Map<String, TimedCache<WeatherData>> _cache = {};
   static final Map<String, _WeatherHomeCacheEntry> _homeCache = {};
   static final Map<String, Future<WeatherHomeResult>> _homeInFlight = {};
@@ -227,6 +226,77 @@ class WeatherService {
     return request;
   }
 
+  /// Loads Home weather for the supplied canonical device coordinates.
+  ///
+  /// This path never substitutes a station or another remembered place.
+  Future<WeatherHomeResult> getHomeWeatherResultForLocation({
+    required double latitude,
+    required double longitude,
+    bool forceRefresh = false,
+  }) {
+    if (!_validCoordinates(latitude, longitude)) {
+      return Future<WeatherHomeResult>.value(
+        const WeatherHomeResult(
+          data: null,
+          latitude: null,
+          longitude: null,
+          locationSource: null,
+          status: WeatherHomeStatus.locationUnavailable,
+          dataTimestamp: null,
+          dataAge: null,
+          isStale: false,
+          safeDiagnosticMessage: 'No valid device coordinates available',
+        ),
+      );
+    }
+    final coordinates = _HomeCoordinates(
+      latitude: latitude,
+      longitude: longitude,
+      source: WeatherLocationSource.gps,
+    );
+    final key =
+        '${identityHashCode(_repository)}:device:'
+        '${latitude.toStringAsFixed(3)}:${longitude.toStringAsFixed(3)}';
+    final now = DateTime.now();
+    if (forceRefresh) {
+      _homeCache.remove(key);
+      _homeInFlight.remove(key);
+      _homeKeyGenerations[key] = (_homeKeyGenerations[key] ?? 0) + 1;
+    } else {
+      final cached = _homeCache[key];
+      if (cached != null && now.difference(cached.savedAt) < cacheDuration) {
+        return Future<WeatherHomeResult>.value(
+          _withCurrentDataAge(cached.result, now),
+        );
+      }
+      final activeRequest = _homeInFlight[key];
+      if (activeRequest != null) return activeRequest;
+    }
+
+    final requestEpoch = _homeCacheEpoch;
+    final requestGeneration = _homeKeyGenerations[key] ?? 0;
+    late final Future<WeatherHomeResult> request;
+    request =
+        _loadHomeWeatherForCoordinates(coordinates, forceRefresh: forceRefresh)
+            .then((result) {
+              if (_homeCacheEpoch == requestEpoch &&
+                  (_homeKeyGenerations[key] ?? 0) == requestGeneration) {
+                _homeCache[key] = _WeatherHomeCacheEntry(
+                  result: result,
+                  savedAt: DateTime.now(),
+                );
+              }
+              return _withCurrentDataAge(result, DateTime.now());
+            })
+            .whenComplete(() {
+              if (identical(_homeInFlight[key], request)) {
+                _homeInFlight.remove(key);
+              }
+            });
+    _homeInFlight[key] = request;
+    return request;
+  }
+
   Future<WeatherHomeResult> _loadHomeWeatherResult({
     required Station? fallbackStation,
     required bool forceRefresh,
@@ -246,6 +316,16 @@ class WeatherService {
       );
     }
 
+    return _loadHomeWeatherForCoordinates(
+      coordinates,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<WeatherHomeResult> _loadHomeWeatherForCoordinates(
+    _HomeCoordinates coordinates, {
+    required bool forceRefresh,
+  }) async {
     try {
       final cached = await _getHomeCachedWeather(
         coordinates,
@@ -349,18 +429,6 @@ class WeatherService {
             'GPS unavailable (${locationError.runtimeType}); using station',
       );
     }
-    if (_validCoordinates(
-      _defaultRomaniaCoordinates.latitude,
-      _defaultRomaniaCoordinates.longitude,
-    )) {
-      return _HomeCoordinates(
-        latitude: _defaultRomaniaCoordinates.latitude,
-        longitude: _defaultRomaniaCoordinates.longitude,
-        source: WeatherLocationSource.defaultFallback,
-        safeDiagnosticMessage:
-            'GPS and station unavailable; using default coordinates',
-      );
-    }
     return null;
   }
 
@@ -370,9 +438,12 @@ class WeatherService {
       return _Coordinates(position.latitude, position.longitude);
     } on LocationFailure {
       final station = fallbackStation ?? await _firstStation();
-      return station == null
-          ? _defaultRomaniaCoordinates
-          : _Coordinates(station.latitude, station.longitude);
+      if (station != null &&
+          _validCoordinates(station.latitude, station.longitude) &&
+          (station.latitude != 0 || station.longitude != 0)) {
+        return _Coordinates(station.latitude, station.longitude);
+      }
+      throw const WeatherServiceException('Weather location is unavailable.');
     }
   }
 

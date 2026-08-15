@@ -191,12 +191,12 @@ class StationCard extends StatelessWidget {
   }
 
   static String _freshnessLabel(BuildContext context, WaterUiResult result) {
-    final timestamp = result.measurementTimestamp;
+    final timestamp = result.effectiveFreshnessTimestamp;
     if (timestamp == null || timestamp.millisecondsSinceEpoch <= 0) {
       return context.l10n.updateTimeUnavailable;
     }
     return WaterFreshnessFormatter.format(
-      measurementTimestamp: timestamp,
+      freshnessTimestamp: timestamp,
       now: DateTime.now(),
       isStale: result.isStale,
       locale: Localizations.localeOf(context).languageCode,

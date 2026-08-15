@@ -63,6 +63,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notificationWaterAlerts => 'Water Alerts';
 
   @override
+  String get notificationWeatherAlerts => 'Weather Alerts';
+
+  @override
   String get notificationFavouriteStations => 'Favourite Stations';
 
   @override
@@ -212,6 +215,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get descriptionOptional => 'Description (optional)';
+
+  @override
+  String get reportPhotoOptional => 'Optional photo';
+
+  @override
+  String get reportPhotoOptionalHint =>
+      'A photo helps the community, but you can publish the report without one.';
+
+  @override
+  String get reportPhotoReady => 'The photo is ready to publish.';
 
   @override
   String get useExactLocation => 'Use exact location';
@@ -432,6 +445,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String get communityUnavailable => 'Community feed is unavailable.';
 
   @override
+  String get sessionExpired =>
+      'Your session has expired. Please sign in again.';
+
+  @override
+  String get noInternetConnection => 'There is no internet connection.';
+
+  @override
+  String get requestTimedOut => 'The request timed out. Please try again.';
+
+  @override
+  String get reportPhotoPreparationFailed =>
+      'The photo could not be prepared. Take another photo.';
+
+  @override
+  String get reportPhotoUploadFailed =>
+      'The report photo could not be uploaded. Please try again.';
+
+  @override
+  String get reportPublishFailed =>
+      'The report could not be published. Please try again.';
+
+  @override
+  String get reportVerificationFailed =>
+      'The report verification could not be saved.';
+
+  @override
+  String get reportAbuseFailed =>
+      'Your report could not be submitted. Please try again.';
+
+  @override
+  String get reportAlreadySubmitted =>
+      'You have already reported this content.';
+
+  @override
   String get noCommunityActivity => 'No community activity yet.';
 
   @override
@@ -534,7 +581,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lowWater => 'Low water';
 
   @override
-  String get notAccurate => 'Not accurate';
+  String get notAccurate => 'No longer valid';
 
   @override
   String get currentLocation => 'Current Location';
@@ -1170,4 +1217,248 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get notEnoughHistory => 'Not enough history';
+
+  @override
+  String get waterTrendUnavailable => 'Trend unavailable';
+
+  @override
+  String get exploreTitle => 'Explore';
+
+  @override
+  String get exploreSubtitle =>
+      'Conditions, intelligence, activity and account tools';
+
+  @override
+  String get exploreSearchHint => 'Search all FluviAI tools';
+
+  @override
+  String get exploreAll => 'All';
+
+  @override
+  String get exploreResults => 'Search results';
+
+  @override
+  String get exploreNoResultsTitle => 'No tools found';
+
+  @override
+  String get exploreNoResultsMessage =>
+      'Try another term or choose a category.';
+
+  @override
+  String get exploreConditionsAndWater => 'Conditions & Water';
+
+  @override
+  String get exploreFluviIntelligence => 'Fluvi Intelligence';
+
+  @override
+  String get exploreActivity => 'Activity';
+
+  @override
+  String get exploreSaved => 'Saved';
+
+  @override
+  String get exploreRulesAndSafety => 'Rules & Safety';
+
+  @override
+  String get exploreAccountAndApp => 'Account & App';
+
+  @override
+  String get exploreUnavailableMessage =>
+      'This tool is not connected to a production source yet.';
+
+  @override
+  String get notificationEmptyAction => 'Notification settings';
+
+  @override
+  String get journalEmptyTitle => 'Your fishing journal';
+
+  @override
+  String get journalEmptyMessage =>
+      'Start a real session in the selected context. Time and notes remain private in your account.';
+
+  @override
+  String get journalEmptyAction => 'Start a session';
+
+  @override
+  String get fluviIntelligence => 'Fluvi Intelligence';
+
+  @override
+  String get fluviScoreView => 'Score';
+
+  @override
+  String get askFluviView => 'Ask Fluvi';
+
+  @override
+  String get hydroMapTitle => 'FluviAI Hydro Intelligence';
+
+  @override
+  String get hydroPro => 'Hydro Pro';
+
+  @override
+  String get hydroRomaniaPack => 'Romania country pack';
+
+  @override
+  String get hydroExploreRomania => 'Explore Romania';
+
+  @override
+  String get hydroBaseMap => 'Base map';
+
+  @override
+  String get hydroPremiumOverlay => 'Premium overlay';
+
+  @override
+  String get hydroRivers => 'Rivers';
+
+  @override
+  String get hydroReservoirs => 'Reservoirs';
+
+  @override
+  String get hydroDams => 'Dams';
+
+  @override
+  String get hydroStations => 'Stations';
+
+  @override
+  String get hydroPlants => 'Hydropower plants';
+
+  @override
+  String get hydroOutdoors => 'Outdoors';
+
+  @override
+  String get hydroStreets => 'Streets';
+
+  @override
+  String get hydroEnabled => 'Enabled';
+
+  @override
+  String get hydroDisabled => 'Disabled';
+
+  @override
+  String get hydroProRequired => 'Hydro Intelligence requires Pro';
+
+  @override
+  String get hydroProDiscovery =>
+      'Unlock Romania\'s semantic rivers, reservoirs, dams, stations and hydropower context.';
+
+  @override
+  String get hydroRiver => 'River';
+
+  @override
+  String get hydroReservoir => 'Reservoir';
+
+  @override
+  String get hydroDam => 'Dam';
+
+  @override
+  String get hydroStation => 'Monitoring station';
+
+  @override
+  String get hydroPlant => 'Hydropower plant';
+
+  @override
+  String get hydroDetails => 'Details';
+
+  @override
+  String get hydroViewGraph => 'View graph';
+
+  @override
+  String get hydroAskFluvi => 'Ask Fluvi';
+
+  @override
+  String get hydroUpdated => 'Updated';
+
+  @override
+  String get hydroEvidenceMeasured => 'Measured';
+
+  @override
+  String get hydroEvidenceDerived => 'Derived';
+
+  @override
+  String get hydroEvidenceEstimated => 'Estimated';
+
+  @override
+  String get hydroEvidenceObserved => 'Observed';
+
+  @override
+  String get hydroEvidenceUnknown => 'Unknown';
+
+  @override
+  String get hydroUnknownState =>
+      'No verified operational data is available for this entity. Unknown values remain unknown.';
+
+  @override
+  String get hydroLoadingIntelligence => 'Loading verified intelligence';
+
+  @override
+  String get hydroBasin => 'Basin';
+
+  @override
+  String get hydroCounty => 'County';
+
+  @override
+  String get hydroLevel => 'Water level';
+
+  @override
+  String get hydroDelta24h => '24h change';
+
+  @override
+  String get hydroTrend => 'Trend';
+
+  @override
+  String get hydroOperation => 'Operation';
+
+  @override
+  String get hydroConfidence => 'Confidence';
+
+  @override
+  String get hydroRelatedNetwork => 'Related network';
+
+  @override
+  String get hydroOfficialState => 'Official state';
+
+  @override
+  String get hydroCommunityState => 'Community observations';
+
+  @override
+  String get hydroFresh => 'Fresh';
+
+  @override
+  String get hydroRecent => 'Recent';
+
+  @override
+  String get hydroStale => 'Stale';
+
+  @override
+  String get hydroUnavailable => 'Unavailable';
+
+  @override
+  String get hydroActive => 'Active';
+
+  @override
+  String get hydroInactive => 'Inactive';
+
+  @override
+  String get hydroPossiblyActive => 'Possibly active';
+
+  @override
+  String get hydroDataAvailable => 'Verified data available';
+
+  @override
+  String get hydroMapPublicGeometry => 'Public map geometry';
+
+  @override
+  String get hydroLayersApply => 'Apply';
+
+  @override
+  String get hydroLayersReset => 'Reset';
+
+  @override
+  String get hydroSelectedPublicOnly =>
+      'Public map identity resolved; verified operational data is unavailable.';
+
+  @override
+  String get hydroOperationalStatus => 'Operational status';
+
+  @override
+  String get hydroOperationalUnavailable => 'Operational data unavailable';
 }

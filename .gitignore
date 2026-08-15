@@ -45,3 +45,6 @@ app.*.map.json
 /android/app/release
 
 android/app/.vscode/
+
+# FluviAI local QA/device evidence — may contain runtime diagnostics.
+outputs/

@@ -5,15 +5,21 @@ import 'notification_preferences_service.dart';
 import 'reputation_service.dart';
 import 'water_alert_service.dart';
 import 'water_service.dart';
+import 'diagnostics_service.dart';
 
 enum AppNotificationType {
   waterLevelChanged('water_level_changed'),
   waterTrendChanged('water_trend_changed'),
+  waterStateObserved('water_state_observed'),
   newReportNearFavoriteStation('new_report_near_favorite_station'),
   dangerousReport('dangerous_report'),
+  newCatchNearSavedArea('new_catch_near_saved_area'),
   reputationIncreased('reputation_increased'),
   trustBadgeUpgraded('trust_badge_upgraded'),
-  favoriteStationUpdate('favorite_station_update');
+  favoriteStationUpdate('favorite_station_update'),
+  weatherAlert('weather_alert'),
+  reportVerificationChanged('report_verification_changed'),
+  catchLiked('catch_liked');
 
   const AppNotificationType(this.databaseValue);
   final String databaseValue;
@@ -54,6 +60,9 @@ class AppNotification {
     this.groupCount = 1,
     this.relatedStation,
     this.relatedReport,
+    this.relatedCatch,
+    this.entityType,
+    this.entityId,
   });
 
   factory AppNotification.fromJson(Map<String, dynamic> json) =>
@@ -65,6 +74,9 @@ class AppNotification {
         type: AppNotificationType.parse(json['type']),
         relatedStation: json['related_station']?.toString(),
         relatedReport: json['related_report']?.toString(),
+        relatedCatch: json['related_catch']?.toString(),
+        entityType: json['entity_type']?.toString(),
+        entityId: json['entity_id']?.toString(),
         createdAt:
             DateTime.tryParse(json['created_at']?.toString() ?? '') ??
             DateTime.now(),
@@ -89,6 +101,9 @@ class AppNotification {
   final AppNotificationType type;
   final String? relatedStation;
   final String? relatedReport;
+  final String? relatedCatch;
+  final String? entityType;
+  final String? entityId;
   final DateTime createdAt;
   final bool isRead;
   final NotificationPriority priority;
@@ -96,6 +111,24 @@ class AppNotification {
   final DateTime? deliverAfter;
   final int groupCount;
 
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'id': id,
+    'user_id': userId,
+    'title': title,
+    'message': message,
+    'type': type.databaseValue,
+    'related_station': relatedStation,
+    'related_report': relatedReport,
+    'related_catch': relatedCatch,
+    'entity_type': entityType,
+    'entity_id': entityId,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'read': isRead,
+    'priority': priority.name,
+    'delivery': delivery.name,
+    'deliver_after': deliverAfter?.toUtc().toIso8601String(),
+    'group_count': groupCount,
+  };
   AppNotification copyWith({
     bool? isRead,
     String? message,
@@ -111,6 +144,9 @@ class AppNotification {
     type: type,
     relatedStation: relatedStation,
     relatedReport: relatedReport,
+    relatedCatch: relatedCatch,
+    entityType: entityType,
+    entityId: entityId,
     createdAt: createdAt ?? this.createdAt,
     isRead: isRead ?? this.isRead,
     priority: priority,
@@ -118,28 +154,13 @@ class AppNotification {
     deliverAfter: deliverAfter ?? this.deliverAfter,
     groupCount: groupCount ?? this.groupCount,
   );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'user_id': userId,
-    'title': title,
-    'message': message,
-    'type': type.databaseValue,
-    'related_station': relatedStation,
-    'related_report': relatedReport,
-    'created_at': createdAt.toUtc().toIso8601String(),
-    'read': isRead,
-    'priority': priority.name,
-    'delivery': delivery.name,
-    'deliver_after': deliverAfter?.toUtc().toIso8601String(),
-    'group_count': groupCount,
-  };
 }
 
 abstract interface class NotificationStore {
   List<AppNotification> forUser(String userId);
   void add(AppNotification notification);
   void upsert(AppNotification notification);
+  void replaceForUser(String userId, List<AppNotification> notifications);
   void markAsRead(String userId, String notificationId);
   void clearRead(String userId);
 }
@@ -159,9 +180,7 @@ class MemoryNotificationStore implements NotificationStore {
   void add(AppNotification notification) {
     if (!_ids.add(notification.id)) return;
     _items.insert(0, notification);
-    if (_items.length > maximumNotifications) {
-      _ids.remove(_items.removeLast().id);
-    }
+    _trim();
   }
 
   @override
@@ -174,6 +193,19 @@ class MemoryNotificationStore implements NotificationStore {
     _items[index] = notification;
     final item = _items.removeAt(index);
     _items.insert(0, item);
+  }
+
+  @override
+  void replaceForUser(String userId, List<AppNotification> notifications) {
+    final removed = _items
+        .where((item) => item.userId == userId)
+        .map((item) => item.id)
+        .toList(growable: false);
+    _items.removeWhere((item) => item.userId == userId);
+    _ids.removeAll(removed);
+    for (final notification in notifications.reversed) {
+      add(notification);
+    }
   }
 
   @override
@@ -192,6 +224,12 @@ class MemoryNotificationStore implements NotificationStore {
         .toList();
     _items.removeWhere((item) => item.userId == userId && item.isRead);
     _ids.removeAll(removed);
+  }
+
+  void _trim() {
+    while (_items.length > maximumNotifications) {
+      _ids.remove(_items.removeLast().id);
+    }
   }
 }
 
@@ -213,7 +251,7 @@ class NotificationService {
            favoriteStationsService ?? FavoriteStationsService(client: client),
        _waterService = waterService ?? WaterService(),
        _preferencesService =
-           preferencesService ?? NotificationPreferencesService();
+           preferencesService ?? NotificationPreferencesService(client: client);
 
   static final MemoryNotificationStore _sharedStore = MemoryNotificationStore();
   static Future<List<AppNotification>>? _inFlightNotifications;
@@ -221,6 +259,7 @@ class NotificationService {
   static final Map<String, TrustLevel> _lastTrustLevel = {};
   static final Map<String, Set<String>> _lastFavorites = {};
   static final Map<String, Set<String>> _processedEventIds = {};
+  static final Map<String, List<AppNotification>> _pendingPersistence = {};
 
   final SupabaseClient? _client;
   final NotificationStore _store;
@@ -233,6 +272,10 @@ class NotificationService {
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
   Future<List<AppNotification>> getNotifications() {
+    if (_supabase.auth.currentUser == null) {
+      return Future.value(const <AppNotification>[]);
+    }
+
     final inFlight = _inFlightNotifications;
     if (inFlight != null) return inFlight;
 
@@ -246,30 +289,109 @@ class NotificationService {
     return refresh;
   }
 
+  Stream<List<AppNotification>> watchNotifications() {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      return Stream<List<AppNotification>>.value(const <AppNotification>[]);
+    }
+    return _supabase
+        .from('notifications')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .order('created_at', ascending: false)
+        .limit(100)
+        .map((rows) {
+          final notifications = rows
+              .map(
+                (row) =>
+                    AppNotification.fromJson(Map<String, dynamic>.from(row)),
+              )
+              .toList(growable: false);
+          _store.replaceForUser(userId, notifications);
+          return notifications;
+        });
+  }
+
   Future<List<AppNotification>> _loadNotifications() async {
+    final stopwatch = Stopwatch()..start();
     final userId = _requireUserId();
+    await _preferencesService.loadForUser(userId);
     await Future.wait([
       _generateWaterNotifications(userId),
       _generateReputationNotifications(userId),
       _generateFavoriteNotifications(userId),
     ]);
     _releasePostponed(userId);
-    return _store.forUser(userId);
+    await _persistPending(userId);
+    try {
+      final rows = await _supabase
+          .from('notifications')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(100);
+      final notifications = rows
+          .map(
+            (row) => AppNotification.fromJson(Map<String, dynamic>.from(row)),
+          )
+          .toList(growable: false);
+      _store.replaceForUser(userId, notifications);
+      stopwatch.stop();
+      DiagnosticsService.instance.record(
+        category: DiagnosticCategory.notifications,
+        operation: 'inbox_load',
+        message: 'available',
+        duration: stopwatch.elapsed,
+        metadata: <String, Object?>{
+          'items': notifications.length,
+          'unread': notifications.where((item) => !item.isRead).length,
+        },
+      );
+      return notifications;
+    } on Exception catch (error, stackTrace) {
+      if (stopwatch.isRunning) stopwatch.stop();
+      DiagnosticsService.instance.recordError(
+        category: DiagnosticCategory.notifications,
+        operation: 'inbox_load',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      final cached = _store.forUser(userId);
+      if (cached.isNotEmpty) return cached;
+      rethrow;
+    }
   }
 
   Future<void> markAsRead(String notificationId) async {
-    _store.markAsRead(_requireUserId(), notificationId);
+    final userId = _requireUserId();
+    await _supabase
+        .from('notifications')
+        .update({'read': true})
+        .eq('id', notificationId)
+        .eq('user_id', userId);
+    _store.markAsRead(userId, notificationId);
   }
 
-  Future<int> unreadCount() async =>
-      _store.forUser(_requireUserId()).where((item) => !item.isRead).length;
+  Future<int> unreadCount() async {
+    final notifications = await getNotifications();
+    return notifications.where((item) => !item.isRead).length;
+  }
 
   Future<void> clearRead() async {
-    _store.clearRead(_requireUserId());
+    final userId = _requireUserId();
+    await _supabase
+        .from('notifications')
+        .delete()
+        .eq('user_id', userId)
+        .eq('read', true);
+    _store.clearRead(userId);
   }
 
-  List<AppNotification> cachedNotifications() =>
-      _store.forUser(_requireUserId());
+  List<AppNotification> cachedNotifications() {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return const <AppNotification>[];
+    return _store.forUser(userId);
+  }
 
   String _requireUserId() {
     final userId = _supabase.auth.currentUser?.id;
@@ -279,6 +401,35 @@ class NotificationService {
       );
     }
     return userId;
+  }
+
+  Future<void> _persistPending(String userId) async {
+    final pending = List<AppNotification>.from(
+      _pendingPersistence.remove(userId) ?? const [],
+    );
+    if (pending.isEmpty) return;
+    for (final item in pending) {
+      try {
+        await _supabase.rpc(
+          'enqueue_own_notification_v1',
+          params: {
+            'p_type': item.type.databaseValue,
+            'p_category': _categoryFor(item.type).name,
+            'p_title': item.title,
+            'p_message': item.message,
+            'p_priority': item.priority.name,
+            'p_related_station': item.relatedStation,
+            'p_related_report': item.relatedReport,
+            'p_entity_type': item.entityType,
+            'p_entity_id': item.entityId,
+            'p_data': <String, dynamic>{'group_count': item.groupCount},
+            'p_dedupe_key': item.id,
+          },
+        );
+      } on Exception {
+        _pendingPersistence.putIfAbsent(userId, () => []).add(item);
+      }
+    }
   }
 
   Future<void> _generateWaterNotifications(String userId) async {
@@ -303,6 +454,12 @@ class NotificationService {
             type: type,
             relatedStation: alert.stationId,
             relatedReport: _reportId(alert.id),
+            entityType:
+                alert.type == WaterAlertType.newCommunityReport ||
+                    alert.type == WaterAlertType.dangerousReport
+                ? 'report'
+                : 'station',
+            entityId: _reportId(alert.id) ?? alert.stationId,
             createdAt: alert.timestamp,
             isRead: false,
             priority: alert.type == WaterAlertType.dangerousReport
@@ -332,6 +489,8 @@ class NotificationService {
             title: 'Reputation increased',
             message: 'Your reputation is now ${current.reputationScore}/100.',
             type: AppNotificationType.reputationIncreased,
+            entityType: 'profile',
+            entityId: userId,
             createdAt: current.updatedAt ?? DateTime.now(),
             isRead: false,
             priority: NotificationPriority.important,
@@ -348,6 +507,8 @@ class NotificationService {
             title: 'Trust badge upgraded',
             message: 'You reached ${current.trustLevel.label} status.',
             type: AppNotificationType.trustBadgeUpgraded,
+            entityType: 'profile',
+            entityId: userId,
             createdAt: current.updatedAt ?? DateTime.now(),
             isRead: false,
             priority: NotificationPriority.important,
@@ -388,6 +549,8 @@ class NotificationService {
                 : '$stationName was removed from your favourites.',
             type: AppNotificationType.favoriteStationUpdate,
             relatedStation: stationId,
+            entityType: 'station',
+            entityId: stationId,
             createdAt: DateTime.now(),
             isRead: false,
             priority: NotificationPriority.silent,
@@ -436,15 +599,15 @@ class NotificationService {
       }
       if (match != null) {
         final count = match.groupCount + 1;
-        _store.upsert(
-          match.copyWith(
-            groupCount: count,
-            createdAt: candidate.createdAt.isAfter(match.createdAt)
-                ? candidate.createdAt
-                : match.createdAt,
-            message: _groupedMessage(candidate.type, count),
-          ),
+        final grouped = match.copyWith(
+          groupCount: count,
+          createdAt: candidate.createdAt.isAfter(match.createdAt)
+              ? candidate.createdAt
+              : match.createdAt,
+          message: _groupedMessage(candidate.type, count),
         );
+        _store.upsert(grouped);
+        _pendingPersistence.putIfAbsent(userId, () => []).add(grouped);
         return;
       }
     }
@@ -466,14 +629,14 @@ class NotificationService {
       NotificationPriority.important =>
         quiet ? NotificationDelivery.postponed : NotificationDelivery.deliver,
     };
-    _store.add(
-      candidate.copyWith(
-        delivery: delivery,
-        deliverAfter: delivery == NotificationDelivery.postponed
-            ? preferences.nextQuietEnd(now)
-            : null,
-      ),
+    final resolved = candidate.copyWith(
+      delivery: delivery,
+      deliverAfter: delivery == NotificationDelivery.postponed
+          ? preferences.nextQuietEnd(now)
+          : null,
     );
+    _store.add(resolved);
+    _pendingPersistence.putIfAbsent(userId, () => []).add(resolved);
   }
 
   void _releasePostponed(String userId) {
@@ -490,12 +653,17 @@ class NotificationService {
   static NotificationCategory _categoryFor(AppNotificationType type) =>
       switch (type) {
         AppNotificationType.waterLevelChanged ||
-        AppNotificationType.waterTrendChanged =>
+        AppNotificationType.waterTrendChanged ||
+        AppNotificationType.waterStateObserved =>
           NotificationCategory.waterAlerts,
-        AppNotificationType.newReportNearFavoriteStation =>
+        AppNotificationType.weatherAlert => NotificationCategory.weatherAlerts,
+        AppNotificationType.newReportNearFavoriteStation ||
+        AppNotificationType.reportVerificationChanged =>
           NotificationCategory.communityReports,
         AppNotificationType.dangerousReport =>
           NotificationCategory.dangerousReports,
+        AppNotificationType.newCatchNearSavedArea ||
+        AppNotificationType.catchLiked => NotificationCategory.catchActivity,
         AppNotificationType.reputationIncreased ||
         AppNotificationType.trustBadgeUpgraded =>
           NotificationCategory.reputationTrust,

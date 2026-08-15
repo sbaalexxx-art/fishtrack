@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/catch.dart';
+import '../services/diagnostics_service.dart';
 
 class CatchSubmissionException implements Exception {
   const CatchSubmissionException(this.message);
@@ -32,7 +33,24 @@ class CatchRepository {
     required String waterType,
     required String locationPrivacy,
     required String? stationId,
+    String? speciesScientific,
+    String speciesSource = 'manual',
+    double? speciesConfidence,
+    String? speciesModelVersion,
+    bool speciesUserConfirmed = true,
+    List<Map<String, Object?>> speciesCandidates = const <Map<String, Object?>>[],
   }) async {
+    final submitStopwatch = Stopwatch()..start();
+    DiagnosticsService.instance.record(
+      category: DiagnosticCategory.community,
+      operation: 'catch_submit',
+      message: 'started',
+      metadata: <String, Object?>{
+        'species_source': speciesSource,
+        'has_station': stationId != null,
+        'privacy': locationPrivacy,
+      },
+    );
     final imageFile = File(imagePath);
     if (!await imageFile.exists()) {
       throw const CatchSubmissionException(
@@ -82,6 +100,12 @@ class CatchRepository {
       final data = <String, Object?>{
         'station_id': stationId,
         'species': species.trim(),
+        'species_scientific': speciesScientific?.trim(),
+        'species_source': speciesSource,
+        'species_confidence': speciesConfidence,
+        'species_model_version': speciesModelVersion,
+        'species_user_confirmed': speciesUserConfirmed,
+        'species_candidates': speciesCandidates,
         'weight': weightKg,
         'length': lengthCm,
         'notes': notes.trim(),
@@ -98,6 +122,17 @@ class CatchRepository {
           .from('catches')
           .insert(data)
           .timeout(const Duration(seconds: 20));
+      submitStopwatch.stop();
+      DiagnosticsService.instance.record(
+        category: DiagnosticCategory.community,
+        operation: 'catch_submit',
+        message: 'completed',
+        duration: submitStopwatch.elapsed,
+        metadata: <String, Object?>{
+          'species_source': speciesSource,
+          'has_station': stationId != null,
+        },
+      );
     } on SocketException catch (error, stackTrace) {
       _logFailure('catch database insert', error, stackTrace);
       await _removeImage(storagePath);
@@ -136,11 +171,13 @@ class CatchRepository {
   Future<List<Catch>> getCatchesForStation(String stationId) async {
     try {
       final response = await _supabase
-          .from('catches')
-          .select('id, station_id, species, weight, length, timestamp')
-          .eq('station_id', stationId)
-          .order('timestamp', ascending: false)
-          .limit(20)
+          .rpc(
+            'get_public_catches_for_station_v2',
+            params: <String, Object?>{
+              'p_station_id': stationId,
+              'p_limit': 20,
+            },
+          )
           .timeout(const Duration(seconds: 12));
 
       return response
@@ -161,6 +198,11 @@ class CatchRepository {
               id: id,
               stationId: row['station_id']?.toString() ?? stationId,
               species: species,
+              speciesScientific: row['species_scientific']?.toString(),
+              speciesSource: row['species_source']?.toString() ?? 'manual',
+              speciesConfidence: _number(row['species_confidence']),
+              speciesModelVersion: row['species_model_version']?.toString(),
+              speciesUserConfirmed: row['species_user_confirmed'] != false,
               weight: weight,
               length: length,
               date: date.toLocal(),
@@ -174,6 +216,53 @@ class CatchRepository {
     }
   }
 
+  Future<List<Catch>> getMyCatches() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return const <Catch>[];
+    try {
+      final response = await _supabase
+          .from('catches')
+          .select('id, station_id, species, species_scientific, species_source, species_confidence, species_model_version, species_user_confirmed, weight, length, timestamp')
+          .eq('user_id', userId)
+          .order('timestamp', ascending: false)
+          .limit(100)
+          .timeout(const Duration(seconds: 12));
+      return response
+          .map((row) => _catchFromRow(row))
+          .whereType<Catch>()
+          .toList(growable: false);
+    } on Exception catch (error, stackTrace) {
+      _logFailure('load user catches', error, stackTrace);
+      rethrow;
+    }
+  }
+
+  static Catch? _catchFromRow(Map<String, dynamic> row) {
+    final id = row['id']?.toString();
+    final species = row['species']?.toString().trim();
+    final date = DateTime.tryParse(row['timestamp']?.toString() ?? '');
+    if (id == null ||
+        id.isEmpty ||
+        species == null ||
+        species.isEmpty ||
+        date == null) {
+      return null;
+    }
+    return Catch(
+      id: id,
+      stationId: row['station_id']?.toString() ?? '',
+      species: species,
+      speciesScientific: row['species_scientific']?.toString(),
+      speciesSource: row['species_source']?.toString() ?? 'manual',
+      speciesConfidence: _number(row['species_confidence']),
+      speciesModelVersion: row['species_model_version']?.toString(),
+      speciesUserConfirmed: row['species_user_confirmed'] != false,
+      weight: _number(row['weight']),
+      length: _number(row['length']),
+      date: date.toLocal(),
+    );
+  }
+
   static double? _number(Object? value) => value is num
       ? value.toDouble()
       : double.tryParse(value?.toString() ?? '');
@@ -183,6 +272,12 @@ class CatchRepository {
     Object error,
     StackTrace stackTrace,
   ) {
+    DiagnosticsService.instance.recordError(
+      category: DiagnosticCategory.community,
+      operation: operation.replaceAll(' ', '_'),
+      error: error,
+      stackTrace: stackTrace,
+    );
     developer.log(
       '$operation failed',
       name: 'AIFishMap.Catches',

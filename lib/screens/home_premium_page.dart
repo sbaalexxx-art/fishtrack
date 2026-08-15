@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../l10n/l10n.dart';
 import '../widgets/home_premium/dashboard.dart';
-import '../widgets/home_premium/home_header.dart';
 import '../widgets/home_premium/home_map.dart';
 import '../widgets/home_premium/home_premium_layout.dart';
 import '../widgets/home_premium/side_menu.dart';
@@ -24,9 +25,12 @@ class HomePremiumPage extends StatefulWidget {
 class _HomePremiumPageState extends State<HomePremiumPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey _homeMapKey = GlobalKey(debugLabel: 'home-premium-map');
+  final GlobalKey _dashboardKey = GlobalKey(debugLabel: 'home-dashboard');
+  final HomePremiumMapController _homeMapController =
+      HomePremiumMapController();
   final ScrollController _scrollController = ScrollController();
   final ScrollController _landscapeDashboardController = ScrollController();
-  late final HomePremiumMap _homeMap;
+  HomePremiumMap? _homeMap;
   HomeMapLocationAvailability _locationAvailability =
       HomeMapLocationAvailability.locating;
   String? _locationLabel;
@@ -35,11 +39,17 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
   @override
   void initState() {
     super.initState();
-    _homeMap = HomePremiumMap(
-      key: _homeMapKey,
-      onLocationAvailabilityChanged: _handleLocationAvailability,
-      onLocationLabelChanged: _handleLocationLabel,
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _homeMap != null) return;
+      final homeMap = HomePremiumMap(
+        key: _homeMapKey,
+        controller: _homeMapController,
+        onTap: () => widget.onNavigate(1),
+        onLocationAvailabilityChanged: _handleLocationAvailability,
+        onLocationLabelChanged: _handleLocationLabel,
+      );
+      setState(() => _homeMap = homeMap);
+    });
   }
 
   void _handleLocationAvailability(HomeMapLocationAvailability value) {
@@ -89,226 +99,358 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
   }
 
-  Widget _buildHeader(HomePremiumLayout layout) {
-    final avatarSize = 26 * layout.iconScale;
-    return SizedBox(
-      height: layout.headerHeight * .62,
-      child: Row(
-        children: [
-          Expanded(
-            child: HomePremiumHeader(
-              notificationCount: 0,
-              onMenuPressed: () => _scaffoldKey.currentState?.openDrawer(),
-              onNotificationPressed: () => _openPage(const NotificationsPage()),
-              onLogoLongPress: BuildModeService.isDeveloperVisible
-                  ? () => _openPage(const DeveloperModePage())
-                  : null,
-            ),
+  Widget _buildMapOverlayAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    double iconSize = 19,
+    bool transparent = false,
+  }) {
+    final button = Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: transparent
+            ? Colors.transparent
+            : const Color(0xFF08131C).withValues(alpha: .62),
+        borderRadius: BorderRadius.circular(15),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(15),
+          child: SizedBox.square(
+            dimension: 48,
+            child: Icon(icon, color: Colors.white, size: iconSize),
           ),
-          const SizedBox(width: 9),
-          Container(
-            width: avatarSize,
-            height: avatarSize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF12D8D6).withValues(alpha: 0.22),
-                  const Color(0xFF132631).withValues(alpha: 0.94),
-                ],
-              ),
-              border: Border.all(
-                color: const Color(0xFF12D8D6).withValues(alpha: 0.62),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF12D8D6).withValues(alpha: 0.12),
-                  blurRadius: 12,
-                  spreadRadius: -4,
-                ),
-              ],
-            ),
-            child: Icon(
-              Icons.person_outline_rounded,
-              color: const Color(0xFFEAFDFF),
-              size: 15 * layout.iconScale,
-            ),
+        ),
+      ),
+    );
+    return Tooltip(message: label, child: button);
+  }
+
+  Widget _buildBrandMenuCluster() {
+    final openDrawerLabel = MaterialLocalizations.of(
+      context,
+    ).openAppDrawerTooltip;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF08131C).withValues(alpha: .62),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white.withValues(alpha: .10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .20),
+            blurRadius: 14,
+            spreadRadius: -6,
+            offset: const Offset(0, 6),
           ),
         ],
+      ),
+      child: SizedBox(
+        height: 48,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildMapOverlayAction(
+              icon: Icons.menu_rounded,
+              label: openDrawerLabel,
+              onTap: () => _scaffoldKey.currentState?.openDrawer(),
+              transparent: true,
+            ),
+            Container(
+              width: 1,
+              height: 22,
+              color: Colors.white.withValues(alpha: .10),
+            ),
+            Semantics(
+              label: 'FluviAI',
+              image: true,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: BuildModeService.isDeveloperVisible
+                    ? () => _openPage(const DeveloperModePage())
+                    : null,
+                child: SizedBox(
+                  width: 38,
+                  height: 48,
+                  child: Padding(
+                    padding: const EdgeInsets.all(7),
+                    child: Image.asset(
+                      'assets/branding/fluviai_logo.png',
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      gaplessPlayback: true,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildLocationBridge(HomePremiumLayout layout) {
-    final isRo = Localizations.localeOf(context).languageCode == 'ro';
-    final (icon, color, label) = switch (_locationAvailability) {
+  Widget _buildLocationChip({
+    required IconData icon,
+    required Color color,
+    required String label,
+  }) {
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          color: const Color(0xFF08131C).withValues(alpha: .62),
+          borderRadius: BorderRadius.circular(15),
+          child: InkWell(
+            onTap: _homeMapController.recenter,
+            borderRadius: BorderRadius.circular(15),
+            child: SizedBox(
+              height: 48,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 15, color: color),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: color == Colors.white54
+                              ? Colors.white60
+                              : Colors.white,
+                          fontSize: 12,
+                          height: 1,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapOverlay() {
+    final (
+      locationIcon,
+      locationColor,
+      locationText,
+    ) = switch (_locationAvailability) {
       HomeMapLocationAvailability.locating => (
         Icons.location_searching_rounded,
         const Color(0xFF12D8D6),
-        isRo
-            ? 'Se determin\u0103 loca\u021bia\u2026'
-            : 'Determining location\u2026',
+        '${context.l10n.currentLocation}: ${context.l10n.loading}',
       ),
       HomeMapLocationAvailability.available => (
         Icons.location_on_rounded,
         const Color(0xFF12D8D6),
-        _locationLabel ??
-            (isRo ? 'Loca\u021bia curent\u0103' : 'Current location'),
+        _locationLabel ?? context.l10n.currentLocation,
       ),
       HomeMapLocationAvailability.unavailable => (
         Icons.location_off_rounded,
         Colors.white54,
-        isRo ? 'Loca\u021bie indisponibil\u0103' : 'Location unavailable',
+        '${context.l10n.currentLocation}: ${context.l10n.notAvailable}',
       ),
     };
-    final separatorIndex = label.indexOf(',');
-    final cityLabel = separatorIndex == -1
-        ? label
-        : label.substring(0, separatorIndex).trim();
-    final regionLabel = separatorIndex == -1
-        ? ''
-        : label.substring(separatorIndex + 1).trim();
-    final primaryLabel = cityLabel.isEmpty ? label : cityLabel;
-    final hasRegion =
-        _locationAvailability == HomeMapLocationAvailability.available &&
-        cityLabel.isNotEmpty &&
-        regionLabel.isNotEmpty;
-    return SizedBox(
-      height: 18,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const horizontalPadding = 4.0;
-          final contentWidth = constraints.maxWidth - (horizontalPadding * 2);
-          final minimumLineWidth = layout.isLandscapePhone ? 72.0 : 28.0;
-          final iconWidth = 12 * layout.iconScale;
-          final maximumTextWidth =
-              contentWidth - (minimumLineWidth * 2) - iconWidth - 16;
-          final preferredTextWidth =
-              contentWidth * (layout.isLandscapePhone ? .52 : .58);
-          final textMaxWidth = preferredTextWidth < maximumTextWidth
-              ? preferredTextWidth
-              : maximumTextWidth;
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 1,
-                    color: const Color(0xFF12D8D6).withValues(alpha: .58),
-                  ),
+    return SizedBox(
+      height: 48,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildBrandMenuCluster(),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 280),
+                child: _buildLocationChip(
+                  icon: locationIcon,
+                  color: locationColor,
+                  label: locationText,
                 ),
-                const SizedBox(width: 6),
-                Icon(icon, size: iconWidth, color: color),
-                const SizedBox(width: 4),
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: textMaxWidth.clamp(48.0, contentWidth).toDouble(),
-                  ),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(text: primaryLabel),
-                        if (hasRegion)
-                          TextSpan(
-                            text: ', $regionLabel',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: .70),
-                              fontSize: 8.8 * layout.bodyFontScale,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color:
-                          _locationAvailability ==
-                              HomeMapLocationAvailability.unavailable
-                          ? Colors.white54
-                          : Colors.white,
-                      fontSize: 9.5 * layout.bodyFontScale,
-                      height: 1,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: .08,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Container(
-                    height: 1,
-                    color: const Color(0xFF12D8D6).withValues(alpha: .58),
-                  ),
-                ),
-              ],
+              ),
             ),
-          );
-        },
+          ),
+          const SizedBox(width: 6),
+          _buildMapOverlayAction(
+            icon: Icons.notifications_none_rounded,
+            label: context.l10n.notifications,
+            onTap: () => _openPage(const NotificationsPage()),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildDashboard(HomePremiumLayout layout) {
     return PremiumDashboard(
+      key: _dashboardKey,
       layout: layout,
       onWaterLevelPressed: (station) =>
           _openPage(WaterLevelPage(initialStation: station)),
       onWeatherPressed: () => _openPage(const WeatherPage()),
       onWeatherMetricPressed: (section) =>
           _openPage(WeatherPage(initialSection: section)),
-      onCommunityPressed: () => widget.onNavigate(3),
+      onCommunityPressed: () => widget.onNavigate(2),
       onAiPressed: () => _openPage(const FishingInsightsPage()),
     );
   }
 
-  Widget _buildLandscapePhone(HomePremiumLayout layout) {
-    final contentHorizontalPadding = layout.horizontalPadding;
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: contentHorizontalPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildHeader(layout),
-          _buildLocationBridge(layout),
-          SizedBox(height: layout.sectionGap * .04),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(flex: 58, child: _homeMap),
-                SizedBox(width: layout.sectionGap),
-                Expanded(
-                  flex: 42,
-                  child: SingleChildScrollView(
-                    controller: _landscapeDashboardController,
-                    physics: const BouncingScrollPhysics(),
-                    child: _buildDashboard(layout),
-                  ),
-                ),
-              ],
+  Widget _buildHomeMapSlot() {
+    final homeMap = _homeMap;
+    if (homeMap != null) return homeMap;
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(color: Color(0xFF16212B)),
+        child: SizedBox.expand(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFF07131D).withValues(alpha: .72),
+                  const Color(0xFF16212B),
+                ],
+              ),
             ),
           ),
-          SizedBox(height: layout.bottomSafeClearance),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildMapHero(
+    HomePremiumLayout layout, {
+    required EdgeInsets overlayInsets,
+  }) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(child: _buildHomeMapSlot()),
+        Positioned(
+          top: overlayInsets.top + (layout.isLandscape ? 2 : 6),
+          left: overlayInsets.left + 8,
+          right: overlayInsets.right + 8,
+          child: _buildMapOverlay(),
+        ),
+      ],
+    );
+  }
+
+  double _portraitHeroHeight(HomePremiumLayout layout) {
+    if (!layout.isSmallPhone) return layout.heroMapHeight;
+    return (layout.usableHeight * .40).clamp(220.0, 390.0).toDouble();
+  }
+
+  Widget _buildPortraitHome(
+    HomePremiumLayout layout,
+    BoxConstraints constraints,
+    EdgeInsets viewPadding,
+  ) {
+    final mapDashboardSpacing = (layout.sectionGap * .75)
+        .clamp(4.0, 6.0)
+        .toDouble();
+
+    return SingleChildScrollView(
+      controller: _scrollController,
+      physics: const BouncingScrollPhysics(),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: _portraitHeroHeight(layout),
+              child: _buildMapHero(layout, overlayInsets: viewPadding),
+            ),
+            SizedBox(height: mapDashboardSpacing),
+            Padding(
+              padding: EdgeInsets.only(
+                left: layout.horizontalPadding + viewPadding.left,
+                right: layout.horizontalPadding + viewPadding.right,
+              ),
+              child: _buildDashboard(layout),
+            ),
+            SizedBox(height: layout.bottomSafeClearance),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLandscapeHome(HomePremiumLayout layout, EdgeInsets viewPadding) {
+    final dashboardTopInset = viewPadding.top + 2;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          flex: 58,
+          child: MediaQuery.removeViewPadding(
+            context: context,
+            removeRight: true,
+            child: _buildMapHero(
+              layout,
+              overlayInsets: EdgeInsets.only(
+                top: viewPadding.top,
+                left: viewPadding.left,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(width: layout.sectionGap),
+        Expanded(
+          flex: 42,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              layout.horizontalPadding,
+              dashboardTopInset,
+              layout.horizontalPadding + viewPadding.right,
+              0,
+            ),
+            child: SingleChildScrollView(
+              controller: _landscapeDashboardController,
+              physics: const BouncingScrollPhysics(),
+              child: Padding(
+                padding: EdgeInsets.only(bottom: layout.sectionGap),
+                child: _buildDashboard(layout),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: const Color(0xFF0F1115),
-      drawer: HomeSideMenu(onNavigate: widget.onNavigate),
-      body: SafeArea(
-        bottom: false,
-        child: LayoutBuilder(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemStatusBarContrastEnforced: false,
+      ),
+      child: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: const Color(0xFF0F1115),
+        drawer: const HomeSideMenu(),
+        body: LayoutBuilder(
           builder: (context, constraints) {
             if (!constraints.maxWidth.isFinite ||
                 !constraints.maxHeight.isFinite ||
@@ -321,56 +463,16 @@ class _HomePremiumPageState extends State<HomePremiumPage> {
               constraints.maxWidth,
               constraints.maxHeight,
             );
+            final viewPadding = MediaQuery.viewPaddingOf(context);
             final layout = HomePremiumLayout.fromViewport(
               context,
               viewportSize: viewportSize,
-              systemSafeArea: MediaQuery.viewPaddingOf(context),
+              systemSafeArea: viewPadding,
               bottomNavigationOverlaysBody: false,
             );
-            final contentHorizontalPadding = layout.horizontalPadding;
-            const topSpacing = 0.0;
-            final headerMapSpacing = (layout.sectionGap * .40)
-                .clamp(4.0, 6.0)
-                .toDouble();
-            final mapDashboardSpacing = PremiumDashboard.sectionSpacingFor(
-              layout,
-            );
-            final portraitMapHeightFactor = layout.isSmallPhone
-                ? .38
-                : (layout.isTablet ? .42 : .40);
-            final heroMapHeight = layout.isPortrait
-                ? layout.usableHeight * portraitMapHeightFactor
-                : layout.heroMapHeight * 1.08;
-
-            if (layout.isLandscapePhone) {
-              return _buildLandscapePhone(layout);
-            }
-
-            return SingleChildScrollView(
-              controller: _scrollController,
-              physics: const BouncingScrollPhysics(),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: contentHorizontalPadding,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(height: topSpacing),
-                      _buildHeader(layout),
-                      _buildLocationBridge(layout),
-                      SizedBox(height: headerMapSpacing),
-                      SizedBox(height: heroMapHeight, child: _homeMap),
-                      SizedBox(height: mapDashboardSpacing),
-                      _buildDashboard(layout),
-                      SizedBox(height: layout.bottomSafeClearance),
-                    ],
-                  ),
-                ),
-              ),
-            );
+            return layout.isLandscape
+                ? _buildLandscapeHome(layout, viewPadding)
+                : _buildPortraitHome(layout, constraints, viewPadding);
           },
         ),
       ),

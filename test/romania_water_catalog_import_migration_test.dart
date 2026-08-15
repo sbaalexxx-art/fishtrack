@@ -2,16 +2,25 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-const _migrationPath =
+const _damMigrationPath =
     'supabase/migrations/20260728120000_import_romania_water_catalog.sql';
+const _reservoirMigrationPath =
+    'supabase/migrations/20260728120100_import_romania_reservoirs.sql';
+const _relationMigrationPath =
+    'supabase/migrations/20260728120200_import_romania_dam_reservoir_relations.sql';
 
 void main() {
+  late List<String> migrationSql;
   late String sql;
 
   setUpAll(() async {
-    sql = await File(_migrationPath).readAsString();
+    migrationSql = await Future.wait([
+      File(_damMigrationPath).readAsString(),
+      File(_reservoirMigrationPath).readAsString(),
+      File(_relationMigrationPath).readAsString(),
+    ]);
+    sql = migrationSql.join('\n\n');
   });
-
   test('records the exact approved W4B artifacts', () {
     expect(sql, contains('dams rows: 2202'));
     expect(
@@ -36,19 +45,24 @@ void main() {
     );
   });
 
-  test('wraps the complete import in one transaction', () {
-    expect(sql.trimLeft().toLowerCase(), contains('begin;'));
-    expect(sql.trimRight().toLowerCase().endsWith('commit;'), isTrue);
+  test('wraps each split import in one transaction', () {
+    expect(migrationSql, hasLength(3));
+    for (final migration in migrationSql) {
+      expect(migration.trimLeft().toLowerCase(), contains('begin;'));
+      expect(
+        migration.trimRight().toLowerCase().endsWith('commit;'),
+        isTrue,
+      );
+    }
   });
-
   test('embeds only the three eligible canonical source sets', () {
     expect(sql, contains(r'$w4d3_dams$'));
     expect(sql, contains(r'$w4d3_reservoirs$'));
     expect(sql, contains(r'$w4d3_relations$'));
     expect(sql, contains('jsonb_to_recordset'));
-    expect(sql, contains('W4D-3 dam source row count mismatch.'));
-    expect(sql, contains('W4D-3 reservoir source row count mismatch.'));
-    expect(sql, contains('W4D-3 relation source row count mismatch.'));
+    expect(sql, contains('Expected 2202 audited dams'));
+    expect(sql, contains('Expected 1933 audited reservoirs'));
+    expect(sql, contains('Expected 1090 audited relations'));
     expect(sql, isNot(contains('water-premium-w4b-review-relations.csv')));
     expect(sql, isNot(contains('water-premium-w4b-rejected-entities.csv')));
   });

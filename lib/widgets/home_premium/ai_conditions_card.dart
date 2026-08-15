@@ -86,42 +86,37 @@ class _AIConditionsCardPremiumState extends State<AIConditionsCardPremium> {
 
   @override
   Widget build(BuildContext context) {
-    final isRomanian = Localizations.localeOf(context).languageCode == 'ro';
     final result = _visibleResult;
+    final l10n = context.l10n;
+    final recommendation = switch (result?.recommendation) {
+      null => _isLoading ? l10n.loading : l10n.notEnoughData,
+      'Excellent' => l10n.scoreExcellent,
+      'Good' => l10n.scoreGood,
+      'Fair' => l10n.scoreFair,
+      'Poor' => l10n.scorePoor,
+      'Not enough data yet' => l10n.notEnoughData,
+      final value => value,
+    };
+
     return PremiumLoadingShimmer(
       isLoading: _isLoading,
       child: _AIConditionsCardView(
         score: result?.score,
         rating: _rating(result?.rating),
-        recommendation: _localizedStatus(
-          result?.recommendation ?? 'Calculating...',
-          isRomanian,
-        ),
+        recommendation: recommendation,
         bestTime: result?.bestTime ?? '--:--',
         confidence: result?.confidence,
-        isLoading: _isLoading,
       ),
     );
   }
 
-  FishingRating _rating(FishingScoreRating? rating) => switch (rating) {
+  FishingRating? _rating(FishingScoreRating? rating) => switch (rating) {
     FishingScoreRating.excellent => FishingRating.excellent,
     FishingScoreRating.good => FishingRating.good,
     FishingScoreRating.fair => FishingRating.fair,
-    FishingScoreRating.poor || null => FishingRating.poor,
+    FishingScoreRating.poor => FishingRating.poor,
+    null => null,
   };
-
-  String _localizedStatus(String value, bool isRomanian) {
-    if (!isRomanian) return value;
-    return switch (value) {
-      'Excellent' => 'Excelent',
-      'Good' => 'Bun',
-      'Fair' => 'Acceptabil',
-      'Poor' => 'Slab',
-      'Calculating...' => 'Se calculează...',
-      _ => value,
-    };
-  }
 }
 
 class _AIConditionsCardView extends StatelessWidget {
@@ -131,161 +126,250 @@ class _AIConditionsCardView extends StatelessWidget {
     required this.recommendation,
     required this.bestTime,
     required this.confidence,
-    required this.isLoading,
   });
 
   final double? score;
-  final FishingRating rating;
+  final FishingRating? rating;
   final String recommendation;
   final String bestTime;
   final int? confidence;
-  final bool isLoading;
 
   Color get _color => switch (rating) {
     FishingRating.excellent => const Color(0xFF4CAF50),
     FishingRating.good => const Color(0xFF8BC34A),
     FishingRating.fair => const Color(0xFFFFB300),
     FishingRating.poor => const Color(0xFFE53935),
+    null => const Color(0xFF9AA7B2),
   };
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isRomanian = Localizations.localeOf(context).languageCode == 'ro';
-        final localizedBestTime = isRomanian
-            ? bestTime.replaceAll(' or ', ' sau ')
-            : bestTime;
+        const accent = Color(0xFF42A5F5);
+        final l10n = context.l10n;
+        final localizedBestTime = bestTime.replaceAll(' or ', ' ${l10n.or} ');
         final layout = HomePremiumLayout.of(context);
-        final compact = constraints.maxWidth < 220;
-        final denseHeight = constraints.maxHeight < 145;
-        final dense = compact || layout.isLandscapePhone || denseHeight;
-        final gaugeSize = (dense ? 48.0 : 58.0) * layout.iconScale;
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
+        final compactWidth = constraints.maxWidth < 230;
+        final constrainedHeight =
+            constraints.hasBoundedHeight && constraints.maxHeight < 158;
+        final dense =
+            compactWidth ||
+            layout.isLandscapePhone ||
+            constrainedHeight ||
+            textScale >= 1.25;
+        final showSubtitle =
+            !dense &&
+            (!constraints.hasBoundedHeight || constraints.maxHeight >= 166);
+        final gaugeSize = (dense ? 44.0 : 52.0) * layout.iconScale;
+        final cardPadding = dense
+            ? 8.0
+            : layout.isTablet
+            ? 12.0
+            : 10.0;
 
         return Container(
-          padding: EdgeInsets.all(
-            layout.isLandscapePhone
-                ? 7
-                : layout.isSmallPhone
-                ? 8
-                : (layout.isTablet ? 12 : 10),
-          ),
+          padding: EdgeInsets.all(cardPadding),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E2335),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF142632), Color(0xFF0B1B25)],
+            ),
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: accent.withValues(alpha: 0.18)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.psychology_alt_rounded,
-                    color: Color(0xFF42A5F5),
-                    size: (dense ? 18 : 20) * layout.iconScale,
+                  Container(
+                    width: dense ? 24 : 27,
+                    height: dense ? 24 : 27,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.psychology_alt_rounded,
+                      color: accent,
+                      size: (dense ? 16 : 18) * layout.iconScale,
+                    ),
                   ),
-                  SizedBox(width: dense ? 5 : 8),
+                  SizedBox(width: dense ? 6 : 8),
                   Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        context.l10n.fishingInsights,
-                        maxLines: 1,
-                        style: AppTextStyles.cardTitle.copyWith(
-                          fontSize: (dense ? 14 : 16) * layout.titleFontScale,
-                        ),
+                    child: Text(
+                      l10n.fishingInsights,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.cardTitle.copyWith(
+                        fontSize: (dense ? 13.5 : 15) * layout.titleFontScale,
+                        height: 1,
                       ),
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: dense ? 1 : 2),
-              Text(
-                context.l10n.fluviScoreSubtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.caption.copyWith(
-                  fontSize: dense ? 9 : 11,
-                  height: 1,
+              if (showSubtitle) ...[
+                const SizedBox(height: 3),
+                Text(
+                  l10n.fluviScoreSubtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.caption.copyWith(
+                    fontSize: 10.5 * layout.bodyFontScale,
+                    height: 1,
+                  ),
+                ),
+              ],
+              SizedBox(height: dense ? 4 : 6),
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text.rich(
+                            TextSpan(
+                              text: score == null
+                                  ? '--'
+                                  : score!.round().toString(),
+                              children: [
+                                TextSpan(
+                                  text: '/100',
+                                  style: TextStyle(
+                                    color: Colors.white60,
+                                    fontSize:
+                                        (dense ? 11 : 12) *
+                                        layout.bodyFontScale,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.clip,
+                            style: TextStyle(
+                              fontSize:
+                                  (dense ? 25 : 29) * layout.titleFontScale,
+                              height: 1,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: dense ? 2 : 3),
+                          Text(
+                            recommendation,
+                            maxLines: dense ? 1 : 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _color,
+                              fontSize:
+                                  (dense ? 11.5 : 13) * layout.bodyFontScale,
+                              height: 1.05,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: dense ? 6 : 8),
+                    SizedBox(
+                      width: gaugeSize,
+                      height: gaugeSize,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox.square(
+                            dimension: gaugeSize,
+                            child: CircularProgressIndicator(
+                              value: score == null
+                                  ? 0
+                                  : (score! / 100).clamp(0, 1),
+                              strokeWidth: dense ? 4 : 5,
+                              strokeCap: StrokeCap.round,
+                              backgroundColor: Colors.white10,
+                              color: _color,
+                            ),
+                          ),
+                          Icon(
+                            Icons.phishing,
+                            color: _color,
+                            size: dense ? 20 : 23,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
               SizedBox(height: dense ? 4 : 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          score == null ? '--/100' : '${score!.round()}/100',
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontSize: (dense ? 23 : 29) * layout.titleFontScale,
-                            height: 1,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: dense ? 2 : 4),
-                        Text(
-                          recommendation,
-                          maxLines: 2,
-                          style: TextStyle(
-                            color: _color,
-                            fontSize: dense ? 12 : 14,
-                            height: 1.05,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: dense ? 6 : 8,
+                  vertical: dense ? 4 : 5,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.045),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.06),
                   ),
-                  SizedBox(
-                    width: gaugeSize,
-                    height: gaugeSize,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        SizedBox.square(
-                          dimension: gaugeSize,
-                          child: CircularProgressIndicator(
-                            value: score == null
-                                ? (isLoading ? 0 : null)
-                                : (score! / 100).clamp(0, 1),
-                            strokeWidth: dense ? 5 : 6,
-                            backgroundColor: Colors.white10,
-                            color: _color,
-                          ),
-                        ),
-                        Icon(
-                          Icons.phishing,
-                          color: _color,
-                          size: dense ? 23 : 28,
-                        ),
-                      ],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.schedule_rounded,
+                      size: 13,
+                      color: Colors.white54,
                     ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  const Icon(Icons.schedule, size: 14, color: Colors.white54),
-                  const SizedBox(width: 5),
-                  Expanded(
-                    child: Text(
-                      confidence == null
-                          ? '${isRomanian ? 'Cel mai favorabil:' : 'Best:'} $localizedBestTime'
-                          : '${isRomanian ? 'Cel mai favorabil:' : 'Best:'} $localizedBestTime • $confidence%',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.caption.copyWith(
-                        fontSize: dense ? 11 : 13,
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          text: '${l10n.bestTimeWindow}: ',
+                          children: [
+                            TextSpan(
+                              text: localizedBestTime,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        maxLines: textScale >= 1.25 ? 2 : 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.caption.copyWith(
+                          fontSize:
+                              (dense ? 10.5 : 11.5) * layout.bodyFontScale,
+                          height: 1.08,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    if (confidence != null) ...[
+                      const SizedBox(width: 5),
+                      Semantics(
+                        label: l10n.confidence(confidence!),
+                        child: Text(
+                          '$confidence%',
+                          style: TextStyle(
+                            color: accent,
+                            fontSize:
+                                (dense ? 10.5 : 11.5) * layout.bodyFontScale,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),

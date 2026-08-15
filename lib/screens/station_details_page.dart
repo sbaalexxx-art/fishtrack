@@ -170,12 +170,13 @@ class _StationDetailsPageState extends State<StationDetailsPage> {
     final historyLoading = _historyLoading || details == null;
     final trend = details?.trend;
     final trendColor = _trendColor(trend);
-    final freshness = details?.measurementTimestamp == null
+    final freshnessTimestamp = details?.effectiveFreshnessTimestamp;
+    final freshness = freshnessTimestamp == null
         ? context.l10n.updateTimeUnavailable
         : WaterFreshnessFormatter.format(
-            measurementTimestamp: details!.measurementTimestamp!,
+            freshnessTimestamp: freshnessTimestamp,
             now: DateTime.now(),
-            isStale: details.isStale,
+            isStale: details!.isStale,
             locale: Localizations.localeOf(context).languageCode,
           );
     return Scaffold(

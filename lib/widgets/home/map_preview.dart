@@ -53,7 +53,6 @@ class MapPreview extends StatelessWidget {
                     child: const SizedBox.expand(),
                   ),
                 ),
-
             ],
           ),
         ),

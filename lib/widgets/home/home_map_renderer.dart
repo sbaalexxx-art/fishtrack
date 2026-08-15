@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 
-import '../../models/station.dart';
+import '../../core/map/map_theme_style.dart';
 import '../../services/community_service.dart';
 import 'home_map.dart';
 
@@ -15,33 +15,28 @@ class HomeMapRenderer extends StatefulWidget {
   const HomeMapRenderer({
     super.key,
     required this.reports,
-    this.stations = const [],
+    required this.initialCamera,
+    this.onMapTap,
     this.onReportTap,
-    this.onStationTap,
     this.currentLocation,
     this.explorationCenter,
     this.onMapReady,
     this.onMapboxMapCreated,
-    this.baseLayer = MapBaseLayer.standard,
-    this.overlays = const {
-      MapOverlay.waterStations,
-      MapOverlay.communityReports,
-    },
-    this.favoriteStationIds = const {},
+    this.baseLayer = MapBaseLayer.satellite,
+    this.overlays = const {MapOverlay.communityReports},
     this.recentCatches = const [],
   });
 
   final List<CommunityPost> reports;
-  final List<Station> stations;
+  final LatLng initialCamera;
+  final VoidCallback? onMapTap;
   final ValueChanged<CommunityPost>? onReportTap;
-  final ValueChanged<Station>? onStationTap;
   final LatLng? currentLocation;
   final LatLng? explorationCenter;
   final VoidCallback? onMapReady;
   final ValueChanged<mapbox.MapboxMap>? onMapboxMapCreated;
   final MapBaseLayer baseLayer;
   final Set<MapOverlay> overlays;
-  final Set<String> favoriteStationIds;
   final List<CommunityPost> recentCatches;
 
   @override
@@ -50,24 +45,18 @@ class HomeMapRenderer extends StatefulWidget {
 
 class _HomeMapRendererState extends State<HomeMapRenderer>
     with AutomaticKeepAliveClientMixin<HomeMapRenderer> {
-  static const _satelliteStreetsStyle =
-      'mapbox://styles/mapbox/satellite-streets-v12';
-
-  static const _fallbackCamera = LatLng(44.8148, 21.3895);
-
   static const _mapWidgetKey = ValueKey<String>('aifishmap-home-mapbox');
   static const _reportMarkerImageSize = 144;
   static const _reportMarkerIconScale = .72;
   static const _importantReportMarkerIconScale = .82;
   static const _reportMarkerStyleImagePrefix = 'fluvi-home-report-';
   static const _reportMarkerPixelRatio = 3.0;
+  static const _mapTapInteractionId = 'fluvi-home-open-full-map';
 
   mapbox.MapboxMap? _mapboxMap;
   mapbox.PointAnnotationManager? _reportAnnotationManager;
-  mapbox.CircleAnnotationManager? _stationAnnotationManager;
   mapbox.CircleAnnotationManager? _locationContextAnnotationManager;
   dynamic _reportTapEvents;
-  dynamic _stationTapEvents;
   Future<void> _annotationSyncQueue = Future<void>.value();
   int _annotationSyncRevision = 0;
   int _styleRevision = 0;
@@ -75,43 +64,31 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
   final Map<ReportCategory?, Uint8List> _reportMarkerImageCache = {};
   final Set<String> _registeredReportStyleImageIds = {};
 
-  late final mapbox.CameraOptions _initialCameraOptions;
-
-  bool _didApplyLocationCamera = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    final initialCenter = widget.currentLocation ?? _fallbackCamera;
-
-    _initialCameraOptions = _cameraFor(initialCenter, zoom: 12.5);
-
-    _didApplyLocationCamera = widget.currentLocation != null;
-  }
-
   @override
   void didUpdateWidget(covariant HomeMapRenderer oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     if (!listEquals(oldWidget.reports, widget.reports) ||
-        !listEquals(oldWidget.stations, widget.stations) ||
         !setEquals(oldWidget.overlays, widget.overlays) ||
-        !setEquals(oldWidget.favoriteStationIds, widget.favoriteStationIds) ||
         oldWidget.currentLocation != widget.currentLocation ||
         oldWidget.explorationCenter != widget.explorationCenter) {
       _scheduleAnnotationSync();
     }
 
-    final location = widget.currentLocation;
-
-    if (location == null || _didApplyLocationCamera) {
-      return;
+    if (oldWidget.baseLayer != widget.baseLayer) {
+      _reloadResolvedStyle();
     }
+  }
 
-    _didApplyLocationCamera = true;
+  String _resolvedStyleUri() => switch (widget.baseLayer) {
+    MapBaseLayer.satellite => MapThemeStyle.satellite,
+    MapBaseLayer.standard || MapBaseLayer.fishingMode => MapThemeStyle.standard,
+  };
 
-    _setCamera(location, zoom: 12.5);
+  void _reloadResolvedStyle() {
+    final mapboxMap = _mapboxMap;
+    if (mapboxMap == null) return;
+    unawaited(mapboxMap.loadStyleURI(_resolvedStyleUri()));
   }
 
   Set<Factory<OneSequenceGestureRecognizer>> _buildGestureRecognizers() {
@@ -124,6 +101,7 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
   Future<void> _handleMapCreated(mapbox.MapboxMap mapboxMap) async {
     final previousMap = _mapboxMap;
     if (previousMap != null && !identical(previousMap, mapboxMap)) {
+      previousMap.removeInteraction(_mapTapInteractionId);
       unawaited(_releaseAnnotationManagers(previousMap));
     }
     _mapboxMap = mapboxMap;
@@ -132,17 +110,20 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     _annotationSyncRevision++;
     _registeredReportStyleImageIds.clear();
 
-    final location = widget.currentLocation;
-
-    if (location != null && !_didApplyLocationCamera) {
-      _didApplyLocationCamera = true;
-
-      _setCamera(location, zoom: 12.5);
-    }
-
     try {
       await mapboxMap.scaleBar.updateSettings(
         mapbox.ScaleBarSettings(enabled: false),
+      );
+      await mapboxMap.compass.updateSettings(
+        mapbox.CompassSettings(
+          enabled: true,
+          position: mapbox.OrnamentPosition.TOP_LEFT,
+          marginLeft: 12,
+          marginTop: 12,
+          opacity: .82,
+          fadeWhenFacingNorth: true,
+          clickable: true,
+        ),
       );
     } on Exception {
       // The Home map remains usable if an ornament update is unavailable.
@@ -150,6 +131,14 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
 
     if (!mounted || !identical(_mapboxMap, mapboxMap)) return;
 
+    if (widget.onMapTap != null) {
+      mapboxMap.addInteraction(
+        mapbox.TapInteraction.onMap((gestureContext) {
+          unawaited(_handleMapTap(gestureContext));
+        }, stopPropagation: false),
+        interactionID: _mapTapInteractionId,
+      );
+    }
     widget.onMapboxMapCreated?.call(mapboxMap);
     widget.onMapReady?.call();
   }
@@ -186,7 +175,6 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
   Future<void> _bindAnnotationManagers(mapbox.MapboxMap mapboxMap) async {
     if (!_isStyleLoaded || !_isCurrentMap(mapboxMap)) return;
     if (_reportAnnotationManager != null &&
-        _stationAnnotationManager != null &&
         _locationContextAnnotationManager != null) {
       _scheduleAnnotationSync();
       return;
@@ -203,16 +191,6 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
         onTap: _handleReportAnnotationTap,
       );
 
-      _stationAnnotationManager = await mapboxMap.annotations
-          .createCircleAnnotationManager();
-      if (!_isCurrentMap(mapboxMap)) {
-        await _releaseAnnotationManagers(mapboxMap);
-        return;
-      }
-      _stationTapEvents = _stationAnnotationManager?.tapEvents(
-        onTap: _handleStationAnnotationTap,
-      );
-
       _locationContextAnnotationManager = await mapboxMap.annotations
           .createCircleAnnotationManager();
       if (!_isCurrentMap(mapboxMap)) {
@@ -227,21 +205,16 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
 
   Future<void> _releaseAnnotationManagers(mapbox.MapboxMap mapboxMap) async {
     final reportManager = _reportAnnotationManager;
-    final stationManager = _stationAnnotationManager;
     final locationContextManager = _locationContextAnnotationManager;
     final reportTapEvents = _reportTapEvents;
-    final stationTapEvents = _stationTapEvents;
 
     _reportAnnotationManager = null;
-    _stationAnnotationManager = null;
     _locationContextAnnotationManager = null;
     _reportTapEvents = null;
-    _stationTapEvents = null;
 
-    for (final tapEvents in [reportTapEvents, stationTapEvents]) {
-      if (tapEvents == null) continue;
+    if (reportTapEvents != null) {
       try {
-        await tapEvents.cancel();
+        await reportTapEvents.cancel();
       } on Exception {
         // The native event stream may already be closed with the map.
       }
@@ -250,13 +223,6 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     if (reportManager != null) {
       try {
         await mapboxMap.annotations.removeAnnotationManager(reportManager);
-      } on Exception {
-        // The native manager may already be released with the map or style.
-      }
-    }
-    if (stationManager != null) {
-      try {
-        await mapboxMap.annotations.removeAnnotationManager(stationManager);
       } on Exception {
         // The native manager may already be released with the map or style.
       }
@@ -298,13 +264,6 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     if (!_canSyncAnnotations(mapboxMap, revision)) return;
 
     try {
-      await _syncStationAnnotations(mapboxMap, revision);
-    } on Exception {
-      // Stations can fail independently without affecting the base map.
-    }
-    if (!_canSyncAnnotations(mapboxMap, revision)) return;
-
-    try {
       await _syncLocationContextAnnotations(mapboxMap, revision);
     } on Exception {
       // Location context can fail without affecting the other map layers.
@@ -326,22 +285,6 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     await manager.deleteAll();
     if (!_canSyncAnnotations(mapboxMap, revision) ||
         !identical(_reportAnnotationManager, manager)) {
-      return;
-    }
-    if (options.isNotEmpty) await manager.createMulti(options);
-  }
-
-  Future<void> _syncStationAnnotations(
-    mapbox.MapboxMap mapboxMap,
-    int revision,
-  ) async {
-    final manager = _stationAnnotationManager;
-    if (manager == null || !_canSyncAnnotations(mapboxMap, revision)) return;
-
-    final options = _stationAnnotationOptions();
-    await manager.deleteAll();
-    if (!_canSyncAnnotations(mapboxMap, revision) ||
-        !identical(_stationAnnotationManager, manager)) {
       return;
     }
     if (options.isNotEmpty) await manager.createMulti(options);
@@ -621,40 +564,6 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     };
   }
 
-  List<mapbox.CircleAnnotationOptions> _stationAnnotationOptions() {
-    final seen = <String>{};
-    final options = <mapbox.CircleAnnotationOptions>[];
-    for (final station in widget.stations) {
-      if (!_isValidCoordinate(station.latitude, station.longitude) ||
-          !seen.add(station.id)) {
-        continue;
-      }
-      final isFavorite = widget.favoriteStationIds.contains(station.id);
-      options.add(
-        mapbox.CircleAnnotationOptions(
-          geometry: mapbox.Point(
-            coordinates: mapbox.Position(station.longitude, station.latitude),
-          ),
-          circleRadius: isFavorite ? 7.5 : 6.5,
-          circleColor: _mapboxColor(
-            isFavorite ? const Color(0xFFFFD166) : const Color(0xFF20B8D8),
-          ),
-          circleOpacity: 1,
-          circleStrokeColor: _mapboxColor(
-            isFavorite ? Colors.white : const Color(0xFF06141D),
-          ),
-          circleStrokeWidth: isFavorite ? 3 : 2.2,
-          circleSortKey: isFavorite ? 40 : 20,
-          customData: <String, Object>{
-            'type': 'water_station',
-            'stationId': station.id,
-          },
-        ),
-      );
-    }
-    return options;
-  }
-
   List<mapbox.CircleAnnotationOptions> _locationContextAnnotationOptions() {
     final options = <mapbox.CircleAnnotationOptions>[];
     final currentLocation = widget.currentLocation;
@@ -740,18 +649,33 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     if (report != null) widget.onReportTap?.call(report);
   }
 
-  void _handleStationAnnotationTap(mapbox.CircleAnnotation annotation) {
-    final stationId = annotation.customData?['stationId']?.toString();
-    if (stationId == null || !mounted) return;
+  Future<void> _handleMapTap(
+    mapbox.MapContentGestureContext gestureContext,
+  ) async {
+    final mapboxMap = _mapboxMap;
+    final onMapTap = widget.onMapTap;
+    if (mapboxMap == null || onMapTap == null || !mounted) return;
 
-    Station? station;
-    for (final item in widget.stations) {
-      if (item.id == stationId) {
-        station = item;
-        break;
+    final annotationLayerIds = <String>[
+      if (_reportAnnotationManager case final manager?) manager.id,
+    ];
+
+    if (annotationLayerIds.isNotEmpty) {
+      try {
+        final features = await mapboxMap.queryRenderedFeatures(
+          mapbox.RenderedQueryGeometry.fromScreenCoordinate(
+            gestureContext.touchPosition,
+          ),
+          mapbox.RenderedQueryOptions(layerIds: annotationLayerIds),
+        );
+        if (features.any((feature) => feature != null)) return;
+      } on Exception {
+        // Preserve annotation routing if native hit-testing is unavailable.
+        return;
       }
     }
-    if (station != null) widget.onStationTap?.call(station);
+
+    if (mounted && identical(_mapboxMap, mapboxMap)) onMapTap();
   }
 
   static int _mapboxColor(Color color) {
@@ -759,25 +683,6 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
         ((color.r * 255).round() << 16) |
         ((color.g * 255).round() << 8) |
         (color.b * 255).round();
-  }
-
-  mapbox.CameraOptions _cameraFor(LatLng target, {required double zoom}) {
-    return mapbox.CameraOptions(
-      center: mapbox.Point(
-        coordinates: mapbox.Position(target.longitude, target.latitude),
-      ),
-      zoom: zoom,
-    );
-  }
-
-  void _setCamera(LatLng target, {required double zoom}) {
-    final mapboxMap = _mapboxMap;
-
-    if (mapboxMap == null) {
-      return;
-    }
-
-    mapboxMap.setCamera(_cameraFor(target, zoom: zoom));
   }
 
   @override
@@ -790,6 +695,7 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     final mapboxMap = _mapboxMap;
     _mapboxMap = null;
     if (mapboxMap != null) {
+      mapboxMap.removeInteraction(_mapTapInteractionId);
       unawaited(_releaseAnnotationManagers(mapboxMap));
     }
     super.dispose();
@@ -803,21 +709,30 @@ class _HomeMapRendererState extends State<HomeMapRenderer>
     super.build(context);
 
     return RepaintBoundary(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: ColoredBox(
-          color: const Color(0xFF101820),
-          child: SizedBox.expand(
-            child: mapbox.MapWidget(
-              key: _mapWidgetKey,
-              textureView: true,
-              styleUri: _satelliteStreetsStyle,
-              // ignore: deprecated_member_use
-              cameraOptions: _initialCameraOptions,
-              gestureRecognizers: _buildGestureRecognizers(),
-              onMapCreated: _handleMapCreated,
-              onStyleLoadedListener: _handleStyleLoaded,
-            ),
+      child: ColoredBox(
+        color: const Color(0xFF101820),
+        child: SizedBox.expand(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              mapbox.MapWidget(
+                key: _mapWidgetKey,
+                textureView: true,
+                styleUri: _resolvedStyleUri(),
+                viewport: mapbox.CameraViewportState(
+                  center: mapbox.Point(
+                    coordinates: mapbox.Position(
+                      widget.initialCamera.longitude,
+                      widget.initialCamera.latitude,
+                    ),
+                  ),
+                  zoom: 12.5,
+                ),
+                gestureRecognizers: _buildGestureRecognizers(),
+                onMapCreated: _handleMapCreated,
+                onStyleLoadedListener: _handleStyleLoaded,
+              ),
+            ],
           ),
         ),
       ),

@@ -1,286 +1,428 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../l10n/l10n.dart';
-import '../../screens/add_catch_page.dart';
-import '../../screens/developer_mode_page.dart';
-import '../../screens/fishing_insights_page.dart';
-import '../../screens/notifications_page.dart';
-import '../../screens/reports_archive_page.dart';
-import '../../screens/settings_page.dart';
-import '../../screens/water_level_page.dart';
-import '../../services/build_mode_service.dart';
+import '../../core/context/selected_context.dart';
+import '../../core/navigation/app_destination.dart';
+import '../../core/navigation/app_navigator.dart';
+import '../../services/auth_service.dart';
 
-class HomeSideMenu extends StatelessWidget {
-  const HomeSideMenu({super.key, required this.onNavigate});
+/// Canonical FluviAI drawer based on Figma node 2450:2.
+///
+/// The inventory stays complete even when a capability is not yet backed by a
+/// remote service. Every row resolves through [AppNavigator], so the drawer
+/// never contains a decorative or empty interaction.
+class HomeSideMenu extends ConsumerWidget {
+  const HomeSideMenu({super.key});
 
-  final ValueChanged<int> onNavigate;
+  static const _background = Color(0xFF040C18);
+  static const _surface = Color(0xFF0A1B2D);
+  static const _cyan = Color(0xFF00E5FF);
+  static const _muted = Color(0xFF94A3B8);
+  static const _dim = Color(0xFF475569);
+  static const _gold = Color(0xFFFFC857);
 
-  void _selectTab(BuildContext context, int index) {
-    Navigator.of(context).pop();
-    onNavigate(index);
-  }
-
-  void _openPage(BuildContext context, Widget page) {
+  void _openDestination(BuildContext context, AppDestination destination) {
     final navigator = Navigator.of(context);
     navigator.pop();
-    navigator.push(MaterialPageRoute<void>(builder: (_) => page));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!navigator.mounted) return;
+      AppNavigator.open(navigator.context, destination);
+    });
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isRomanian =
+        Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
+    final user = const AuthService().currentUser;
+    final rawName = user?.userMetadata?['full_name']?.toString().trim();
+    final displayName = rawName != null && rawName.isNotEmpty
+        ? rawName
+        : (user == null
+              ? (isRomanian ? 'Cont FluviAI' : 'FluviAI account')
+              : (isRomanian ? 'Pescar FluviAI' : 'FluviAI angler'));
+    final email =
+        user?.email ??
+        (isRomanian ? 'Autentificare necesară' : 'Sign in required');
+    final initials = _initials(displayName);
+    final isPremium =
+        ref.watch(fluviAccessTierProvider) == FluviAccessTier.premium;
+
     return Drawer(
-      backgroundColor: const Color(0xFF171C24),
+      key: const ValueKey('home-more-drawer'),
+      width: MediaQuery.sizeOf(context).width.clamp(300, 390).toDouble(),
+      backgroundColor: _background,
+      surfaceTintColor: Colors.transparent,
       child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.only(bottom: 24),
+        child: Stack(
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, 12),
-              child: Text(
-                'FluviAI',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
+            Positioned(
+              left: 16,
+              top: 118,
+              bottom: 96,
+              child: Container(width: 2, color: _cyan.withValues(alpha: .10)),
+            ),
+            ListView(
+              key: const ValueKey('home-more-scroll'),
+              padding: const EdgeInsets.only(bottom: 22),
+              children: [
+                _brandHeader(context),
+                _accountBlock(
+                  context,
+                  displayName: displayName,
+                  email: email,
+                  initials: initials,
+                  isPremium: isPremium,
                 ),
-              ),
+                _divider(),
+                _section(isRomanian ? 'Pescuitul meu' : 'My fishing'),
+                _destinationItem(
+                  context,
+                  AppDestination.myCatches,
+                  label: isRomanian ? 'Capturile mele' : 'My catches',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.favorites,
+                  label: isRomanian
+                      ? 'Apele mele și locuri salvate'
+                      : 'My waters & saved places',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.journal,
+                  label: isRomanian ? 'Jurnal de pescuit' : 'Fishing journal',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.myReports,
+                  label: isRomanian ? 'Rapoartele mele' : 'My reports',
+                ),
+                _divider(),
+                _section(isRomanian ? 'Instrumente' : 'Tools'),
+                _destinationItem(
+                  context,
+                  AppDestination.alerts,
+                  label: isRomanian
+                      ? 'Alerte și notificări'
+                      : 'Alerts & notifications',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.notificationPreferences,
+                  label: isRomanian ? 'Preferințe notificări' : 'Notifications',
+                ),
+                _destinationItem(context, AppDestination.search),
+                _destinationItem(
+                  context,
+                  AppDestination.water,
+                  label: isRomanian ? 'Centrul apei' : 'Water hub',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.weather,
+                  label: isRomanian ? 'Meteo și solunar' : 'Weather & solunar',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.fluvi,
+                  label: isRomanian ? 'Centrul Fluvi' : 'Fluvi Hub',
+                ),
+                _destinationItem(context, AppDestination.askFluvi),
+                _destinationItem(context, AppDestination.toolkit),
+                _destinationItem(
+                  context,
+                  AppDestination.permit,
+                  label: isRomanian ? 'Permis de pescuit' : 'Fishing permit',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.regulations,
+                  label: isRomanian
+                      ? 'Reglementări și dimensiuni'
+                      : 'Regulations & sizes',
+                ),
+                _destinationItem(context, AppDestination.safety),
+                _divider(),
+                _section(isRomanian ? 'Cont' : 'Account'),
+                _destinationItem(context, AppDestination.profile),
+                _destinationItem(
+                  context,
+                  AppDestination.accountSecurity,
+                  label: isRomanian
+                      ? 'Cont și securitate'
+                      : 'Account & security',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.premium,
+                  label: isRomanian ? 'Premium' : 'Premium',
+                  badge: isPremium
+                      ? (isRomanian ? 'Activ' : 'Active')
+                      : (isRomanian ? 'Vezi' : 'View'),
+                  badgeColor: isPremium ? _cyan : _gold,
+                ),
+                _destinationItem(context, AppDestination.settings),
+                _destinationItem(
+                  context,
+                  AppDestination.settings,
+                  label: isRomanian ? 'Aspect' : 'Appearance',
+                  keySuffix: 'appearance',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.settings,
+                  label: isRomanian ? 'Limbă / Regiune' : 'Language / Region',
+                  keySuffix: 'language-region',
+                ),
+                _divider(),
+                _section(isRomanian ? 'Suport' : 'Support'),
+                _destinationItem(
+                  context,
+                  AppDestination.support,
+                  label: isRomanian ? 'Ajutor și FAQ' : 'Help & FAQ',
+                  keySuffix: 'help-faq',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.support,
+                  label: isRomanian ? 'Trimite feedback' : 'Send feedback',
+                  keySuffix: 'send-feedback',
+                ),
+                _destinationItem(
+                  context,
+                  AppDestination.support,
+                  label: isRomanian ? 'Contactează-ne' : 'Contact us',
+                  keySuffix: 'contact-us',
+                ),
+                _divider(),
+                _section('Legal', color: _dim),
+                _destinationItem(context, AppDestination.privacy),
+                _destinationItem(context, AppDestination.terms),
+                _destinationItem(context, AppDestination.licences),
+                _destinationItem(context, AppDestination.legal),
+                _destinationItem(context, AppDestination.about),
+                const SizedBox(height: 12),
+                const Center(
+                  child: Text(
+                    'Versiune afișată din build',
+                    style: TextStyle(color: _dim, fontSize: 9),
+                  ),
+                ),
+              ],
             ),
-            _section(context.l10n.mainSection),
-            _item(
-              context,
-              Icons.home_rounded,
-              context.l10n.home,
-              () => _selectTab(context, 0),
-            ),
-            _item(
-              context,
-              Icons.map_rounded,
-              context.l10n.map,
-              () => _selectTab(context, 1),
-            ),
-            _item(
-              context,
-              Icons.water_rounded,
-              context.l10n.waterLevels,
-              () => _openPage(context, const WaterLevelPage()),
-            ),
-            _item(
-              context,
-              Icons.wb_sunny_rounded,
-              context.l10n.weather,
-              () => _selectTab(context, 2),
-            ),
-            _item(
-              context,
-              Icons.groups_rounded,
-              context.l10n.community,
-              () => _selectTab(context, 3),
-            ),
-            _item(
-              context,
-              Icons.history_rounded,
-              context.l10n.reportsArchive,
-              () => _openPage(context, const ReportsArchivePage()),
-            ),
-            _item(
-              context,
-              Icons.auto_awesome_rounded,
-              context.l10n.aiFishingInsights,
-              () => _openPage(context, const FishingInsightsPage()),
-            ),
-            _section(context.l10n.myFishing),
-            _item(
-              context,
-              Icons.add_circle_outline_rounded,
-              context.l10n.addCatch,
-              () => _openPage(context, const AddCatchPage()),
-            ),
-            _placeholderItem(context, Icons.phishing_rounded, context.l10n.myCatches),
-            _item(
-              context,
-              Icons.favorite_rounded,
-              context.l10n.favorites,
-              () => _selectTab(context, 4),
-            ),
-            _placeholderItem(context, Icons.menu_book_rounded, context.l10n.fishingDiary),
-            _section(context.l10n.useful),
-            _placeholderItem(context, Icons.badge_outlined, context.l10n.fishingPermit),
-            _placeholderItem(context, Icons.gavel_rounded, context.l10n.regulations),
-            _placeholderItem(
-              context,
-              Icons.event_busy_rounded,
-              context.l10n.closedSeason,
-            ),
-            _placeholderItem(
-              context,
-              Icons.straighten_rounded,
-              context.l10n.minimumLegalSizes,
-            ),
-            _placeholderItem(
-              context,
-              Icons.shield_outlined,
-              context.l10n.protectedSpecies,
-            ),
-            _placeholderItem(
-              context,
-              Icons.format_list_numbered_rounded,
-              context.l10n.dailyCatchLimits,
-            ),
-            _placeholderItem(
-              context,
-              Icons.nature_people_outlined,
-              context.l10n.protectedAreas,
-            ),
-            _placeholderItem(context, Icons.report_outlined, context.l10n.reportPoaching),
-            _placeholderItem(context, Icons.nightlight_round, context.l10n.solunar),
-            _placeholderItem(
-              context,
-              Icons.calendar_month_rounded,
-              context.l10n.fishingCalendar,
-            ),
-            _placeholderItem(context, Icons.link_rounded, context.l10n.knots),
-            _placeholderItem(
-              context,
-              Icons.swap_horiz_rounded,
-              context.l10n.unitConversions,
-            ),
-            _placeholderItem(
-              context,
-              Icons.contact_phone_outlined,
-              context.l10n.authorityContacts,
-            ),
-            _section(context.l10n.account),
-            _item(
-              context,
-              Icons.person_rounded,
-              context.l10n.profile,
-              () => _selectTab(context, 5),
-            ),
-            _item(
-              context,
-              Icons.notifications_rounded,
-              context.l10n.notifications,
-              () => _openPage(context, const NotificationsPage()),
-            ),
-            _item(
-              context,
-              Icons.settings_rounded,
-              context.l10n.settings,
-              () => _openPage(context, const SettingsPage()),
-            ),
-            _placeholderItem(
-              context,
-              Icons.workspace_premium_rounded,
-              context.l10n.premium,
-            ),
-            _section(context.l10n.support),
-            _placeholderItem(context, Icons.help_outline_rounded, context.l10n.helpFaq),
-            _placeholderItem(
-              context,
-              Icons.support_agent_rounded,
-              context.l10n.contactSupport,
-            ),
-            _placeholderItem(context, Icons.rate_review_outlined, context.l10n.feedback),
-            _placeholderItem(
-              context,
-              Icons.privacy_tip_outlined,
-              context.l10n.privacyPolicy,
-            ),
-            _placeholderItem(context, Icons.description_outlined, context.l10n.terms),
-            _placeholderItem(
-              context,
-              Icons.info_outline_rounded,
-              context.l10n.aboutApp,
-            ),
-            if (BuildModeService.isDeveloperVisible) ...[
-              const Divider(
-                color: Colors.white12,
-                height: 32,
-                indent: 16,
-                endIndent: 16,
-              ),
-              _section(context.l10n.developer),
-              _item(
-                context,
-                Icons.developer_mode_rounded,
-                context.l10n.developerMode,
-                () => _openPage(context, const DeveloperModePage()),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _section(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 6),
-      child: Text(
-        title.toUpperCase(),
-        style: const TextStyle(
-          color: Color(0xFF12D8D6),
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.1,
+  Widget _brandHeader(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 12, 14, 8),
+    child: Row(
+      children: [
+        const Expanded(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: 'Fluvi ',
+                  style: TextStyle(color: Colors.white),
+                ),
+                TextSpan(
+                  text: 'AI',
+                  style: TextStyle(color: _cyan),
+                ),
+              ],
+            ),
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+          ),
         ),
-      ),
-    );
-  }
+        SizedBox(
+          width: 44,
+          height: 44,
+          child: Material(
+            color: Colors.white.withValues(alpha: .04),
+            shape: CircleBorder(
+              side: BorderSide(color: Colors.white.withValues(alpha: .10)),
+            ),
+            child: IconButton(
+              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(
+                Icons.close_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
-  Widget _item(
-    BuildContext context,
-    IconData icon,
-    String title,
-    VoidCallback onTap,
-  ) {
-    return ListTile(
-      dense: true,
-      leading: Icon(icon, color: Colors.white70, size: 22),
-      title: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: Colors.white),
-      ),
-      onTap: onTap,
-    );
-  }
-
-  Widget _placeholderItem(BuildContext context, IconData icon, String title) {
-    if (!BuildModeService.isDeveloperVisible) {
-      return const SizedBox.shrink();
-    }
-    return _item(
-      context,
-      icon,
-      title,
-      () => _openPage(context, ComingSoonPage(title: title)),
-    );
-  }
-}
-
-class ComingSoonPage extends StatelessWidget {
-  const ComingSoonPage({super.key, required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
+  Widget _accountBlock(
+    BuildContext context, {
+    required String displayName,
+    required String email,
+    required String initials,
+    required bool isPremium,
+  }) => InkWell(
+    key: const ValueKey('drawer-account-summary'),
+    onTap: () => _openDestination(context, AppDestination.profile),
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(24, 6, 20, 16),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _surface,
+              shape: BoxShape.circle,
+              border: Border.all(color: _cyan, width: 2),
+            ),
             child: Text(
-              context.l10n.featureComingSoon,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 18),
+              initials,
+              style: const TextStyle(
+                color: _cyan,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    _badge(
+                      isPremium ? 'PRO' : 'FREE',
+                      isPremium ? _gold : _cyan,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _section(String title, {Color color = _muted}) => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 16, 20, 7),
+    child: Text(
+      title.toUpperCase(),
+      style: TextStyle(
+        color: color,
+        fontSize: 9,
+        fontWeight: FontWeight.w700,
+        letterSpacing: .25,
+      ),
+    ),
+  );
+
+  Widget _divider() =>
+      Container(height: 1, color: Colors.white.withValues(alpha: .04));
+
+  Widget _destinationItem(
+    BuildContext context,
+    AppDestination destination, {
+    String? label,
+    String? keySuffix,
+    String? badge,
+    Color badgeColor = _cyan,
+  }) {
+    final isRomanian =
+        Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
+    final definition = AppDestinationRegistry.of(destination);
+    final title = label ?? definition.title(isRomanian);
+    return Semantics(
+      button: true,
+      label: title,
+      child: InkWell(
+        key: ValueKey('more-${keySuffix ?? destination.name}'),
+        onTap: () => _openDestination(context, destination),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 24, right: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (badge != null) ...[
+                  _badge(badge, badgeColor),
+                  const SizedBox(width: 10),
+                ],
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _muted,
+                  size: 20,
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _badge(String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: color.withValues(alpha: .85)),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w800),
+    ),
+  );
+
+  String _initials(String value) {
+    final words = value
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .take(2)
+        .toList(growable: false);
+    if (words.isEmpty) return 'FA';
+    return words.map((word) => word.substring(0, 1).toUpperCase()).join();
   }
 }

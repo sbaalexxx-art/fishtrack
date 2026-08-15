@@ -53,8 +53,6 @@ class LocaleScope extends InheritedNotifier<LocaleController> {
   }
 
   static LocaleController? maybeOf(BuildContext context) {
-    return context
-        .dependOnInheritedWidgetOfExactType<LocaleScope>()
-        ?.notifier;
+    return context.dependOnInheritedWidgetOfExactType<LocaleScope>()?.notifier;
   }
 }

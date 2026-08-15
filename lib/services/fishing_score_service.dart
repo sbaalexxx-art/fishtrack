@@ -1,5 +1,7 @@
 import 'dart:developer' as developer;
 
+import 'package:geolocator/geolocator.dart';
+
 import '../models/station.dart';
 import '../models/water_level.dart';
 import '../models/weather.dart';
@@ -14,6 +16,15 @@ enum FishingScoreRating { excellent, good, fair, poor }
 abstract interface class FishingDecisionProvider {
   Future<FishingScoreResult> calculate({
     Station? fallbackStation,
+    bool forceRefresh = false,
+  });
+}
+
+abstract interface class LocationAwareFishingDecisionProvider {
+  Future<FishingScoreResult> calculateForLocation({
+    required double latitude,
+    required double longitude,
+    Station? localStation,
     bool forceRefresh = false,
   });
 }
@@ -61,7 +72,8 @@ class FishingScoreResult {
   bool get hasEnoughData => score != null;
 }
 
-class FishingScoreService implements FishingDecisionProvider {
+class FishingScoreService
+    implements FishingDecisionProvider, LocationAwareFishingDecisionProvider {
   FishingScoreService({
     WaterService? waterService,
     WeatherService? weatherService,
@@ -103,6 +115,108 @@ class FishingScoreService implements FishingDecisionProvider {
     } on Exception {
       return const FishingScoreResult.notEnough();
     }
+  }
+
+  @override
+  Future<FishingScoreResult> calculateForLocation({
+    required double latitude,
+    required double longitude,
+    Station? localStation,
+    bool forceRefresh = false,
+  }) async {
+    final station =
+        localStation != null &&
+            WaterService.isStationWithinHomeRadius(
+              localStation,
+              latitude: latitude,
+              longitude: longitude,
+            )
+        ? localStation
+        : null;
+    final key =
+        'device:${latitude.toStringAsFixed(3)}:'
+        '${longitude.toStringAsFixed(3)}:${station?.id ?? 'no-water'}';
+    final cache = _cache.putIfAbsent(
+      key,
+      () => TimedCache<FishingScoreResult>(duration: cacheDuration),
+    );
+    try {
+      return (await cache.get(
+        () => _calculateLiveForLocation(
+          latitude: latitude,
+          longitude: longitude,
+          station: station,
+          forceRefresh: forceRefresh,
+        ),
+        forceRefresh: forceRefresh,
+      )).value;
+    } on Exception {
+      return const FishingScoreResult.notEnough();
+    }
+  }
+
+  Future<FishingScoreResult> _calculateLiveForLocation({
+    required double latitude,
+    required double longitude,
+    required Station? station,
+    required bool forceRefresh,
+  }) async {
+    WeatherData? weather;
+    List<WaterLevel> history = const [];
+    List<CommunityPost> posts = const [];
+    var weatherAvailable = true;
+    var waterAvailable = station?.hasWaterLevel == true;
+    var communityAvailable = true;
+
+    if (waterAvailable && station != null) {
+      try {
+        history = await _waterService.getHistory(
+          station.id,
+          stationName: station.name,
+        );
+      } on Exception catch (error, stackTrace) {
+        waterAvailable = false;
+        _logMissing('water history', error, stackTrace);
+      }
+    }
+    try {
+      weather = (await _weatherService.getHomeWeatherResultForLocation(
+        latitude: latitude,
+        longitude: longitude,
+        forceRefresh: forceRefresh,
+      )).data;
+      weatherAvailable = weather != null;
+    } on Exception catch (error, stackTrace) {
+      weatherAvailable = false;
+      _logMissing('weather', error, stackTrace);
+    }
+    try {
+      posts = filterFishingScoreLocalPosts(
+        await _communityService.getFeed(forceRefresh: forceRefresh),
+        latitude: latitude,
+        longitude: longitude,
+      );
+    } on Exception catch (error, stackTrace) {
+      communityAvailable = false;
+      _logMissing('community reports and catches', error, stackTrace);
+    }
+
+    if (weather == null && station == null && posts.isEmpty) {
+      return const FishingScoreResult.notEnough();
+    }
+    return _calculate(
+      weather: weather,
+      station: station,
+      history: history,
+      posts: posts,
+      weatherAvailable: weatherAvailable,
+      waterAvailable: waterAvailable,
+      communityAvailable: communityAvailable,
+      catchesAvailable: communityAvailable,
+      localTime: DateTime.now(),
+      latitude: latitude,
+      longitude: longitude,
+    );
   }
 
   Future<FishingScoreResult> _calculateLive({
@@ -200,10 +314,17 @@ class FishingScoreService implements FishingDecisionProvider {
     required bool communityAvailable,
     required bool catchesAvailable,
     required DateTime localTime,
+    double? latitude,
+    double? longitude,
   }) {
     final factors = <_Factor>[];
     final missing = <String>[];
-    final astronomy = _astronomy(station, localTime);
+    final astronomy = _astronomy(
+      station,
+      localTime,
+      latitude: latitude,
+      longitude: longitude,
+    );
     if (weatherAvailable && weather != null) {
       factors.addAll(_weatherFactors(weather));
     } else {
@@ -431,16 +552,23 @@ class FishingScoreService implements FishingDecisionProvider {
       '${value.hour.toString().padLeft(2, '0')}:'
       '${value.minute.toString().padLeft(2, '0')}';
 
-  AstronomyContext _astronomy(Station? station, DateTime dateTime) {
+  AstronomyContext _astronomy(
+    Station? station,
+    DateTime dateTime, {
+    double? latitude,
+    double? longitude,
+  }) {
     final service = const AstronomyService();
     final moon = service.moonPhase(dateTime);
-    if (station == null) {
+    final resolvedLatitude = latitude ?? station?.latitude;
+    final resolvedLongitude = longitude ?? station?.longitude;
+    if (resolvedLatitude == null || resolvedLongitude == null) {
       return AstronomyContext.locationRequired(moon: moon);
     }
     return service.calculate(
       dateTime: dateTime,
-      latitude: station.latitude,
-      longitude: station.longitude,
+      latitude: resolvedLatitude,
+      longitude: resolvedLongitude,
     );
   }
 
@@ -480,6 +608,26 @@ class FishingScoreService implements FishingDecisionProvider {
     );
   }
 }
+
+List<CommunityPost> filterFishingScoreLocalPosts(
+  Iterable<CommunityPost> posts, {
+  required double latitude,
+  required double longitude,
+  double radiusKm = WaterService.homeNearbyStationRadiusKm,
+}) => List<CommunityPost>.unmodifiable(
+  posts.where((post) {
+    final postLatitude = post.latitude;
+    final postLongitude = post.longitude;
+    if (postLatitude == null || postLongitude == null) return false;
+    return Geolocator.distanceBetween(
+          latitude,
+          longitude,
+          postLatitude,
+          postLongitude,
+        ) <=
+        radiusKm * 1000;
+  }),
+);
 
 class _Factor {
   const _Factor(this.points, this.text);

@@ -34,10 +34,14 @@ class PremiumDashboard extends StatelessWidget {
       _DashboardGeometry.from(layout).spacing;
 
   Widget _action({required VoidCallback onTap, required Widget child}) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return Semantics(
+      button: true,
       onTap: onTap,
-      child: child,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: child,
+      ),
     );
   }
 
@@ -45,14 +49,15 @@ class PremiumDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final geometry = _DashboardGeometry.from(layout);
     final spacing = geometry.spacing;
-    final pairedRowSpacing = geometry.pairedRowSpacing;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const minimumPairedCardsWidth = 420.0;
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
         final stackPairedCards =
-            layout.isLandscapePhone &&
-            constraints.maxWidth < minimumPairedCardsWidth;
+            constraints.maxWidth < 360 || textScale >= 1.25;
+        final pairedCardHeight =
+            geometry.standardHeight +
+            (stackPairedCards && textScale >= 1.25 ? 10 : 0);
         final aiCard = _action(
           onTap: onAiPressed,
           child: const AIConditionsCardPremium(),
@@ -84,17 +89,17 @@ class PremiumDashboard extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(height: pairedRowSpacing),
+            SizedBox(height: spacing),
             if (stackPairedCards) ...[
               SizedBox(
                 width: double.infinity,
-                height: geometry.standardHeight,
+                height: pairedCardHeight,
                 child: aiCard,
               ),
               SizedBox(height: spacing),
               SizedBox(
                 width: double.infinity,
-                height: geometry.standardHeight,
+                height: pairedCardHeight,
                 child: communityCard,
               ),
             ] else
@@ -109,7 +114,7 @@ class PremiumDashboard extends StatelessWidget {
                   ],
                 ),
               ),
-            SizedBox(height: spacing),
+            SizedBox(height: geometry.recentSpacing),
             SizedBox(
               width: double.infinity,
               height: layout.recentCatchesHeight,
@@ -125,41 +130,24 @@ class PremiumDashboard extends StatelessWidget {
 class _DashboardGeometry {
   const _DashboardGeometry({
     required this.spacing,
-    required this.pairedRowSpacing,
+    required this.recentSpacing,
     required this.waterHeight,
     required this.weatherHeight,
     required this.standardHeight,
   });
 
   factory _DashboardGeometry.from(HomePremiumLayout layout) {
-    final compactFirstViewport = layout.isPortrait && !layout.isTablet;
-    if (!compactFirstViewport) {
-      return _DashboardGeometry(
-        spacing: layout.sectionGap * .78,
-        pairedRowSpacing: layout.sectionGap * .78,
-        waterHeight: layout.waterCardHeight * .94,
-        weatherHeight: layout.weatherCardHeight * .88,
-        standardHeight: layout.standardSectionHeight,
-      );
-    }
-
     return _DashboardGeometry(
-      spacing: (layout.sectionGap * .40).clamp(4.0, 5.0).toDouble(),
-      pairedRowSpacing: (layout.sectionGap * .30).clamp(3.0, 4.0).toDouble(),
-      waterHeight: (layout.waterCardHeight * .86)
-          .clamp(100.0, 112.0)
-          .toDouble(),
-      weatherHeight: (layout.weatherCardHeight * .84)
-          .clamp(104.0, 108.0)
-          .toDouble(),
-      standardHeight: (layout.standardSectionHeight * .98)
-          .clamp(146.0, 152.0)
-          .toDouble(),
+      spacing: layout.sectionGap.clamp(6.0, 7.0).toDouble(),
+      recentSpacing: layout.sectionGap.clamp(6.0, 8.0).toDouble(),
+      waterHeight: layout.waterCardHeight,
+      weatherHeight: layout.weatherCardHeight,
+      standardHeight: layout.standardSectionHeight,
     );
   }
 
   final double spacing;
-  final double pairedRowSpacing;
+  final double recentSpacing;
   final double waterHeight;
   final double weatherHeight;
   final double standardHeight;

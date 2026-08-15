@@ -206,6 +206,12 @@ abstract class AppLocalizations {
   /// **'Alerte nivel apă'**
   String get notificationWaterAlerts;
 
+  /// No description provided for @notificationWeatherAlerts.
+  ///
+  /// In ro, this message translates to:
+  /// **'Alerte meteo'**
+  String get notificationWeatherAlerts;
+
   /// No description provided for @notificationFavouriteStations.
   ///
   /// In ro, this message translates to:
@@ -499,6 +505,24 @@ abstract class AppLocalizations {
   /// In ro, this message translates to:
   /// **'Descriere (opțional)'**
   String get descriptionOptional;
+
+  /// No description provided for @reportPhotoOptional.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fotografie opțională'**
+  String get reportPhotoOptional;
+
+  /// No description provided for @reportPhotoOptionalHint.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fotografia ajută comunitatea, dar poți publica raportul și fără ea.'**
+  String get reportPhotoOptionalHint;
+
+  /// No description provided for @reportPhotoReady.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fotografia este pregătită pentru publicare.'**
+  String get reportPhotoReady;
 
   /// No description provided for @useExactLocation.
   ///
@@ -860,6 +884,60 @@ abstract class AppLocalizations {
   /// **'Fluxul comunității este indisponibil.'**
   String get communityUnavailable;
 
+  /// No description provided for @sessionExpired.
+  ///
+  /// In ro, this message translates to:
+  /// **'Sesiunea a expirat. Autentifică-te din nou.'**
+  String get sessionExpired;
+
+  /// No description provided for @noInternetConnection.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu există conexiune la internet.'**
+  String get noInternetConnection;
+
+  /// No description provided for @requestTimedOut.
+  ///
+  /// In ro, this message translates to:
+  /// **'Solicitarea a expirat. Încearcă din nou.'**
+  String get requestTimedOut;
+
+  /// No description provided for @reportPhotoPreparationFailed.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fotografia nu a putut fi pregătită. Realizează o altă fotografie.'**
+  String get reportPhotoPreparationFailed;
+
+  /// No description provided for @reportPhotoUploadFailed.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fotografia raportului nu a putut fi încărcată. Încearcă din nou.'**
+  String get reportPhotoUploadFailed;
+
+  /// No description provided for @reportPublishFailed.
+  ///
+  /// In ro, this message translates to:
+  /// **'Raportul nu a putut fi publicat. Încearcă din nou.'**
+  String get reportPublishFailed;
+
+  /// No description provided for @reportVerificationFailed.
+  ///
+  /// In ro, this message translates to:
+  /// **'Confirmarea raportului nu a putut fi salvată.'**
+  String get reportVerificationFailed;
+
+  /// No description provided for @reportAbuseFailed.
+  ///
+  /// In ro, this message translates to:
+  /// **'Sesizarea nu a putut fi trimisă. Încearcă din nou.'**
+  String get reportAbuseFailed;
+
+  /// No description provided for @reportAlreadySubmitted.
+  ///
+  /// In ro, this message translates to:
+  /// **'Ai raportat deja acest conținut.'**
+  String get reportAlreadySubmitted;
+
   /// No description provided for @noCommunityActivity.
   ///
   /// In ro, this message translates to:
@@ -1067,7 +1145,7 @@ abstract class AppLocalizations {
   /// No description provided for @notAccurate.
   ///
   /// In ro, this message translates to:
-  /// **'Nu este corect'**
+  /// **'Nu mai este valabil'**
   String get notAccurate;
 
   /// No description provided for @currentLocation.
@@ -2191,6 +2269,480 @@ abstract class AppLocalizations {
   /// In ro, this message translates to:
   /// **'Istoric insuficient'**
   String get notEnoughHistory;
+
+  /// No description provided for @waterTrendUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Trend indisponibil'**
+  String get waterTrendUnavailable;
+
+  /// No description provided for @exploreTitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Explorează'**
+  String get exploreTitle;
+
+  /// No description provided for @exploreSubtitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Condiții, inteligență, activitate și instrumente de cont'**
+  String get exploreSubtitle;
+
+  /// No description provided for @exploreSearchHint.
+  ///
+  /// In ro, this message translates to:
+  /// **'Caută în toate instrumentele FluviAI'**
+  String get exploreSearchHint;
+
+  /// No description provided for @exploreAll.
+  ///
+  /// In ro, this message translates to:
+  /// **'Toate'**
+  String get exploreAll;
+
+  /// No description provided for @exploreResults.
+  ///
+  /// In ro, this message translates to:
+  /// **'Rezultate căutare'**
+  String get exploreResults;
+
+  /// No description provided for @exploreNoResultsTitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Niciun instrument găsit'**
+  String get exploreNoResultsTitle;
+
+  /// No description provided for @exploreNoResultsMessage.
+  ///
+  /// In ro, this message translates to:
+  /// **'Încearcă alt termen sau alege o categorie.'**
+  String get exploreNoResultsMessage;
+
+  /// No description provided for @exploreConditionsAndWater.
+  ///
+  /// In ro, this message translates to:
+  /// **'Condiții & apă'**
+  String get exploreConditionsAndWater;
+
+  /// No description provided for @exploreFluviIntelligence.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fluvi Intelligence'**
+  String get exploreFluviIntelligence;
+
+  /// No description provided for @exploreActivity.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activitate'**
+  String get exploreActivity;
+
+  /// No description provided for @exploreSaved.
+  ///
+  /// In ro, this message translates to:
+  /// **'Salvate'**
+  String get exploreSaved;
+
+  /// No description provided for @exploreRulesAndSafety.
+  ///
+  /// In ro, this message translates to:
+  /// **'Reguli & siguranță'**
+  String get exploreRulesAndSafety;
+
+  /// No description provided for @exploreAccountAndApp.
+  ///
+  /// In ro, this message translates to:
+  /// **'Cont & aplicație'**
+  String get exploreAccountAndApp;
+
+  /// No description provided for @exploreUnavailableMessage.
+  ///
+  /// In ro, this message translates to:
+  /// **'Acest instrument nu este încă legat de o sursă de producție.'**
+  String get exploreUnavailableMessage;
+
+  /// No description provided for @notificationEmptyAction.
+  ///
+  /// In ro, this message translates to:
+  /// **'Setări notificări'**
+  String get notificationEmptyAction;
+
+  /// No description provided for @journalEmptyTitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Jurnalul tău de pescuit'**
+  String get journalEmptyTitle;
+
+  /// No description provided for @journalEmptyMessage.
+  ///
+  /// In ro, this message translates to:
+  /// **'Începe o partidă reală în contextul selectat. Timpul și notițele rămân private în contul tău.'**
+  String get journalEmptyMessage;
+
+  /// No description provided for @journalEmptyAction.
+  ///
+  /// In ro, this message translates to:
+  /// **'Începe o partidă'**
+  String get journalEmptyAction;
+
+  /// No description provided for @fluviIntelligence.
+  ///
+  /// In ro, this message translates to:
+  /// **'Fluvi Intelligence'**
+  String get fluviIntelligence;
+
+  /// No description provided for @fluviScoreView.
+  ///
+  /// In ro, this message translates to:
+  /// **'Scor'**
+  String get fluviScoreView;
+
+  /// No description provided for @askFluviView.
+  ///
+  /// In ro, this message translates to:
+  /// **'Întreabă Fluvi'**
+  String get askFluviView;
+
+  /// No description provided for @hydroMapTitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'FluviAI Hydro Intelligence'**
+  String get hydroMapTitle;
+
+  /// No description provided for @hydroPro.
+  ///
+  /// In ro, this message translates to:
+  /// **'Hydro Pro'**
+  String get hydroPro;
+
+  /// No description provided for @hydroRomaniaPack.
+  ///
+  /// In ro, this message translates to:
+  /// **'Pachet național România'**
+  String get hydroRomaniaPack;
+
+  /// No description provided for @hydroExploreRomania.
+  ///
+  /// In ro, this message translates to:
+  /// **'Explorează România'**
+  String get hydroExploreRomania;
+
+  /// No description provided for @hydroBaseMap.
+  ///
+  /// In ro, this message translates to:
+  /// **'Hartă de bază'**
+  String get hydroBaseMap;
+
+  /// No description provided for @hydroPremiumOverlay.
+  ///
+  /// In ro, this message translates to:
+  /// **'Overlay premium'**
+  String get hydroPremiumOverlay;
+
+  /// No description provided for @hydroRivers.
+  ///
+  /// In ro, this message translates to:
+  /// **'Râuri'**
+  String get hydroRivers;
+
+  /// No description provided for @hydroReservoirs.
+  ///
+  /// In ro, this message translates to:
+  /// **'Acumulări'**
+  String get hydroReservoirs;
+
+  /// No description provided for @hydroDams.
+  ///
+  /// In ro, this message translates to:
+  /// **'Baraje'**
+  String get hydroDams;
+
+  /// No description provided for @hydroStations.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stații'**
+  String get hydroStations;
+
+  /// No description provided for @hydroPlants.
+  ///
+  /// In ro, this message translates to:
+  /// **'Hidrocentrale'**
+  String get hydroPlants;
+
+  /// No description provided for @hydroOutdoors.
+  ///
+  /// In ro, this message translates to:
+  /// **'Outdoors'**
+  String get hydroOutdoors;
+
+  /// No description provided for @hydroStreets.
+  ///
+  /// In ro, this message translates to:
+  /// **'Străzi'**
+  String get hydroStreets;
+
+  /// No description provided for @hydroEnabled.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activat'**
+  String get hydroEnabled;
+
+  /// No description provided for @hydroDisabled.
+  ///
+  /// In ro, this message translates to:
+  /// **'Dezactivat'**
+  String get hydroDisabled;
+
+  /// No description provided for @hydroProRequired.
+  ///
+  /// In ro, this message translates to:
+  /// **'Hydro Intelligence necesită Pro'**
+  String get hydroProRequired;
+
+  /// No description provided for @hydroProDiscovery.
+  ///
+  /// In ro, this message translates to:
+  /// **'Deblochează rețeaua semantică de râuri, acumulări, baraje, stații și hidrocentrale din România.'**
+  String get hydroProDiscovery;
+
+  /// No description provided for @hydroRiver.
+  ///
+  /// In ro, this message translates to:
+  /// **'Râu'**
+  String get hydroRiver;
+
+  /// No description provided for @hydroReservoir.
+  ///
+  /// In ro, this message translates to:
+  /// **'Acumulare'**
+  String get hydroReservoir;
+
+  /// No description provided for @hydroDam.
+  ///
+  /// In ro, this message translates to:
+  /// **'Baraj'**
+  String get hydroDam;
+
+  /// No description provided for @hydroStation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stație hidrometrică'**
+  String get hydroStation;
+
+  /// No description provided for @hydroPlant.
+  ///
+  /// In ro, this message translates to:
+  /// **'Hidrocentrală'**
+  String get hydroPlant;
+
+  /// No description provided for @hydroDetails.
+  ///
+  /// In ro, this message translates to:
+  /// **'Detalii'**
+  String get hydroDetails;
+
+  /// No description provided for @hydroViewGraph.
+  ///
+  /// In ro, this message translates to:
+  /// **'Vezi grafic'**
+  String get hydroViewGraph;
+
+  /// No description provided for @hydroAskFluvi.
+  ///
+  /// In ro, this message translates to:
+  /// **'Întreabă Fluvi'**
+  String get hydroAskFluvi;
+
+  /// No description provided for @hydroUpdated.
+  ///
+  /// In ro, this message translates to:
+  /// **'Actualizat'**
+  String get hydroUpdated;
+
+  /// No description provided for @hydroEvidenceMeasured.
+  ///
+  /// In ro, this message translates to:
+  /// **'Măsurat'**
+  String get hydroEvidenceMeasured;
+
+  /// No description provided for @hydroEvidenceDerived.
+  ///
+  /// In ro, this message translates to:
+  /// **'Derivat'**
+  String get hydroEvidenceDerived;
+
+  /// No description provided for @hydroEvidenceEstimated.
+  ///
+  /// In ro, this message translates to:
+  /// **'Estimat'**
+  String get hydroEvidenceEstimated;
+
+  /// No description provided for @hydroEvidenceObserved.
+  ///
+  /// In ro, this message translates to:
+  /// **'Observat'**
+  String get hydroEvidenceObserved;
+
+  /// No description provided for @hydroEvidenceUnknown.
+  ///
+  /// In ro, this message translates to:
+  /// **'Necunoscut'**
+  String get hydroEvidenceUnknown;
+
+  /// No description provided for @hydroUnknownState.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nu sunt disponibile date operaționale verificate pentru această entitate. Valorile necunoscute rămân necunoscute.'**
+  String get hydroUnknownState;
+
+  /// No description provided for @hydroLoadingIntelligence.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se încarcă inteligența verificată'**
+  String get hydroLoadingIntelligence;
+
+  /// No description provided for @hydroBasin.
+  ///
+  /// In ro, this message translates to:
+  /// **'Bazin'**
+  String get hydroBasin;
+
+  /// No description provided for @hydroCounty.
+  ///
+  /// In ro, this message translates to:
+  /// **'Județ'**
+  String get hydroCounty;
+
+  /// No description provided for @hydroLevel.
+  ///
+  /// In ro, this message translates to:
+  /// **'Nivelul apei'**
+  String get hydroLevel;
+
+  /// No description provided for @hydroDelta24h.
+  ///
+  /// In ro, this message translates to:
+  /// **'Schimbare 24h'**
+  String get hydroDelta24h;
+
+  /// No description provided for @hydroTrend.
+  ///
+  /// In ro, this message translates to:
+  /// **'Trend'**
+  String get hydroTrend;
+
+  /// No description provided for @hydroOperation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Operare'**
+  String get hydroOperation;
+
+  /// No description provided for @hydroConfidence.
+  ///
+  /// In ro, this message translates to:
+  /// **'Încredere'**
+  String get hydroConfidence;
+
+  /// No description provided for @hydroRelatedNetwork.
+  ///
+  /// In ro, this message translates to:
+  /// **'Rețea asociată'**
+  String get hydroRelatedNetwork;
+
+  /// No description provided for @hydroOfficialState.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stare oficială'**
+  String get hydroOfficialState;
+
+  /// No description provided for @hydroCommunityState.
+  ///
+  /// In ro, this message translates to:
+  /// **'Observații comunitare'**
+  String get hydroCommunityState;
+
+  /// No description provided for @hydroFresh.
+  ///
+  /// In ro, this message translates to:
+  /// **'Actual'**
+  String get hydroFresh;
+
+  /// No description provided for @hydroRecent.
+  ///
+  /// In ro, this message translates to:
+  /// **'Recent'**
+  String get hydroRecent;
+
+  /// No description provided for @hydroStale.
+  ///
+  /// In ro, this message translates to:
+  /// **'Vechi'**
+  String get hydroStale;
+
+  /// No description provided for @hydroUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Indisponibil'**
+  String get hydroUnavailable;
+
+  /// No description provided for @hydroActive.
+  ///
+  /// In ro, this message translates to:
+  /// **'Activă'**
+  String get hydroActive;
+
+  /// No description provided for @hydroInactive.
+  ///
+  /// In ro, this message translates to:
+  /// **'Inactivă'**
+  String get hydroInactive;
+
+  /// No description provided for @hydroPossiblyActive.
+  ///
+  /// In ro, this message translates to:
+  /// **'Posibil activă'**
+  String get hydroPossiblyActive;
+
+  /// No description provided for @hydroDataAvailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Date verificate disponibile'**
+  String get hydroDataAvailable;
+
+  /// No description provided for @hydroMapPublicGeometry.
+  ///
+  /// In ro, this message translates to:
+  /// **'Geometrie cartografică publică'**
+  String get hydroMapPublicGeometry;
+
+  /// No description provided for @hydroLayersApply.
+  ///
+  /// In ro, this message translates to:
+  /// **'Aplică'**
+  String get hydroLayersApply;
+
+  /// No description provided for @hydroLayersReset.
+  ///
+  /// In ro, this message translates to:
+  /// **'Resetează'**
+  String get hydroLayersReset;
+
+  /// No description provided for @hydroSelectedPublicOnly.
+  ///
+  /// In ro, this message translates to:
+  /// **'Identitatea publică de pe hartă a fost rezolvată; datele operaționale verificate nu sunt disponibile.'**
+  String get hydroSelectedPublicOnly;
+
+  /// No description provided for @hydroOperationalStatus.
+  ///
+  /// In ro, this message translates to:
+  /// **'Stare operațională'**
+  String get hydroOperationalStatus;
+
+  /// No description provided for @hydroOperationalUnavailable.
+  ///
+  /// In ro, this message translates to:
+  /// **'Date operaționale indisponibile'**
+  String get hydroOperationalUnavailable;
 }
 
 class _AppLocalizationsDelegate

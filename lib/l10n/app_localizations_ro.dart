@@ -63,6 +63,9 @@ class AppLocalizationsRo extends AppLocalizations {
   String get notificationWaterAlerts => 'Alerte nivel apă';
 
   @override
+  String get notificationWeatherAlerts => 'Alerte meteo';
+
+  @override
   String get notificationFavouriteStations => 'Stații favorite';
 
   @override
@@ -215,6 +218,16 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get descriptionOptional => 'Descriere (opțional)';
+
+  @override
+  String get reportPhotoOptional => 'Fotografie opțională';
+
+  @override
+  String get reportPhotoOptionalHint =>
+      'Fotografia ajută comunitatea, dar poți publica raportul și fără ea.';
+
+  @override
+  String get reportPhotoReady => 'Fotografia este pregătită pentru publicare.';
 
   @override
   String get useExactLocation => 'Folosește locația exactă';
@@ -435,6 +448,38 @@ class AppLocalizationsRo extends AppLocalizations {
   String get communityUnavailable => 'Fluxul comunității este indisponibil.';
 
   @override
+  String get sessionExpired => 'Sesiunea a expirat. Autentifică-te din nou.';
+
+  @override
+  String get noInternetConnection => 'Nu există conexiune la internet.';
+
+  @override
+  String get requestTimedOut => 'Solicitarea a expirat. Încearcă din nou.';
+
+  @override
+  String get reportPhotoPreparationFailed =>
+      'Fotografia nu a putut fi pregătită. Realizează o altă fotografie.';
+
+  @override
+  String get reportPhotoUploadFailed =>
+      'Fotografia raportului nu a putut fi încărcată. Încearcă din nou.';
+
+  @override
+  String get reportPublishFailed =>
+      'Raportul nu a putut fi publicat. Încearcă din nou.';
+
+  @override
+  String get reportVerificationFailed =>
+      'Confirmarea raportului nu a putut fi salvată.';
+
+  @override
+  String get reportAbuseFailed =>
+      'Sesizarea nu a putut fi trimisă. Încearcă din nou.';
+
+  @override
+  String get reportAlreadySubmitted => 'Ai raportat deja acest conținut.';
+
+  @override
   String get noCommunityActivity => 'Nu există încă activitate în comunitate.';
 
   @override
@@ -538,7 +583,7 @@ class AppLocalizationsRo extends AppLocalizations {
   String get lowWater => 'Nivel scăzut';
 
   @override
-  String get notAccurate => 'Nu este corect';
+  String get notAccurate => 'Nu mai este valabil';
 
   @override
   String get currentLocation => 'Locația curentă';
@@ -1175,4 +1220,248 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get notEnoughHistory => 'Istoric insuficient';
+
+  @override
+  String get waterTrendUnavailable => 'Trend indisponibil';
+
+  @override
+  String get exploreTitle => 'Explorează';
+
+  @override
+  String get exploreSubtitle =>
+      'Condiții, inteligență, activitate și instrumente de cont';
+
+  @override
+  String get exploreSearchHint => 'Caută în toate instrumentele FluviAI';
+
+  @override
+  String get exploreAll => 'Toate';
+
+  @override
+  String get exploreResults => 'Rezultate căutare';
+
+  @override
+  String get exploreNoResultsTitle => 'Niciun instrument găsit';
+
+  @override
+  String get exploreNoResultsMessage =>
+      'Încearcă alt termen sau alege o categorie.';
+
+  @override
+  String get exploreConditionsAndWater => 'Condiții & apă';
+
+  @override
+  String get exploreFluviIntelligence => 'Fluvi Intelligence';
+
+  @override
+  String get exploreActivity => 'Activitate';
+
+  @override
+  String get exploreSaved => 'Salvate';
+
+  @override
+  String get exploreRulesAndSafety => 'Reguli & siguranță';
+
+  @override
+  String get exploreAccountAndApp => 'Cont & aplicație';
+
+  @override
+  String get exploreUnavailableMessage =>
+      'Acest instrument nu este încă legat de o sursă de producție.';
+
+  @override
+  String get notificationEmptyAction => 'Setări notificări';
+
+  @override
+  String get journalEmptyTitle => 'Jurnalul tău de pescuit';
+
+  @override
+  String get journalEmptyMessage =>
+      'Începe o partidă reală în contextul selectat. Timpul și notițele rămân private în contul tău.';
+
+  @override
+  String get journalEmptyAction => 'Începe o partidă';
+
+  @override
+  String get fluviIntelligence => 'Fluvi Intelligence';
+
+  @override
+  String get fluviScoreView => 'Scor';
+
+  @override
+  String get askFluviView => 'Întreabă Fluvi';
+
+  @override
+  String get hydroMapTitle => 'FluviAI Hydro Intelligence';
+
+  @override
+  String get hydroPro => 'Hydro Pro';
+
+  @override
+  String get hydroRomaniaPack => 'Pachet național România';
+
+  @override
+  String get hydroExploreRomania => 'Explorează România';
+
+  @override
+  String get hydroBaseMap => 'Hartă de bază';
+
+  @override
+  String get hydroPremiumOverlay => 'Overlay premium';
+
+  @override
+  String get hydroRivers => 'Râuri';
+
+  @override
+  String get hydroReservoirs => 'Acumulări';
+
+  @override
+  String get hydroDams => 'Baraje';
+
+  @override
+  String get hydroStations => 'Stații';
+
+  @override
+  String get hydroPlants => 'Hidrocentrale';
+
+  @override
+  String get hydroOutdoors => 'Outdoors';
+
+  @override
+  String get hydroStreets => 'Străzi';
+
+  @override
+  String get hydroEnabled => 'Activat';
+
+  @override
+  String get hydroDisabled => 'Dezactivat';
+
+  @override
+  String get hydroProRequired => 'Hydro Intelligence necesită Pro';
+
+  @override
+  String get hydroProDiscovery =>
+      'Deblochează rețeaua semantică de râuri, acumulări, baraje, stații și hidrocentrale din România.';
+
+  @override
+  String get hydroRiver => 'Râu';
+
+  @override
+  String get hydroReservoir => 'Acumulare';
+
+  @override
+  String get hydroDam => 'Baraj';
+
+  @override
+  String get hydroStation => 'Stație hidrometrică';
+
+  @override
+  String get hydroPlant => 'Hidrocentrală';
+
+  @override
+  String get hydroDetails => 'Detalii';
+
+  @override
+  String get hydroViewGraph => 'Vezi grafic';
+
+  @override
+  String get hydroAskFluvi => 'Întreabă Fluvi';
+
+  @override
+  String get hydroUpdated => 'Actualizat';
+
+  @override
+  String get hydroEvidenceMeasured => 'Măsurat';
+
+  @override
+  String get hydroEvidenceDerived => 'Derivat';
+
+  @override
+  String get hydroEvidenceEstimated => 'Estimat';
+
+  @override
+  String get hydroEvidenceObserved => 'Observat';
+
+  @override
+  String get hydroEvidenceUnknown => 'Necunoscut';
+
+  @override
+  String get hydroUnknownState =>
+      'Nu sunt disponibile date operaționale verificate pentru această entitate. Valorile necunoscute rămân necunoscute.';
+
+  @override
+  String get hydroLoadingIntelligence => 'Se încarcă inteligența verificată';
+
+  @override
+  String get hydroBasin => 'Bazin';
+
+  @override
+  String get hydroCounty => 'Județ';
+
+  @override
+  String get hydroLevel => 'Nivelul apei';
+
+  @override
+  String get hydroDelta24h => 'Schimbare 24h';
+
+  @override
+  String get hydroTrend => 'Trend';
+
+  @override
+  String get hydroOperation => 'Operare';
+
+  @override
+  String get hydroConfidence => 'Încredere';
+
+  @override
+  String get hydroRelatedNetwork => 'Rețea asociată';
+
+  @override
+  String get hydroOfficialState => 'Stare oficială';
+
+  @override
+  String get hydroCommunityState => 'Observații comunitare';
+
+  @override
+  String get hydroFresh => 'Actual';
+
+  @override
+  String get hydroRecent => 'Recent';
+
+  @override
+  String get hydroStale => 'Vechi';
+
+  @override
+  String get hydroUnavailable => 'Indisponibil';
+
+  @override
+  String get hydroActive => 'Activă';
+
+  @override
+  String get hydroInactive => 'Inactivă';
+
+  @override
+  String get hydroPossiblyActive => 'Posibil activă';
+
+  @override
+  String get hydroDataAvailable => 'Date verificate disponibile';
+
+  @override
+  String get hydroMapPublicGeometry => 'Geometrie cartografică publică';
+
+  @override
+  String get hydroLayersApply => 'Aplică';
+
+  @override
+  String get hydroLayersReset => 'Resetează';
+
+  @override
+  String get hydroSelectedPublicOnly =>
+      'Identitatea publică de pe hartă a fost rezolvată; datele operaționale verificate nu sunt disponibile.';
+
+  @override
+  String get hydroOperationalStatus => 'Stare operațională';
+
+  @override
+  String get hydroOperationalUnavailable => 'Date operaționale indisponibile';
 }

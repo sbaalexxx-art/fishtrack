@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/l10n.dart';
+import '../core/navigation/app_destination.dart';
+import '../core/navigation/app_navigator.dart';
 import '../services/notification_service.dart';
 import '../widgets/loading_list_skeleton.dart';
 import 'notification_preferences_page.dart';
@@ -110,34 +112,51 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(context.l10n.notifications),
-            if (_notifications.any((notification) => !notification.isRead)) ...[
-              const SizedBox(width: 8),
-              Badge(
-                label: Text(
-                  '${_notifications.where((notification) => !notification.isRead).length}',
-                ),
-              ),
-            ],
-          ],
+        title: Text(
+          context.l10n.notifications,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
           IconButton(
-            tooltip: context.l10n.notificationPreferencesTooltip,
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const NotificationPreferencesPage(),
-              ),
-            ),
-            icon: const Icon(Icons.tune_rounded),
+            key: const Key('notifications-alert-rules-action'),
+            tooltip: Localizations.localeOf(context).languageCode == 'ro'
+                ? 'Alerte personale'
+                : 'Personal alerts',
+            onPressed: () => AppNavigator.open(context, AppDestination.alerts),
+            icon: const Icon(Icons.notifications_active_outlined),
           ),
-          IconButton(
-            tooltip: context.l10n.clearReadNotifications,
-            onPressed: _clearRead,
-            icon: const Icon(Icons.delete_sweep_outlined),
+          PopupMenuButton<_NotificationMenuAction>(
+            key: const Key('notifications-more-action'),
+            tooltip: MaterialLocalizations.of(context).moreButtonTooltip,
+            onSelected: (action) {
+              switch (action) {
+                case _NotificationMenuAction.preferences:
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const NotificationPreferencesPage(),
+                    ),
+                  );
+                case _NotificationMenuAction.clearRead:
+                  _clearRead();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: _NotificationMenuAction.preferences,
+                child: ListTile(
+                  leading: const Icon(Icons.tune_rounded),
+                  title: Text(context.l10n.notificationPreferencesTooltip),
+                ),
+              ),
+              PopupMenuItem(
+                value: _NotificationMenuAction.clearRead,
+                child: ListTile(
+                  leading: const Icon(Icons.delete_sweep_outlined),
+                  title: Text(context.l10n.clearReadNotifications),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -209,11 +228,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
   static IconData _icon(AppNotificationType type) => switch (type) {
     AppNotificationType.waterLevelChanged => Icons.water_rounded,
     AppNotificationType.waterTrendChanged => Icons.trending_up_rounded,
+    AppNotificationType.waterStateObserved => Icons.water_drop_outlined,
     AppNotificationType.newReportNearFavoriteStation => Icons.campaign_outlined,
     AppNotificationType.dangerousReport => Icons.warning_amber_rounded,
+    AppNotificationType.newCatchNearSavedArea => Icons.set_meal_rounded,
     AppNotificationType.reputationIncreased => Icons.add_chart_rounded,
     AppNotificationType.trustBadgeUpgraded => Icons.verified_rounded,
     AppNotificationType.favoriteStationUpdate => Icons.favorite_rounded,
+    AppNotificationType.weatherAlert => Icons.cloud_outlined,
+    AppNotificationType.reportVerificationChanged => Icons.fact_check_outlined,
+    AppNotificationType.catchLiked => Icons.favorite_border_rounded,
   };
 
   static Color _color(NotificationPriority priority) => switch (priority) {
@@ -240,6 +264,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
         '${value.toLocal().year}';
   }
 }
+
+enum _NotificationMenuAction { preferences, clearRead }
 
 class _NotificationMessage extends StatelessWidget {
   const _NotificationMessage({required this.message, required this.onRetry});

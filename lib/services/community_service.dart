@@ -6,8 +6,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/cache/timed_cache.dart';
 import 'location_service.dart';
+import 'report_image_optimizer.dart';
 import 'report_spam_service.dart';
 import 'reputation_service.dart';
+import 'diagnostics_service.dart';
 
 enum CommunityPostType { catchPost, report }
 
@@ -79,6 +81,11 @@ class CommunityPost {
     this.imageUrl,
     this.weight,
     this.length,
+    this.speciesScientific,
+    this.speciesSource,
+    this.speciesConfidence,
+    this.speciesModelVersion,
+    this.speciesUserConfirmed = true,
     this.likeCount = 0,
     this.isLiked = false,
     this.reportCategory,
@@ -104,6 +111,11 @@ class CommunityPost {
   final String? imageUrl;
   final double? weight;
   final double? length;
+  final String? speciesScientific;
+  final String? speciesSource;
+  final double? speciesConfidence;
+  final String? speciesModelVersion;
+  final bool speciesUserConfirmed;
   final int likeCount;
   final bool isLiked;
   final ReportCategory? reportCategory;
@@ -134,6 +146,11 @@ class CommunityPost {
     imageUrl: imageUrl,
     weight: weight,
     length: length,
+    speciesScientific: speciesScientific,
+    speciesSource: speciesSource,
+    speciesConfidence: speciesConfidence,
+    speciesModelVersion: speciesModelVersion,
+    speciesUserConfirmed: speciesUserConfirmed,
     likeCount: likeCount ?? this.likeCount,
     isLiked: isLiked ?? this.isLiked,
     reportCategory: reportCategory,
@@ -187,15 +204,30 @@ class CommunityProfile {
   final TrustLevel trustLevel;
 }
 
+enum CommunityErrorCode {
+  sessionExpired,
+  noInternet,
+  requestTimedOut,
+  reportPhotoPreparationFailed,
+  reportPhotoUploadFailed,
+  reportPublishFailed,
+  reportVerificationFailed,
+  reportAbuseFailed,
+  reportAlreadySubmitted,
+  communityUnavailable,
+}
+
 class CommunityException implements Exception {
-  const CommunityException(this.message);
+  const CommunityException(this.message, {this.code});
 
   final String message;
+  final CommunityErrorCode? code;
 }
 
 class CommunityService {
   const CommunityService({SupabaseClient? client}) : _client = client;
 
+  static const _reportPhotosBucket = 'report-photos';
   final SupabaseClient? _client;
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
@@ -211,8 +243,9 @@ class CommunityService {
       .from('reports')
       .stream(primaryKey: ['id'])
       .order('created_at', ascending: false)
-      .map(
-        (rows) => rows
+      .map((rows) {
+        _feedCache.clear();
+        return rows
             .map(
               (row) => CommunityPost(
                 id: _text(row['id']) ?? '',
@@ -237,8 +270,8 @@ class CommunityService {
               ),
             )
             .where((report) => report.id.isNotEmpty)
-            .toList(growable: false),
-      );
+            .toList(growable: false);
+      });
 
   Future<List<CommunityPost>> getFeed({bool forceRefresh = false}) async =>
       (await getFeedResult(forceRefresh: forceRefresh)).value;
@@ -246,31 +279,43 @@ class CommunityService {
   Future<CacheResult<List<CommunityPost>>> getFeedResult({
     bool forceRefresh = false,
   }) async {
-    try {
-      return await _feedCache.get(
-        () => _fetchFeed(),
-        forceRefresh: forceRefresh,
-      );
-    } on Exception {
-      return const CacheResult<List<CommunityPost>>(<CommunityPost>[]);
+    final stopwatch = Stopwatch()..start();
+    final result = await _feedCache.get(
+      () => _fetchFeed(),
+      forceRefresh: forceRefresh,
+    );
+    if (result.value.isEmpty) {
+      _feedCache.clear();
+      if (result.isStaleFallback) {
+        throw const CommunityException(
+          'Community data is unavailable.',
+          code: CommunityErrorCode.communityUnavailable,
+        );
+      }
     }
+    stopwatch.stop();
+    DiagnosticsService.instance.record(
+      category: DiagnosticCategory.community,
+      operation: 'feed_load',
+      message: result.isStaleFallback ? 'stale_fallback' : 'available',
+      duration: stopwatch.elapsed,
+      metadata: <String, Object?>{
+        'items': result.value.length,
+        'force_refresh': forceRefresh,
+      },
+    );
+    return result;
   }
 
   Future<List<CommunityPost>> _fetchFeed() => _guard(() async {
-    final responses = await Future.wait([
-      _supabase
-          .from('catches')
-          .select()
-          .order('timestamp', ascending: false)
-          .limit(50),
-      _supabase
+    final reports = _maps(
+      await _supabase
           .from('reports')
           .select()
           .order('created_at', ascending: false)
           .limit(50),
-    ]);
-    final catches = _maps(responses[0]);
-    final reports = _maps(responses[1]);
+    );
+    final catches = await _fetchOptionalCatches();
     developer.log(
       'Fetched report count: ${reports.length}',
       name: 'AIFishMap.Community',
@@ -279,15 +324,30 @@ class CommunityService {
       ...catches.map((row) => _text(row['user_id'])).whereType<String>(),
       ...reports.map((row) => _text(row['user_id'])).whereType<String>(),
     };
-    final profiles = await _profiles(userIds);
-    final reputations = await ReputationService(
-      client: _supabase,
-    ).getReputations(userIds);
+    Map<String, Map<String, dynamic>> profiles = const {};
+    try {
+      profiles = await _profiles(userIds);
+    } on Exception catch (error, stackTrace) {
+      _logOptionalFeedFailure('profiles', error, stackTrace);
+    }
+    Map<String, ReputationMetrics> reputations = const {};
+    try {
+      reputations = await ReputationService(
+        client: _supabase,
+      ).getReputations(userIds);
+    } on Exception catch (error, stackTrace) {
+      _logOptionalFeedFailure('reputations', error, stackTrace);
+    }
     final catchIds = catches
         .map((row) => _text(row['id']))
         .whereType<String>()
         .toList();
-    final likes = await _likes(catchIds);
+    List<_Like> likes = const [];
+    try {
+      likes = await _likes(catchIds);
+    } on Exception catch (error, stackTrace) {
+      _logOptionalFeedFailure('likes', error, stackTrace);
+    }
     final currentUserId = _supabase.auth.currentUser?.id;
 
     final posts = <CommunityPost>[
@@ -302,6 +362,11 @@ class CommunityService {
             imageUrl: _text(row['image']),
             weight: _number(row['weight']),
             length: _number(row['length']),
+            speciesScientific: _text(row['species_scientific']),
+            speciesSource: _text(row['species_source']),
+            speciesConfidence: _number(row['species_confidence']),
+            speciesModelVersion: _text(row['species_model_version']),
+            speciesUserConfirmed: row['species_user_confirmed'] != false,
             latitude: _number(row['latitude']),
             longitude: _number(row['longitude']),
             createdAt: _date(row['timestamp']),
@@ -342,6 +407,34 @@ class CommunityService {
     posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return posts;
   });
+
+  Future<List<Map<String, dynamic>>> _fetchOptionalCatches() async {
+    if (_supabase.auth.currentUser == null) return const [];
+    try {
+      return _maps(
+        await _supabase.rpc(
+          'get_public_catches_v2',
+          params: const {'p_limit': 50},
+        ),
+      );
+    } on Exception catch (error, stackTrace) {
+      _logOptionalFeedFailure('public catches', error, stackTrace);
+      return const [];
+    }
+  }
+
+  static void _logOptionalFeedFailure(
+    String source,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    developer.log(
+      'Optional community feed $source unavailable',
+      name: 'AIFishMap.Community',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
 
   Future<List<CommunityPost>> getReportsArchive(
     Duration period, {
@@ -404,98 +497,173 @@ class CommunityService {
     String? text,
     File? cameraPhoto,
     required bool useExactLocation,
-  }) => _guard(() async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) {
-      throw const CommunityException('Your session has expired.');
-    }
-    final position = await const LocationService().determinePosition();
-    final latitude = useExactLocation
-        ? position.latitude
-        : (position.latitude * 100).round() / 100;
-    final longitude = useExactLocation
-        ? position.longitude
-        : (position.longitude * 100).round() / 100;
-    final now = DateTime.now().toUtc();
-    final description = text?.trim() ?? '';
-    final moderation = const ReportSpamService();
-    final hash = await moderation.imageHash(cameraPhoto);
-    final previousRows = _maps(
-      await _supabase
-          .from('reports')
-          .select(
-            'category,description,latitude,longitude,created_at,image_hash',
-          )
-          .eq('user_id', user.id)
-          .gte(
-            'created_at',
-            now.subtract(const Duration(hours: 24)).toIso8601String(),
-          )
-          .order('created_at', ascending: false)
-          .limit(50),
-    );
-    final assessment = moderation.assess(
-      category: category.name,
-      description: description,
-      latitude: latitude,
-      longitude: longitude,
-      now: now,
-      imageHash: hash,
-      history: [
-        for (final row in previousRows)
-          SpamReportHistory(
-            category: _text(row['category']) ?? '',
-            description: _text(row['description']) ?? '',
-            latitude: _number(row['latitude']),
-            longitude: _number(row['longitude']),
-            createdAt: _date(row['created_at']).toUtc(),
-            imageHash: _text(row['image_hash']),
-          ),
-      ],
-    );
-    String? imageUrl;
-    if (cameraPhoto != null) {
-      final path = '${user.id}/${now.microsecondsSinceEpoch}.jpg';
-      await _supabase.storage.from('report-photos').upload(path, cameraPhoto);
-      imageUrl = _supabase.storage.from('report-photos').getPublicUrl(path);
-    }
-    final inserted = Map<String, dynamic>.from(
-      await _supabase
-          .from('reports')
-          .insert({
-            'user_id': user.id,
-            'type': category.label,
-            'category': category.name,
-            'description': description.isEmpty ? null : description,
-            'image_url': imageUrl,
-            'latitude': latitude,
-            'longitude': longitude,
-            'created_at': now.toIso8601String(),
-            'expires_at': now.add(const Duration(hours: 12)).toIso8601String(),
-            'spam_score': assessment.score,
-            'is_suspicious': assessment.isSuspicious,
-            'spam_reason': assessment.reason,
-            'image_hash': hash,
-          })
-          .select('id')
-          .single(),
-    );
-    final id = _text(inserted['id']);
-    if (id == null) {
-      throw const CommunityException(
-        'The report was saved without a valid identifier.',
+  }) => _guard(
+    () async {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw const CommunityException(
+          'Your session has expired.',
+          code: CommunityErrorCode.sessionExpired,
+        );
+      }
+      final position = await const LocationService().determinePosition();
+      final latitude = useExactLocation
+          ? position.latitude
+          : (position.latitude * 100).round() / 100;
+      final longitude = useExactLocation
+          ? position.longitude
+          : (position.longitude * 100).round() / 100;
+      final now = DateTime.now().toUtc();
+      final description = text?.trim() ?? '';
+      final moderation = const ReportSpamService();
+      OptimizedReportImage? optimizedImage;
+      String? storagePath;
+      var reportSaved = false;
+      try {
+        if (cameraPhoto != null) {
+          try {
+            optimizedImage = await const ReportImageOptimizer().optimize(
+              cameraPhoto,
+            );
+          } on ReportImageOptimizationException {
+            throw const CommunityException(
+              'The report photo could not be prepared. Please try another photo.',
+              code: CommunityErrorCode.reportPhotoPreparationFailed,
+            );
+          }
+        }
+        final reportPhoto = optimizedImage?.file;
+        final hash = await moderation.imageHash(reportPhoto);
+        final previousRows = _maps(
+          await _supabase
+              .from('reports')
+              .select(
+                'category,description,latitude,longitude,created_at,image_hash',
+              )
+              .eq('user_id', user.id)
+              .gte(
+                'created_at',
+                now.subtract(const Duration(hours: 24)).toIso8601String(),
+              )
+              .order('created_at', ascending: false)
+              .limit(50),
+        );
+        final assessment = moderation.assess(
+          category: category.name,
+          description: description,
+          latitude: latitude,
+          longitude: longitude,
+          now: now,
+          imageHash: hash,
+          history: [
+            for (final row in previousRows)
+              SpamReportHistory(
+                category: _text(row['category']) ?? '',
+                description: _text(row['description']) ?? '',
+                latitude: _number(row['latitude']),
+                longitude: _number(row['longitude']),
+                createdAt: _date(row['created_at']).toUtc(),
+                imageHash: _text(row['image_hash']),
+              ),
+          ],
+        );
+        String? imageUrl;
+        if (reportPhoto != null) {
+          final uploadedPath = '${user.id}/${now.microsecondsSinceEpoch}.jpg';
+          await _supabase.storage
+              .from(_reportPhotosBucket)
+              .upload(
+                uploadedPath,
+                reportPhoto,
+                fileOptions: const FileOptions(contentType: 'image/jpeg'),
+              );
+          storagePath = uploadedPath;
+          imageUrl = _supabase.storage
+              .from(_reportPhotosBucket)
+              .getPublicUrl(uploadedPath);
+        }
+        late final Map<String, Object?> inserted;
+        inserted = Map<String, Object?>.from(
+          await _supabase
+              .from('reports')
+              .insert({
+                'user_id': user.id,
+                'type': category.label,
+                'category': category.name,
+                'description': description.isEmpty ? null : description,
+                'image_url': imageUrl,
+                'latitude': latitude,
+                'longitude': longitude,
+                'use_exact_location': useExactLocation,
+                'created_at': now.toIso8601String(),
+                'expires_at': now
+                    .add(const Duration(hours: 12))
+                    .toIso8601String(),
+                'spam_score': assessment.score,
+                'is_suspicious': assessment.isSuspicious,
+                'spam_reason': assessment.reason,
+                'image_hash': hash,
+              })
+              .select('id')
+              .single(),
+        );
+        final id = _text(inserted['id']);
+        if (id == null) {
+          throw const CommunityException(
+            'The report was saved without a valid identifier.',
+            code: CommunityErrorCode.reportPublishFailed,
+          );
+        }
+        reportSaved = true;
+        developer.log(
+          'Community report insert success',
+          name: 'AIFishMap.Community',
+        );
+        developer.log('Inserted report id: $id', name: 'AIFishMap.Community');
+        _feedCache.clear();
+        _reportEvents.add(
+          CommunityReportEvent(CommunityReportEventType.created, id),
+        );
+        return id;
+      } finally {
+        if (storagePath != null && !reportSaved) {
+          await _removeReportPhoto(storagePath);
+        }
+        await optimizedImage?.dispose();
+      }
+    },
+    debugLabel: 'publish community report',
+    storageErrorCode: CommunityErrorCode.reportPhotoUploadFailed,
+    databaseErrorCode: CommunityErrorCode.reportPublishFailed,
+  );
+
+  Future<bool> attachReportWaterContext({
+    required String reportId,
+    required String entityType,
+    required String entityId,
+  }) => _guard(
+    () async {
+      final response = await _supabase.rpc(
+        'attach_report_water_context_v1',
+        params: {
+          'p_report_id': reportId,
+          'p_entity_type': entityType,
+          'p_entity_id': entityId,
+        },
       );
+      return response == true;
+    },
+    debugLabel: 'attach report Water context',
+    databaseErrorCode: CommunityErrorCode.reportPublishFailed,
+  );
+
+  Future<void> _removeReportPhoto(String path) async {
+    try {
+      await _supabase.storage.from(_reportPhotosBucket).remove([path]);
+    } catch (_) {
+      // Cleanup is best-effort; preserve the original report insert failure.
     }
-    developer.log(
-      'Community report insert success',
-      name: 'AIFishMap.Community',
-    );
-    developer.log('Inserted report id: $id', name: 'AIFishMap.Community');
-    _reportEvents.add(
-      CommunityReportEvent(CommunityReportEventType.created, id),
-    );
-    return id;
-  }, debugLabel: 'publish community report');
+  }
 
   Future<List<CommunityPost>> getActiveReports() async => (await getFeed())
       .where(
@@ -507,61 +675,79 @@ class CommunityService {
       .toList(growable: false);
 
   Future<void> verifyReport(String reportId, ReportVerification verification) =>
-      _guard(() async {
-        final user = _supabase.auth.currentUser;
-        if (user == null) {
-          throw const CommunityException('Your session has expired.');
-        }
-        await _supabase.from('report_verifications').upsert({
-          'report_id': reportId,
-          'user_id': user.id,
-          'is_valid': verification == ReportVerification.stillValid,
-          'created_at': DateTime.now().toUtc().toIso8601String(),
-        }, onConflict: 'report_id,user_id');
-        _reportEvents.add(
-          CommunityReportEvent(CommunityReportEventType.verified, reportId),
-        );
-        developer.log(
-          verification == ReportVerification.stillValid
-              ? 'Confirm reaction: $reportId'
-              : 'Not accurate reaction: $reportId',
-          name: 'AIFishMap.Community',
-        );
-      }, debugLabel: 'react to community report');
-
-  Future<void> reportAbuse(String reportId, ReportAbuseReason reason) =>
-      _guard(() async {
-        final user = _supabase.auth.currentUser;
-        if (user == null) {
-          throw const CommunityException('Your session has expired.');
-        }
-        final existing = await _supabase
-            .from('report_abuse')
-            .select('id')
-            .eq('report_id', reportId)
-            .eq('user_id', user.id)
-            .maybeSingle();
-        if (existing != null) {
-          throw const CommunityException(
-            'You have already reported this report.',
+      _guard(
+        () async {
+          final user = _supabase.auth.currentUser;
+          if (user == null) {
+            throw const CommunityException(
+              'Your session has expired.',
+              code: CommunityErrorCode.sessionExpired,
+            );
+          }
+          await _supabase.rpc(
+            'submit_report_verification',
+            params: {
+              'p_report_id': reportId,
+              'p_is_valid': verification == ReportVerification.stillValid,
+            },
           );
-        }
-        await _supabase.from('report_abuse').insert({
-          'report_id': reportId,
-          'user_id': user.id,
-          'reason': reason.databaseValue,
-          'created_at': DateTime.now().toUtc().toIso8601String(),
-        });
-        developer.log(
-          'Report abuse: $reportId (${reason.databaseValue})',
-          name: 'AIFishMap.Community',
+          _reportEvents.add(
+            CommunityReportEvent(CommunityReportEventType.verified, reportId),
+          );
+          developer.log(
+            verification == ReportVerification.stillValid
+                ? 'Confirm reaction: $reportId'
+                : 'Not accurate reaction: $reportId',
+            name: 'AIFishMap.Community',
+          );
+        },
+        debugLabel: 'react to community report',
+        databaseErrorCode: CommunityErrorCode.reportVerificationFailed,
+      );
+
+  Future<void> reportAbuse(String reportId, ReportAbuseReason reason) => _guard(
+    () async {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw const CommunityException(
+          'Your session has expired.',
+          code: CommunityErrorCode.sessionExpired,
         );
-      }, debugLabel: 'report community abuse');
+      }
+      final existing = await _supabase
+          .from('report_abuse')
+          .select('id')
+          .eq('report_id', reportId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+      if (existing != null) {
+        throw const CommunityException(
+          'You have already reported this report.',
+          code: CommunityErrorCode.reportAlreadySubmitted,
+        );
+      }
+      await _supabase.from('report_abuse').insert({
+        'report_id': reportId,
+        'user_id': user.id,
+        'reason': reason.databaseValue,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      developer.log(
+        'Report abuse: $reportId (${reason.databaseValue})',
+        name: 'AIFishMap.Community',
+      );
+    },
+    debugLabel: 'report community abuse',
+    databaseErrorCode: CommunityErrorCode.reportAbuseFailed,
+  );
 
   Future<bool> toggleLike(CommunityPost post) => _guard(() async {
     final user = _supabase.auth.currentUser;
     if (user == null) {
-      throw const CommunityException('Your session has expired.');
+      throw const CommunityException(
+        'Your session has expired.',
+        code: CommunityErrorCode.sessionExpired,
+      );
     }
     if (post.isLiked) {
       await _supabase
@@ -608,7 +794,10 @@ class CommunityService {
       _guard(() async {
         final user = _supabase.auth.currentUser;
         if (user == null) {
-          throw const CommunityException('Your session has expired.');
+          throw const CommunityException(
+            'Your session has expired.',
+            code: CommunityErrorCode.sessionExpired,
+          );
         }
         await _supabase.from('catch_comments').insert({
           'catch_id': catchId,
@@ -683,6 +872,12 @@ class CommunityService {
   Future<T> _guard<T>(
     Future<T> Function() operation, {
     String? debugLabel,
+    CommunityErrorCode socketErrorCode = CommunityErrorCode.noInternet,
+    CommunityErrorCode timeoutErrorCode = CommunityErrorCode.requestTimedOut,
+    CommunityErrorCode? storageErrorCode,
+    CommunityErrorCode? databaseErrorCode,
+    CommunityErrorCode fallbackErrorCode =
+        CommunityErrorCode.communityUnavailable,
   }) async {
     try {
       return await operation().timeout(const Duration(seconds: 30));
@@ -691,23 +886,37 @@ class CommunityService {
       rethrow;
     } on SocketException catch (error, stackTrace) {
       _logFailure(debugLabel, error, stackTrace);
-      throw const CommunityException('No internet connection.');
+      throw CommunityException(
+        'No internet connection.',
+        code: socketErrorCode,
+      );
     } on TimeoutException catch (error, stackTrace) {
       _logFailure(debugLabel, error, stackTrace);
-      throw const CommunityException('The request timed out. Please retry.');
+      throw CommunityException(
+        'The request timed out. Please retry.',
+        code: timeoutErrorCode,
+      );
     } on StorageException catch (error, stackTrace) {
       _logFailure(debugLabel, error, stackTrace);
-      throw const CommunityException(
+      throw CommunityException(
         'The report photo could not be uploaded. Please try again.',
+        code: storageErrorCode,
       );
     } on PostgrestException catch (error, stackTrace) {
       _logFailure(debugLabel, error, stackTrace);
-      throw const CommunityException(
-        'The report could not be published. Please try again.',
-      );
+      throw CommunityException(switch (databaseErrorCode) {
+        CommunityErrorCode.reportVerificationFailed =>
+          'The report verification could not be saved.',
+        CommunityErrorCode.reportAbuseFailed =>
+          'The abuse report could not be submitted. Please try again.',
+        _ => 'The report could not be published. Please try again.',
+      }, code: databaseErrorCode);
     } on Exception catch (error, stackTrace) {
       _logFailure(debugLabel, error, stackTrace);
-      throw const CommunityException('Community data is unavailable.');
+      throw CommunityException(
+        'Community data is unavailable.',
+        code: fallbackErrorCode,
+      );
     }
   }
 

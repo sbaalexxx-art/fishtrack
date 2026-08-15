@@ -1,70 +1,147 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:latlong2/latlong.dart';
 
 import '../../l10n/l10n.dart';
-import '../../models/station.dart';
+import '../../core/context/current_location.dart';
+import '../../core/navigation/app_destination.dart';
+import '../../core/navigation/app_navigator.dart';
 import '../../services/community_service.dart';
-import '../../services/favorite_stations_service.dart';
 import '../../services/location_service.dart';
 import '../../services/map_search_service.dart';
 import '../../services/station_filter_service.dart';
-import '../../services/water_service.dart';
-import '../../screens/community_details_page.dart';
-import '../../screens/station_details_page.dart';
 import 'home_premium_layout.dart';
 import '../home/home_map.dart';
 
 enum HomeMapLocationAvailability { locating, available, unavailable }
 
-enum _HomeReportStreamState { sync, live, offline }
+enum _HomeReportStreamState { sync, live, offline, error }
 
-class HomePremiumMap extends StatefulWidget {
+LatLng? homeMapDeviceCenter(CurrentLocationState state) {
+  final location = state.location;
+  if (!state.hasUsableLocation || location == null) return null;
+  return LatLng(location.latitude, location.longitude);
+}
+
+LatLng? selectInitialHomeMapPhysicalCamera({
+  required LatLng? current,
+  required CurrentLocationState canonical,
+}) => current ?? homeMapDeviceCenter(canonical);
+
+enum HomeMapCameraIntent { automaticLocation, exploration, locate }
+
+@immutable
+class HomeMapCameraRequest {
+  const HomeMapCameraRequest({
+    required this.target,
+    required this.zoom,
+    required this.intent,
+  });
+
+  final LatLng target;
+  final double zoom;
+  final HomeMapCameraIntent intent;
+}
+
+HomeMapCameraRequest selectPendingHomeMapCameraRequest({
+  required HomeMapCameraRequest? current,
+  required HomeMapCameraRequest incoming,
+}) {
+  if (incoming.intent == HomeMapCameraIntent.automaticLocation &&
+      current != null &&
+      current.intent != HomeMapCameraIntent.automaticLocation) {
+    return current;
+  }
+  return incoming;
+}
+
+bool shouldApplyAutomaticHomeMapCamera({
+  required LatLng? explorationCenter,
+  required bool didApplyInitialPhysicalCamera,
+  required bool appliedPhysicalCameraWasCached,
+  required CurrentLocationStatus resolvedStatus,
+}) {
+  if (explorationCenter != null) return false;
+  if (!didApplyInitialPhysicalCamera) return true;
+  return appliedPhysicalCameraWasCached &&
+      resolvedStatus == CurrentLocationStatus.available;
+}
+
+LatLng? homeMapExplorationCenterAfterIntent({
+  required LatLng? current,
+  required HomeMapCameraIntent intent,
+  LatLng? explorationTarget,
+}) => switch (intent) {
+  HomeMapCameraIntent.automaticLocation => current,
+  HomeMapCameraIntent.exploration => explorationTarget,
+  HomeMapCameraIntent.locate => null,
+};
+
+class HomePremiumMapController {
+  VoidCallback? _recenter;
+
+  void recenter() => _recenter?.call();
+
+  void _attach(VoidCallback recenter) => _recenter = recenter;
+
+  void _detach(VoidCallback recenter) {
+    if (_recenter == recenter) _recenter = null;
+  }
+}
+
+class HomePremiumMap extends ConsumerStatefulWidget {
   const HomePremiumMap({
     super.key,
+    this.controller,
     this.onTap,
     this.child,
-    this.showWaterStations = false,
+    this.embedded = false,
+    this.showControls = true,
     this.onLocationAvailabilityChanged,
     this.onLocationLabelChanged,
   });
 
+  final HomePremiumMapController? controller;
   final VoidCallback? onTap;
   final Widget? child;
-  final bool showWaterStations;
+
+  /// Uses compact controls and delegates outer clipping to the commercial Home.
+  final bool embedded;
+
+  /// When false, the parent screen owns all HUD controls.
+  final bool showControls;
+
   final ValueChanged<HomeMapLocationAvailability>?
   onLocationAvailabilityChanged;
   final ValueChanged<String?>? onLocationLabelChanged;
 
   @override
-  State<HomePremiumMap> createState() => _HomePremiumMapState();
+  ConsumerState<HomePremiumMap> createState() => _HomePremiumMapState();
 }
 
-class _HomePremiumMapState extends State<HomePremiumMap>
+class _HomePremiumMapState extends ConsumerState<HomePremiumMap>
     with WidgetsBindingObserver {
   static const _defaultLocalRadiusKm = 100.0;
-  static const _homeLayerOptions = <MapOverlay>[
-    MapOverlay.waterStations,
-    MapOverlay.communityReports,
-    MapOverlay.favoriteStations,
-  ];
+  static const _homeLayerOptions = <MapOverlay>[MapOverlay.communityReports];
 
   final CommunityService _communityService = const CommunityService();
-  final LocationService _locationService = const LocationService();
+  final Connectivity _connectivity = Connectivity();
   final MapSearchService _searchService = const MapSearchService();
-  final WaterService _waterService = WaterService();
-  final FavoriteStationsService _favoriteStationsService =
-      const FavoriteStationsService();
   mapbox.MapboxMap? _mapboxMap;
   final StationFilterService _filterService = StationFilterService.instance;
   late Stream<List<CommunityPost>> _reportsStream;
-  List<Station> _stations = const [];
-  Set<String> _favoriteStationIds = const {};
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Set<ReportCategory> _reportCategories = const {};
   LatLng? _explorationCenter;
   double _localRadiusKm = _defaultLocalRadiusKm;
   LatLng? _currentLocation;
+  LatLng? _initialPhysicalCamera;
+  bool _initialPhysicalCameraWasCached = false;
   String? _lastGpsLocationLabel;
   LocationFailureReason? _locationFailure;
   bool _isLocating = false;
@@ -72,34 +149,45 @@ class _HomePremiumMapState extends State<HomePremiumMap>
   int _locationRequestRevision = 0;
   int _locationLabelRevision = 0;
   bool _isMapReady = false;
-  bool _pendingRecenter = false;
   bool _didApplyInitialUserCamera = false;
-  LatLng? _pendingCameraTarget;
-  double _pendingCameraZoom = 13.5;
+  bool _initialUserCameraWasCached = false;
+  HomeMapCameraRequest? _pendingCameraRequest;
   bool _isSearching = false;
-  final MapBaseLayer _baseLayer = MapBaseLayer.standard;
+  bool _connectivityKnown = false;
+  bool _isDefinitelyOffline = false;
+  final MapBaseLayer _baseLayer = MapBaseLayer.satellite;
   Set<MapOverlay> _overlays = const {MapOverlay.communityReports};
 
   @override
   void initState() {
     super.initState();
+    widget.controller?._attach(_handleLocationAction);
     WidgetsBinding.instance.addObserver(this);
     _reportsStream = _communityService.watchReports();
     _filterService.filters.addListener(_onFiltersChanged);
-    FavoriteStationsService.revision.addListener(_loadFavoriteIds);
     if (widget.child == null) {
+      _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
+        _updateConnectivity,
+      );
+      unawaited(_checkInitialConnectivity());
       WidgetsBinding.instance.addPostFrameCallback((_) => _locateUser());
-    }
-    if (widget.child == null || widget.showWaterStations) {
-      _loadStations();
     }
   }
 
   @override
+  void didUpdateWidget(covariant HomePremiumMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) return;
+    oldWidget.controller?._detach(_handleLocationAction);
+    widget.controller?._attach(_handleLocationAction);
+  }
+
+  @override
   void dispose() {
+    widget.controller?._detach(_handleLocationAction);
     WidgetsBinding.instance.removeObserver(this);
+    _connectivitySubscription?.cancel();
     _filterService.filters.removeListener(_onFiltersChanged);
-    FavoriteStationsService.revision.removeListener(_loadFavoriteIds);
     super.dispose();
   }
 
@@ -120,46 +208,34 @@ class _HomePremiumMapState extends State<HomePremiumMap>
     });
   }
 
-  Future<void> _loadStations() async {
+  Future<void> _checkInitialConnectivity() async {
     try {
-      final stations = await _waterService.getStations();
-      if (mounted) setState(() => _stations = stations);
+      _updateConnectivity(await _connectivity.checkConnectivity());
     } on Exception {
-      // The base map remains usable when station data is unavailable.
-    }
-    await _loadFavoriteIds();
-  }
-
-  Future<void> _loadFavoriteIds() async {
-    if (!_favoriteStationsService.isAuthenticated) {
-      if (mounted) setState(() => _favoriteStationIds = const {});
-      return;
-    }
-    try {
-      final ids = await _favoriteStationsService.getFavoriteIds();
-      if (mounted) setState(() => _favoriteStationIds = ids);
-    } on FavoriteException {
-      // Other map layers remain available if favourites cannot be loaded.
+      // Keep the stream state neutral until connectivity is known.
     }
   }
 
-  Future<void> _openStation(Station station) async {
-    _waterService.selectStation(station);
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (context) => StationDetailsPage(station: station),
-      ),
-    );
-    await _loadFavoriteIds();
+  void _updateConnectivity(List<ConnectivityResult> results) {
+    if (!mounted) return;
+    final wasDefinitelyOffline = _connectivityKnown && _isDefinitelyOffline;
+    final isDefinitelyOffline =
+        results.isEmpty ||
+        results.every((result) => result == ConnectivityResult.none);
+    setState(() {
+      _connectivityKnown = true;
+      _isDefinitelyOffline = isDefinitelyOffline;
+      if (wasDefinitelyOffline && !isDefinitelyOffline) {
+        _reportsStream = _communityService.watchReports();
+      }
+    });
   }
 
-  Future<void> _openReport(CommunityPost report) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (context) => CatchDetailsPage(post: report),
-      ),
-    );
-  }
+  Future<void> _openReport(CommunityPost report) => AppNavigator.open<void>(
+    context,
+    AppDestination.reportDetail,
+    arguments: report,
+  );
 
   Future<void> _openCompactSearch() async {
     if (_isSearching) return;
@@ -178,9 +254,21 @@ class _HomePremiumMapState extends State<HomePremiumMap>
       if (selected == null || !mounted) return;
       final explorationCenter = LatLng(selected.latitude, selected.longitude);
       _locationLabelRevision++;
-      setState(() => _explorationCenter = explorationCenter);
+      setState(() {
+        _explorationCenter = homeMapExplorationCenterAfterIntent(
+          current: _explorationCenter,
+          intent: HomeMapCameraIntent.exploration,
+          explorationTarget: explorationCenter,
+        );
+      });
       widget.onLocationLabelChanged?.call(selected.name);
-      _moveCamera(explorationCenter, zoom: 13.5);
+      _submitCameraRequest(
+        HomeMapCameraRequest(
+          target: explorationCenter,
+          zoom: 13.5,
+          intent: HomeMapCameraIntent.exploration,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isSearching = false);
     }
@@ -199,24 +287,11 @@ class _HomePremiumMapState extends State<HomePremiumMap>
                 CheckboxListTile(
                   value: overlays.contains(overlay),
                   title: Text(switch (overlay) {
-                    MapOverlay.waterStations => context.l10n.waterStations,
                     MapOverlay.communityReports =>
                       context.l10n.communityReports,
                     MapOverlay.recentCatches => context.l10n.recentCatches,
-                    MapOverlay.favoriteStations =>
-                      context.l10n.favoriteStations,
                   }),
                   onChanged: (value) {
-                    if (overlay == MapOverlay.favoriteStations &&
-                        value == true &&
-                        !_favoriteStationsService.isAuthenticated) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(context.l10n.signInForFavoriteStations),
-                        ),
-                      );
-                      return;
-                    }
                     setSheetState(() {
                       if (value == true) {
                         overlays.add(overlay);
@@ -276,7 +351,6 @@ class _HomePremiumMapState extends State<HomePremiumMap>
     setState(() {
       _isLocating = true;
       _locationFailure = null;
-      _pendingRecenter = recenter;
     });
     widget.onLocationAvailabilityChanged?.call(
       HomeMapLocationAvailability.locating,
@@ -288,30 +362,59 @@ class _HomePremiumMapState extends State<HomePremiumMap>
     }
 
     try {
-      final position = await _locationService.determinePosition();
+      final languageCode = Localizations.localeOf(context).languageCode;
+      final canonical = await ref
+          .read(currentLocationProvider.notifier)
+          .refresh(languageCode: languageCode, force: recenter);
       if (!mounted || requestRevision != _locationRequestRevision) {
         return;
       }
 
-      final location = LatLng(position.latitude, position.longitude);
-      setState(() {
-        _currentLocation = location;
-        _locationFailure = null;
-      });
-      _filterService.setCurrentLocation(position.latitude, position.longitude);
-
-      if (_pendingRecenter || recenter || !_didApplyInitialUserCamera) {
-        _didApplyInitialUserCamera = true;
-        _moveCamera(location, zoom: recenter || _pendingRecenter ? 13.5 : 12.5);
+      final deviceLocation = canonical.location;
+      if (!canonical.hasUsableLocation || deviceLocation == null) {
+        throw LocationFailure(_failureReasonFor(canonical.status));
       }
 
-      final languageCode = Localizations.localeOf(context).languageCode;
-      final locationLabel = await _locationService.resolveLocalityRegion(
-        position,
-        languageCode: languageCode,
+      final location = LatLng(
+        deviceLocation.latitude,
+        deviceLocation.longitude,
       );
-      if (!mounted || requestRevision != _locationRequestRevision) return;
-      _lastGpsLocationLabel = locationLabel;
+      setState(() {
+        _currentLocation = location;
+        _lastGpsLocationLabel = deviceLocation.label;
+        _locationFailure = null;
+      });
+      _filterService.setCurrentLocation(
+        deviceLocation.latitude,
+        deviceLocation.longitude,
+      );
+
+      final shouldApplyCamera =
+          recenter ||
+          shouldApplyAutomaticHomeMapCamera(
+            explorationCenter: _explorationCenter,
+            didApplyInitialPhysicalCamera: _didApplyInitialUserCamera,
+            appliedPhysicalCameraWasCached: _initialUserCameraWasCached,
+            resolvedStatus: canonical.status,
+          );
+      if (shouldApplyCamera) {
+        final accepted = _submitCameraRequest(
+          HomeMapCameraRequest(
+            target: location,
+            zoom: recenter ? 13.5 : 12.5,
+            intent: recenter
+                ? HomeMapCameraIntent.locate
+                : HomeMapCameraIntent.automaticLocation,
+          ),
+        );
+        if (accepted) {
+          _didApplyInitialUserCamera = true;
+          _initialUserCameraWasCached =
+              canonical.status == CurrentLocationStatus.cached;
+        }
+      }
+
+      final locationLabel = deviceLocation.label;
       if (labelRevision == _locationLabelRevision &&
           _explorationCenter == null) {
         widget.onLocationLabelChanged?.call(locationLabel);
@@ -325,7 +428,6 @@ class _HomePremiumMapState extends State<HomePremiumMap>
       if (mounted) {
         setState(() {
           _locationFailure = failure.reason;
-          _pendingRecenter = false;
         });
         widget.onLocationAvailabilityChanged?.call(
           HomeMapLocationAvailability.unavailable,
@@ -349,49 +451,71 @@ class _HomePremiumMapState extends State<HomePremiumMap>
     }
   }
 
-  void _recenter(LatLng location) {
-    _moveCamera(location, zoom: 13.5);
-  }
+  LocationFailureReason _failureReasonFor(CurrentLocationStatus status) =>
+      switch (status) {
+        CurrentLocationStatus.serviceDisabled =>
+          LocationFailureReason.serviceDisabled,
+        CurrentLocationStatus.permissionDenied =>
+          LocationFailureReason.permissionDenied,
+        CurrentLocationStatus.permissionDeniedForever =>
+          LocationFailureReason.permissionDeniedForever,
+        _ => LocationFailureReason.unavailable,
+      };
 
-  void _moveCamera(LatLng target, {required double zoom}) {
+  bool _submitCameraRequest(HomeMapCameraRequest request) {
     final mapboxMap = _mapboxMap;
     if (!_isMapReady || mapboxMap == null) {
-      _pendingCameraTarget = target;
-      _pendingCameraZoom = zoom;
-      _pendingRecenter = true;
-      return;
+      final selected = selectPendingHomeMapCameraRequest(
+        current: _pendingCameraRequest,
+        incoming: request,
+      );
+      final accepted = identical(selected, request);
+      _pendingCameraRequest = selected;
+      return accepted;
     }
 
+    _applyCameraRequest(mapboxMap, request);
+    _pendingCameraRequest = null;
+    return true;
+  }
+
+  void _applyCameraRequest(
+    mapbox.MapboxMap mapboxMap,
+    HomeMapCameraRequest request,
+  ) {
     mapboxMap.setCamera(
       mapbox.CameraOptions(
         center: mapbox.Point(
-          coordinates: mapbox.Position(target.longitude, target.latitude),
+          coordinates: mapbox.Position(
+            request.target.longitude,
+            request.target.latitude,
+          ),
         ),
-        zoom: zoom,
+        zoom: request.zoom,
       ),
     );
-    _pendingCameraTarget = null;
-    _pendingRecenter = false;
   }
 
   void _onMapReady(mapbox.MapboxMap mapboxMap) {
     _mapboxMap = mapboxMap;
     _isMapReady = true;
-    final pendingTarget = _pendingCameraTarget;
-    if (pendingTarget != null) {
-      _moveCamera(pendingTarget, zoom: _pendingCameraZoom);
-      return;
+    if (!_didApplyInitialUserCamera) {
+      _didApplyInitialUserCamera = true;
+      _initialUserCameraWasCached = _initialPhysicalCameraWasCached;
     }
-
-    final location = _currentLocation;
-    if (_pendingRecenter && location != null) {
-      _recenter(location);
-    }
+    final pending = _pendingCameraRequest;
+    _pendingCameraRequest = null;
+    if (pending != null) _applyCameraRequest(mapboxMap, pending);
   }
 
   void _handleLocationAction() {
     _locationLabelRevision++;
-    setState(() => _explorationCenter = null);
+    setState(() {
+      _explorationCenter = homeMapExplorationCenterAfterIntent(
+        current: _explorationCenter,
+        intent: HomeMapCameraIntent.locate,
+      );
+    });
     widget.onLocationLabelChanged?.call(_lastGpsLocationLabel);
     _locateUser(recenter: true);
   }
@@ -413,22 +537,6 @@ class _HomePremiumMapState extends State<HomePremiumMap>
         isRo ? 'Locație indisponibilă' : 'Location unavailable',
       null => isRo ? 'Locația curentă' : 'Current Location',
     };
-  }
-
-  List<Station> _homeStations() {
-    final showWaterStations = _overlays.contains(MapOverlay.waterStations);
-    final showFavoriteStations = _overlays.contains(
-      MapOverlay.favoriteStations,
-    );
-    if (!showWaterStations && !showFavoriteStations) return const [];
-
-    final uniqueStations = <String, Station>{};
-    for (final station in _stations) {
-      if (showWaterStations || _favoriteStationIds.contains(station.id)) {
-        uniqueStations.putIfAbsent(station.id, () => station);
-      }
-    }
-    return List<Station>.unmodifiable(uniqueStations.values);
   }
 
   List<CommunityPost> _homeReports(Iterable<CommunityPost> reports) {
@@ -507,22 +615,28 @@ class _HomePremiumMapState extends State<HomePremiumMap>
       return customChild;
     }
 
+    final initialPhysicalCamera = _initialPhysicalCamera;
+    if (initialPhysicalCamera == null) {
+      return const _HomeMapStartupLoadingSurface();
+    }
+
     return StreamBuilder<List<CommunityPost>>(
       stream: _reportsStream,
       builder: (context, snapshot) {
         final reports = _homeReports(snapshot.data ?? const <CommunityPost>[]);
-        final streamState = snapshot.hasError
+        final streamState = _connectivityKnown && _isDefinitelyOffline
             ? _HomeReportStreamState.offline
+            : snapshot.hasError
+            ? _HomeReportStreamState.error
             : snapshot.hasData
             ? _HomeReportStreamState.live
             : _HomeReportStreamState.sync;
 
         final map = HomeMap(
           reports: reports,
-          stations: _homeStations(),
-          favoriteStationIds: _favoriteStationIds,
+          initialCamera: initialPhysicalCamera,
+          onMapTap: widget.onTap,
           onReportTap: _openReport,
-          onStationTap: _openStation,
           currentLocation: _currentLocation,
           explorationCenter: _explorationCenter,
           onMapboxMapCreated: _onMapReady,
@@ -534,16 +648,17 @@ class _HomePremiumMapState extends State<HomePremiumMap>
           fit: StackFit.expand,
           children: [
             Positioned.fill(child: map),
-            Positioned(
-              right: 12,
-              bottom: 10,
-              child: _HomeReportStreamBadge(
-                state: streamState,
-                onRetry: streamState == _HomeReportStreamState.offline
-                    ? _retry
-                    : null,
+            if (!widget.embedded)
+              Positioned(
+                right: 12,
+                bottom: 8,
+                child: _HomeReportStreamBadge(
+                  state: streamState,
+                  onRetry: streamState == _HomeReportStreamState.error
+                      ? _retry
+                      : null,
+                ),
               ),
-            ),
           ],
         );
       },
@@ -688,133 +803,159 @@ class _HomePremiumMapState extends State<HomePremiumMap>
 
   @override
   Widget build(BuildContext context) {
-    const borderRadius = 28.0;
+    final canonical = ref.watch(currentLocationProvider);
+    final deviceLocation = canonical.location;
+    final canonicalCenter = homeMapDeviceCenter(canonical);
+    if (canonicalCenter != null && deviceLocation != null) {
+      final next = canonicalCenter;
+      final initialPhysicalCamera = selectInitialHomeMapPhysicalCamera(
+        current: _initialPhysicalCamera,
+        canonical: canonical,
+      );
+      if (_initialPhysicalCamera != initialPhysicalCamera) {
+        _initialPhysicalCamera = initialPhysicalCamera;
+        _initialPhysicalCameraWasCached =
+            canonical.status == CurrentLocationStatus.cached;
+      }
+      if (_currentLocation != next) {
+        _currentLocation = next;
+        _lastGpsLocationLabel = deviceLocation.label;
+        _locationFailure = null;
+        _filterService.setCurrentLocation(
+          deviceLocation.latitude,
+          deviceLocation.longitude,
+        );
+      }
+    }
     final layout = HomePremiumLayout.of(context);
-    final mapHeight = layout.heroMapHeight.clamp(315.0, 390.0).toDouble();
+    final safeInsets = MediaQuery.viewPaddingOf(context);
+    final borderRadius = widget.embedded
+        ? BorderRadius.zero
+        : const BorderRadius.vertical(bottom: Radius.circular(22));
+    final horizontalTools =
+        widget.embedded ||
+        layout.isLandscape ||
+        layout.isSmallPhone ||
+        layout.heroMapHeight < 280;
+    final controlsTop = widget.embedded
+        ? 12.0
+        : safeInsets.top + (horizontalTools ? 54.0 : 58.0);
+    final locationButton = _FloatingButton(
+      Icons.my_location_rounded,
+      label: _locationLabel,
+      onTap: _handleLocationAction,
+      isLoading: _isLocating,
+      compact: widget.embedded,
+    );
+    final layersButton = _FloatingButton(
+      Icons.layers_rounded,
+      label: context.l10n.mapLayers,
+      onTap: _openMapOptions,
+      compact: widget.embedded,
+    );
+    final filtersButton = _FloatingButton(
+      Icons.filter_alt_rounded,
+      label: context.l10n.fishingFilters,
+      onTap: _openFilters,
+      compact: widget.embedded,
+    );
+    final tools = horizontalTools
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              locationButton,
+              SizedBox(width: widget.embedded ? 5 : 6),
+              layersButton,
+              SizedBox(width: widget.embedded ? 5 : 6),
+              filtersButton,
+            ],
+          )
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              locationButton,
+              const SizedBox(height: 6),
+              layersButton,
+              const SizedBox(height: 6),
+              filtersButton,
+            ],
+          );
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 1, 2, 1),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(borderRadius),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: .42),
-              blurRadius: 30,
-              spreadRadius: -8,
-              offset: const Offset(0, 16),
-            ),
-            BoxShadow(
-              color: const Color(0xFF2B7FFF).withValues(alpha: .08),
-              blurRadius: 22,
-              spreadRadius: -10,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: SizedBox(
-          height: mapHeight,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(borderRadius),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                const DecoratedBox(
-                  decoration: BoxDecoration(color: Color(0xFF16212B)),
-                ),
-
-                // Map content fills the whole allocated card while the outer
-                // frame keeps the premium rounded shape.
-                Positioned.fill(child: _buildMapContent()),
-
-                // Decorative frame above the map.
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(borderRadius),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: .09),
-                          ),
-                          borderRadius: BorderRadius.circular(borderRadius),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            stops: const [0, .38, 1],
-                            colors: [
-                              Colors.black.withValues(alpha: .10),
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: .38),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const DecoratedBox(
+            decoration: BoxDecoration(color: Color(0xFF16212B)),
+          ),
+          Positioned.fill(child: _buildMapContent()),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: .08),
                   ),
-                ),
-
-                // SEARCH - icon only, small and premium.
-                Positioned(
-                  left: 10,
-                  top: 44,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _openCompactSearch,
-                    child: _GlassSurface(
-                      borderRadius: 15,
-                      blur: 16,
-                      child: SizedBox.square(
-                        dimension: 38,
-                        child: Center(
-                          child: _isSearching
-                              ? const SizedBox.square(
-                                  dimension: 15,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Color(0xFF67D04B),
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.search_rounded,
-                                  size: 21,
-                                  color: Colors.white,
-                                ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Floating tools stay compact and do not reduce map height.
-                Positioned(
-                  right: 12,
-                  top: 44,
-                  child: Column(
-                    children: [
-                      Semantics(
-                        label: _locationLabel,
-                        button: true,
-                        child: _FloatingButton(
-                          Icons.my_location_rounded,
-                          onTap: _handleLocationAction,
-                          isLoading: _isLocating,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      _FloatingButton(
-                        Icons.layers_rounded,
-                        onTap: _openMapOptions,
-                      ),
-                      const SizedBox(height: 6),
-                      _FloatingButton(
-                        Icons.filter_alt_rounded,
-                        onTap: _openFilters,
-                      ),
+                  borderRadius: borderRadius,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: const [0, .34, 1],
+                    colors: [
+                      Colors.black.withValues(alpha: .55),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: .24),
                     ],
                   ),
                 ),
-              ],
+              ),
+            ),
+          ),
+          if (widget.showControls)
+            Positioned(
+              left: widget.embedded ? 12 : safeInsets.left + 10,
+              top: controlsTop,
+              child: _FloatingButton(
+                Icons.search_rounded,
+                label: context.l10n.mapSearchHint,
+                onTap: _openCompactSearch,
+                isLoading: _isSearching,
+                compact: widget.embedded,
+              ),
+            ),
+          if (widget.showControls)
+            Positioned(
+              right: widget.embedded ? 12 : safeInsets.right + 10,
+              top: controlsTop,
+              child: tools,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeMapStartupLoadingSurface extends StatelessWidget {
+  const _HomeMapStartupLoadingSurface();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      key: ValueKey<String>('home-map-location-loading'),
+      color: Color(0xFF16212B),
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Color(0x1FFFFFFF),
+            shape: BoxShape.circle,
+          ),
+          child: SizedBox.square(
+            dimension: 42,
+            child: Icon(
+              Icons.my_location_rounded,
+              size: 18,
+              color: Color(0x99FFFFFF),
             ),
           ),
         ),
@@ -831,6 +972,7 @@ class _HomeReportStreamBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
     final (label, icon, background, foreground) = switch (state) {
       _HomeReportStreamState.sync => (
         'SYNC',
@@ -847,6 +989,12 @@ class _HomeReportStreamBadge extends StatelessWidget {
       _HomeReportStreamState.offline => (
         'OFFLINE',
         Icons.cloud_off_rounded,
+        const Color(0xE62B3742),
+        Colors.white70,
+      ),
+      _HomeReportStreamState.error => (
+        isRo ? 'EROARE' : 'ERROR',
+        Icons.error_outline_rounded,
         const Color(0xE64A2930),
         const Color(0xFFFFA0A8),
       ),
@@ -870,14 +1018,14 @@ class _HomeReportStreamBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 9, color: foreground),
+          Icon(icon, size: 11, color: foreground),
           const SizedBox(width: 3),
           Text(
             label,
             style: TextStyle(
               color: foreground,
               fontWeight: FontWeight.w800,
-              fontSize: 7.8,
+              fontSize: 9,
               letterSpacing: .40,
             ),
           ),
@@ -885,7 +1033,7 @@ class _HomeReportStreamBadge extends StatelessWidget {
       ),
     );
     final retry = onRetry;
-    if (state != _HomeReportStreamState.offline || retry == null) {
+    if (state != _HomeReportStreamState.error || retry == null) {
       return Semantics(label: label, child: badge);
     }
 
@@ -1278,39 +1426,55 @@ class _GlassSurface extends StatelessWidget {
 }
 
 class _FloatingButton extends StatelessWidget {
-  const _FloatingButton(this.icon, {this.onTap, this.isLoading = false});
+  const _FloatingButton(
+    this.icon, {
+    required this.label,
+    this.onTap,
+    this.isLoading = false,
+    this.compact = false,
+  });
 
   final IconData icon;
+  final String label;
   final VoidCallback? onTap;
   final bool isLoading;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    return _GlassSurface(
-      borderRadius: 17,
-      blur: 22,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(17),
-          child: SizedBox(
-            width: 40,
-            height: 40,
-            child: Center(
-              child: isLoading
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Icon(
-                      icon,
-                      color: Colors.white.withValues(alpha: .92),
-                      size: 18,
-                    ),
+    final radius = compact ? 14.0 : 17.0;
+    final dimension = compact ? 42.0 : 48.0;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        label: label,
+        button: true,
+        child: _GlassSurface(
+          borderRadius: radius,
+          blur: 22,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(radius),
+              child: SizedBox.square(
+                dimension: dimension,
+                child: Center(
+                  child: isLoading
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(
+                          icon,
+                          color: Colors.white.withValues(alpha: .92),
+                          size: compact ? 17 : 18,
+                        ),
+                ),
+              ),
             ),
           ),
         ),

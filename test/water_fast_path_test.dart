@@ -15,6 +15,8 @@ import 'package:fishtrack/screens/water_level_page.dart'
         WaterLevelPage,
         WaterDetailsPeriod,
         WaterDetailsSummary,
+        waterHistoryChartSegments,
+        waterHistoryObservationForTimestamp,
         waterDetailsTrendColor,
         waterDetailsSelectionForHandoff,
         waterDetailsRefreshLabel,
@@ -280,6 +282,61 @@ void main() {
     expect(summary.trend, isNull);
   });
 
+  test(
+    'Water Hub chart keeps canonical points, curves only 3+, and breaks gaps',
+    () {
+      final start = DateTime.utc(2026, 7, 16, 8);
+      WaterLevel point(int hours, double value) => _reading(
+        value: value,
+        timestamp: start.add(Duration(hours: hours)),
+        source: WaterLevelSource.afdj,
+      );
+
+      final one = [point(0, -105)];
+      final oneSegment = waterHistoryChartSegments(one).single;
+      expect(oneSegment.realObservations, hasLength(1));
+      expect(oneSegment.hasLine, isFalse);
+      expect(oneSegment.usesBezier, isFalse);
+      expect(identical(oneSegment.realObservations.single, one.single), isTrue);
+
+      final two = [point(0, 100), point(1, 102)];
+      final twoSegment = waterHistoryChartSegments(two).single;
+      expect(twoSegment.hasLine, isTrue);
+      expect(twoSegment.usesBezier, isFalse);
+
+      final three = [point(0, 100), point(1, 102), point(2, 104)];
+      final threeSegment = waterHistoryChartSegments(three).single;
+      expect(threeSegment.hasLine, isTrue);
+      expect(threeSegment.usesBezier, isTrue);
+
+      final gapped = [...three, point(20, 110)];
+      final gappedSegments = waterHistoryChartSegments(gapped);
+      expect(gappedSegments.map((segment) => segment.realObservations.length), [
+        3,
+        1,
+      ]);
+      expect(
+        gappedSegments
+            .expand((segment) => segment.realObservations)
+            .toList(growable: false),
+        gapped,
+      );
+
+      final tooltipObservation = waterHistoryObservationForTimestamp(
+        gappedSegments,
+        gapped.last.timestamp.millisecondsSinceEpoch.toDouble(),
+      );
+      expect(identical(tooltipObservation, gapped.last), isTrue);
+      expect(
+        waterHistoryObservationForTimestamp(
+          gappedSegments,
+          gapped.last.timestamp.millisecondsSinceEpoch + 1,
+        ),
+        isNull,
+      );
+    },
+  );
+
   test('missing observations never become zero deltas', () {
     expect(
       realWaterIntervalDelta(
@@ -431,14 +488,20 @@ void main() {
     },
   );
 
-  test('automatic fallback does not pin Bazias merely because it is first', () {
-    final candidates = WaterService.rankHomeCandidates([
-      _homeStation('afdj-bazias', 'Bazias', 44.8167, 21.3833),
-      _homeStation('afdj-moldova-veche', 'Moldova Veche', 44.7383, 21.6333),
-    ]);
+  test(
+    'candidate ordering preserves the backend catalog without a location',
+    () {
+      final candidates = WaterService.rankHomeCandidates([
+        _homeStation('afdj-bazias', 'Bazias', 44.8167, 21.3833),
+        _homeStation('afdj-moldova-veche', 'Moldova Veche', 44.7383, 21.6333),
+      ]);
 
-    expect(candidates.first.id, 'afdj-moldova-veche');
-  });
+      expect(candidates.map((station) => station.id), [
+        'afdj-bazias',
+        'afdj-moldova-veche',
+      ]);
+    },
+  );
 
   test('Water station selector exposes exactly 23 canonical stations', () {
     expect(WaterService.canonicalStationNames, [
@@ -492,6 +555,7 @@ void main() {
       );
       await tester.pumpWidget(
         MaterialApp(
+          theme: ThemeData(splashFactory: NoSplash.splashFactory),
           locale: const Locale('ro'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -684,21 +748,27 @@ void main() {
     );
   });
 
-  test('automatic candidates exclude invalid and noncanonical stations', () {
-    final candidates = WaterService.rankHomeCandidates([
-      _homeStation('afdj-bazias', 'Bazias', 44.8167, 21.3833),
-      _homeStation('afdj-chilia', 'Chilia Veche', 45.4167, 29.3),
-      _homeStation(
-        'afdj-tulcea',
-        'Tulcea',
-        45.1786,
-        28.8059,
-        hasReading: false,
-      ),
-    ]);
+  test(
+    'automatic candidates accept backend entities and exclude invalid data',
+    () {
+      final candidates = WaterService.rankHomeCandidates([
+        _homeStation('afdj-bazias', 'Bazias', 44.8167, 21.3833),
+        _homeStation('afdj-chilia', 'Chilia Veche', 45.4167, 29.3),
+        _homeStation(
+          'afdj-tulcea',
+          'Tulcea',
+          45.1786,
+          28.8059,
+          hasReading: false,
+        ),
+      ]);
 
-    expect(candidates.map((station) => station.id), ['afdj-bazias']);
-  });
+      expect(candidates.map((station) => station.id), [
+        'afdj-bazias',
+        'afdj-chilia',
+      ]);
+    },
+  );
 
   test('automatic candidates are capped at five stations', () {
     final candidates = WaterService.rankHomeCandidates([
@@ -867,13 +937,13 @@ void main() {
       repository: _StaticHistoryRepository(
         _history([
           _reading(
-            stationId: 'station-a',
+            stationId: 'bazias',
             value: 500,
             timestamp: DateTime.utc(2026, 7, 10),
             source: WaterLevelSource.danubeFis,
           ),
           _reading(
-            stationId: 'station-a',
+            stationId: 'bazias',
             value: 512,
             timestamp: DateTime.utc(2026, 7, 13),
             source: WaterLevelSource.danubeFis,
@@ -2132,12 +2202,7 @@ List<Station> _canonicalMenuStations() => WaterService.canonicalStationNames
         'Gruia' => (44.2665, 22.7046),
         _ => (46.0 + entry.key / 1000, 28.0 + entry.key / 1000),
       };
-      final id = switch (name) {
-        'Baziaș' => 'bazias',
-        'Moldova Veche' => 'moldova_veche',
-        'Gruia' => 'gruia',
-        _ => 'canonical-${entry.key}',
-      };
+      final id = _testStationId(name);
       final source = name == 'Moldova Veche'
           ? WaterLevelSource.danubeHis
           : WaterLevelSource.afdj;
@@ -2158,6 +2223,18 @@ List<Station> _canonicalMenuStations() => WaterService.canonicalStationNames
     })
     .toList(growable: false);
 
+String _testStationId(String name) => name
+    .trim()
+    .toLowerCase()
+    .replaceAll('\u0103', 'a')
+    .replaceAll('\u00e2', 'a')
+    .replaceAll('\u00ee', 'i')
+    .replaceAll('\u0219', 's')
+    .replaceAll('\u015f', 's')
+    .replaceAll('\u021b', 't')
+    .replaceAll('\u0163', 't')
+    .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+    .replaceAll(RegExp(r'^_+|_+$'), '');
 Position _position(double latitude, double longitude) => Position(
   longitude: longitude,
   latitude: latitude,

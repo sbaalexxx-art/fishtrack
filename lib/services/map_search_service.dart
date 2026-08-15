@@ -1,5 +1,20 @@
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+
 import '../core/network/api_client.dart';
 import '../models/station.dart';
+
+typedef MapboxAccessTokenProvider = Future<String> Function();
+
+Future<String> _runtimeMapboxAccessToken() async {
+  const dartDefinedToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
+  if (dartDefinedToken.isNotEmpty) return dartDefinedToken;
+
+  try {
+    return (await MapboxOptions.getAccessToken()).trim();
+  } on Exception {
+    return '';
+  }
+}
 
 class MapSearchResult {
   const MapSearchResult({
@@ -16,13 +31,13 @@ class MapSearchResult {
 }
 
 class MapSearchService {
-  const MapSearchService({this.apiClient = const ApiClient()});
-
-  static const _mapboxAccessToken = String.fromEnvironment(
-    'MAPBOX_ACCESS_TOKEN',
-  );
+  const MapSearchService({
+    this.apiClient = const ApiClient(),
+    this.accessTokenProvider = _runtimeMapboxAccessToken,
+  });
 
   final ApiClient apiClient;
+  final MapboxAccessTokenProvider accessTokenProvider;
 
   List<MapSearchResult> searchStations(
     String query,
@@ -55,27 +70,37 @@ class MapSearchService {
     final normalized = query.trim();
     if (normalized.length < 2) return const [];
 
-    if (_mapboxAccessToken.isNotEmpty) {
-      final mapboxResults = await _searchMapbox(normalized);
+    final mapboxAccessToken = (await accessTokenProvider()).trim();
+    if (mapboxAccessToken.isNotEmpty) {
+      final mapboxResults = await _searchMapbox(
+        normalized,
+        accessToken: mapboxAccessToken,
+      );
       if (mapboxResults.isNotEmpty) return mapboxResults;
     }
 
     return _searchPhoton(normalized);
   }
 
-  Future<List<MapSearchResult>> _searchMapbox(String query) async {
-    final v6Results = await _searchMapboxV6(query);
+  Future<List<MapSearchResult>> _searchMapbox(
+    String query, {
+    required String accessToken,
+  }) async {
+    final v6Results = await _searchMapboxV6(query, accessToken: accessToken);
     if (v6Results.isNotEmpty) return v6Results;
-    return _searchMapboxV5(query);
+    return _searchMapboxV5(query, accessToken: accessToken);
   }
 
-  Future<List<MapSearchResult>> _searchMapboxV6(String query) async {
+  Future<List<MapSearchResult>> _searchMapboxV6(
+    String query, {
+    required String accessToken,
+  }) async {
     final uri = Uri.https('api.mapbox.com', '/search/geocode/v6/forward', {
       'q': query,
       'limit': '8',
       'language': 'ro,en',
       'autocomplete': 'true',
-      'access_token': _mapboxAccessToken,
+      'access_token': accessToken,
     });
 
     try {
@@ -94,13 +119,16 @@ class MapSearchService {
     }
   }
 
-  Future<List<MapSearchResult>> _searchMapboxV5(String query) async {
+  Future<List<MapSearchResult>> _searchMapboxV5(
+    String query, {
+    required String accessToken,
+  }) async {
     final uri = Uri(
       scheme: 'https',
       host: 'api.mapbox.com',
       pathSegments: ['geocoding', 'v5', 'mapbox.places', '$query.json'],
       queryParameters: {
-        'access_token': _mapboxAccessToken,
+        'access_token': accessToken,
         'limit': '8',
         'language': 'ro,en',
         'autocomplete': 'true',

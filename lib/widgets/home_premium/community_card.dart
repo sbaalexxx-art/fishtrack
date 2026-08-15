@@ -56,34 +56,57 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
           isLoading: isLoading,
           child: LayoutBuilder(
             builder: (context, constraints) {
+              const accent = Color(0xFF4CAF50);
               final layout = HomePremiumLayout.of(context);
-              final compact = constraints.maxWidth < 220;
-              final denseHeight = constraints.maxHeight < 145;
-              final dense = compact || layout.isLandscapePhone || denseHeight;
-              final isRo = Localizations.localeOf(context).languageCode == 'ro';
-              final status = isLoading
-                  ? (isRo
-                        ? 'Se încarcă activitatea...'
-                        : 'Loading community...')
+              final textScale = MediaQuery.textScalerOf(context).scale(1);
+              final compactWidth = constraints.maxWidth < 230;
+              final constrainedHeight =
+                  constraints.hasBoundedHeight && constraints.maxHeight < 158;
+              final dense =
+                  compactWidth ||
+                  layout.isLandscapePhone ||
+                  constrainedHeight ||
+                  textScale >= 1.25;
+              final cardPadding = dense
+                  ? 8.0
+                  : layout.isTablet
+                  ? 12.0
+                  : 10.0;
+              final hasActivity =
+                  !isLoading && !snapshot.hasError && !isEmptyState;
+              final primaryStatus = isLoading
+                  ? localizations.loading
                   : snapshot.hasError
-                  ? (isRo
-                        ? 'Nu există încă actualizări din comunitate'
-                        : 'No community updates available yet')
+                  ? localizations.communityUnavailable
                   : isEmptyState
                   ? localizations.communityEmptyMessage
-                  : (isRo
-                        ? '$activeReports rapoarte active'
-                        : '$activeReports active reports');
+                  : localizations.reportCount(activeReports);
+              final supportingStatus = isLoading
+                  ? localizations.loadingFishingReports
+                  : snapshot.hasError
+                  ? localizations.noCommunityUpdate
+                  : localizations.reportsToday(reportsToday);
+              final footerStatus = isLoading
+                  ? localizations.loading
+                  : snapshot.hasError
+                  ? localizations.noCommunityUpdate
+                  : isEmptyState
+                  ? localizations.communityEmptyCta
+                  : localizations.liveActivity;
+              final stateColor = snapshot.hasError
+                  ? Colors.orangeAccent
+                  : accent;
               final statusText = Text(
-                status,
-                maxLines: isEmptyState ? 2 : (dense ? 3 : 2),
+                primaryStatus,
+                maxLines: hasActivity ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: Colors.white,
                   fontSize:
-                      (isEmptyState ? (dense ? 11 : 13) : (dense ? 11.5 : 17)) *
+                      (hasActivity ? (dense ? 15 : 17) : (dense ? 11 : 12.5)) *
                       layout.titleFontScale,
                   height: 1.04,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: hasActivity ? FontWeight.w800 : FontWeight.w700,
                 ),
               );
               final avatarRow = _AnglerAvatars(
@@ -92,115 +115,145 @@ class _CommunityCardPremiumState extends State<CommunityCardPremium> {
               );
 
               return Container(
-                padding: EdgeInsets.all(
-                  dense
-                      ? 7
-                      : layout.isSmallPhone
-                      ? 8
-                      : (layout.isTablet ? 12 : 10),
-                ),
+                padding: EdgeInsets.all(cardPadding),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF183021),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF142632), Color(0xFF0B1B25)],
+                  ),
                   borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: accent.withValues(alpha: 0.18)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.groups_rounded,
-                          color: const Color(0xFF4CAF50),
-                          size: (dense ? 18 : 20) * layout.iconScale,
+                        Container(
+                          width: dense ? 24 : 27,
+                          height: dense ? 24 : 27,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.groups_rounded,
+                            color: accent,
+                            size: (dense ? 16 : 18) * layout.iconScale,
+                          ),
                         ),
-                        SizedBox(width: dense ? 5 : 8),
+                        SizedBox(width: dense ? 6 : 8),
                         Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              isRo ? 'COMUNITATE' : 'COMMUNITY',
-                              maxLines: 1,
-                              style: AppTextStyles.cardTitle.copyWith(
-                                fontSize:
-                                    (dense ? 14 : 16) * layout.titleFontScale,
+                          child: Text(
+                            localizations.community,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.cardTitle.copyWith(
+                              fontSize:
+                                  (dense ? 13.5 : 15) * layout.titleFontScale,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Tooltip(
+                          message: footerStatus,
+                          child: Semantics(
+                            label: footerStatus,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: stateColor,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: stateColor.withValues(alpha: 0.38),
+                                    blurRadius: 6,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                        SizedBox(width: dense ? 3 : 4),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: dense ? 6 : 8,
-                            vertical: dense ? 2 : 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF4CAF50),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            'LIVE',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
-                    SizedBox(height: dense ? 3 : 5),
-                    if (dense)
-                      Row(
+                    SizedBox(height: dense ? 4 : 6),
+                    Expanded(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           avatarRow,
-                          const SizedBox(width: 5),
-                          Expanded(child: statusText),
-                        ],
-                      )
-                    else ...[
-                      avatarRow,
-                      const SizedBox(height: 4),
-                      statusText,
-                    ],
-                    SizedBox(height: dense ? 2 : 3),
-                    Text(
-                      isEmptyState
-                          ? localizations.communityEmptyCta
-                          : (isRo
-                                ? '$reportsToday rapoarte astăzi'
-                                : '$reportsToday reports today'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.caption.copyWith(
-                        fontSize: dense ? 10.5 : 13,
-                        color: isEmptyState ? const Color(0xFFB8F5C7) : null,
-                        fontWeight: isEmptyState ? FontWeight.w700 : null,
-                      ),
-                    ),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.circle,
-                          size: dense ? 8 : 9,
-                          color: const Color(0xFF4CAF50),
-                        ),
-                        SizedBox(width: dense ? 5 : 6),
-                        Expanded(
-                          child: Text(
-                            isRo ? 'Activitate live' : 'Live activity',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: const Color(0xFF4CAF50),
-                              fontSize: dense ? 11.5 : 13,
-                              fontWeight: FontWeight.w600,
+                          SizedBox(width: dense ? 6 : 8),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                statusText,
+                                SizedBox(height: dense ? 2 : 3),
+                                Text(
+                                  supportingStatus,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.caption.copyWith(
+                                    fontSize:
+                                        (dense ? 10.5 : 11.5) *
+                                        layout.bodyFontScale,
+                                    height: 1.05,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: dense ? 4 : 6),
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: dense ? 6 : 8,
+                        vertical: dense ? 4 : 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: stateColor.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: stateColor.withValues(alpha: 0.13),
                         ),
-                      ],
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isEmptyState
+                                ? Icons.arrow_forward_rounded
+                                : snapshot.hasError
+                                ? Icons.info_outline_rounded
+                                : Icons.circle,
+                            size: isEmptyState || snapshot.hasError ? 13 : 7,
+                            color: stateColor,
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              footerStatus,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: stateColor,
+                                fontSize:
+                                    (dense ? 10.5 : 11.5) *
+                                    layout.bodyFontScale,
+                                height: 1.05,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -237,7 +290,7 @@ class _AnglerAvatars extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: const Color(0xFF415547),
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF183021), width: 2),
+                  border: Border.all(color: const Color(0xFF142632), width: 2),
                 ),
                 child: ClipOval(
                   child: index < avatarUrls.length

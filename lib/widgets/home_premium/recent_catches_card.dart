@@ -54,7 +54,21 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final layout = HomePremiumLayout.of(context);
-        final tileWidth = ((constraints.maxWidth - 16) / 3).clamp(128.0, 184.0);
+        final availableWidth = constraints.maxWidth;
+        final textScale = MediaQuery.textScalerOf(
+          context,
+        ).scale(1).clamp(1.0, 1.3).toDouble();
+        final widthFactor = layout.isTablet ? .58 : .78;
+        final tileWidth =
+            ((availableWidth * widthFactor) + ((textScale - 1) * 36))
+                .clamp(220.0, 380.0)
+                .toDouble();
+        final itemGap = availableWidth < 360 ? 5.0 : 6.0;
+        final placeholderCount =
+            ((availableWidth + itemGap) / (tileWidth + itemGap))
+                .ceil()
+                .clamp(1, 6)
+                .toInt();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,8 +90,9 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                 TextButton(
                   onPressed: _openAll,
                   style: TextButton.styleFrom(
-                    minimumSize: const Size(48, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(44, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     foregroundColor: const Color(0xFF12D8D6),
                     textStyle: TextStyle(
                       fontSize: 12 * layout.bodyFontScale,
@@ -88,7 +103,7 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Expanded(
               child: FutureBuilder<List<CommunityPost>>(
                 future: _catches,
@@ -96,21 +111,18 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return PremiumLoadingShimmer(
                       isLoading: true,
-                      borderRadius: 14,
-                      child: Row(
-                        children: List.generate(
-                          3,
-                          (index) => Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                right: index < 2 ? 8 : 0,
-                              ),
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF202633),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
+                      borderRadius: 12,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: placeholderCount,
+                        separatorBuilder: (_, _) => SizedBox(width: itemGap),
+                        itemBuilder: (context, index) => SizedBox(
+                          width: tileWidth,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF202633),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                         ),
@@ -131,7 +143,12 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                     return Center(
                       child: Text(
                         context.l10n.noCatchesYet,
-                        style: const TextStyle(color: Colors.white70),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.caption.copyWith(
+                          fontSize: 12 * layout.bodyFontScale,
+                        ),
                       ),
                     );
                   }
@@ -139,7 +156,7 @@ class _RecentCatchesCardPremiumState extends State<RecentCatchesCardPremium> {
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
                     itemCount: catches.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    separatorBuilder: (_, _) => SizedBox(width: itemGap),
                     itemBuilder: (context, index) => SizedBox(
                       width: tileWidth,
                       child: _CatchCard(
@@ -172,100 +189,184 @@ class _CatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xFF202633),
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (post.imageUrl case final String imageUrl)
-                    Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const ColoredBox(
-                        color: Color(0xFF455A64),
-                        child: Icon(Icons.image_not_supported_outlined),
-                      ),
-                    )
-                  else
-                    const ColoredBox(
-                      color: Color(0xFF455A64),
-                      child: Icon(Icons.set_meal_outlined),
+    final timeLabel = _relativeTime(context, post.createdAt);
+    final weightLabel = post.weight == null
+        ? null
+        : '${post.weight!.toStringAsFixed(1)} kg';
+    final locationIsHidden = post.latitude == null || post.longitude == null;
+    final privacyLabel = locationIsHidden
+        ? context.l10n.hiddenLocation
+        : context.l10n.locationPrivacy;
+    final semanticValue = [?weightLabel, timeLabel, privacyLabel].join(', ');
+
+    return Semantics(
+      container: true,
+      button: true,
+      label: '${context.l10n.catchDetails}: ${post.title}',
+      value: semanticValue,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: Material(
+        color: const Color(0xFF202633),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: Color(0x1FFFFFFF)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          excludeFromSemantics: true,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (post.imageUrl case final String imageUrl)
+                Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const ColoredBox(
+                    color: Color(0xFF455A64),
+                    child: Icon(
+                      Icons.image_not_supported_outlined,
+                      color: Colors.white70,
                     ),
-                  if (post.weight != null)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 4,
-                          ),
-                          child: Text(
-                            '${post.weight!.toStringAsFixed(1)} kg',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10 * layout.bodyFontScale,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+                  ),
+                )
+              else
+                const ColoredBox(
+                  color: Color(0xFF455A64),
+                  child: Icon(Icons.set_meal_outlined, color: Colors.white70),
+                ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0, .48, 1],
+                    colors: [
+                      Color(0x42000000),
+                      Color(0x08000000),
+                      Color(0xE8141820),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(9, 6, 9, 7),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          post.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
+              Positioned(
+                left: 8,
+                top: 8,
+                child: Tooltip(
+                  message: privacyLabel,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xC7141820),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 4,
+                      ),
+                      child: Icon(
+                        locationIsHidden
+                            ? Icons.location_off_rounded
+                            : Icons.location_on_rounded,
+                        size: 14,
+                        color: locationIsHidden
+                            ? Colors.white70
+                            : const Color(0xFF67D04B),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (weightLabel != null)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xD9141820),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Text(
+                        weightLabel,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.5 * layout.bodyFontScale,
+                          fontWeight: FontWeight.w800,
                         ),
-                        Text(
-                          post.authorName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.caption.copyWith(
-                            fontSize: 12 * layout.bodyFontScale,
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 8,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      post.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13 * layout.bodyFontScale,
+                        height: 1.08,
+                        fontWeight: FontWeight.w800,
+                        shadows: const [
+                          Shadow(color: Colors.black87, blurRadius: 4),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.schedule_rounded,
+                          size: 13,
+                          color: Colors.white70,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            timeLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.caption.copyWith(
+                              color: Colors.white70,
+                              fontSize: 10.5 * layout.bodyFontScale,
+                              height: 1.05,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const Icon(
-                    Icons.location_on_rounded,
-                    size: 15,
-                    color: Color(0xFF67D04B),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+String _relativeTime(BuildContext context, DateTime createdAt) {
+  final difference = DateTime.now().difference(createdAt);
+  if (difference.inMinutes < 1) return context.l10n.justNow;
+  if (difference.inHours < 1) {
+    return context.l10n.minutesAgo(difference.inMinutes);
+  }
+  if (difference.inDays < 1) {
+    return context.l10n.hoursAgo(difference.inHours);
+  }
+  return context.l10n.daysAgo(difference.inDays);
 }

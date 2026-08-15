@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/l10n.dart';
 import '../services/notification_preferences_service.dart';
+import '../features/figma_complete/presentation/figma_foundation.dart';
 
 class NotificationPreferencesPage extends StatefulWidget {
   const NotificationPreferencesPage({super.key});
@@ -25,12 +28,20 @@ class _NotificationPreferencesPageState
     _preferences = _userId == null
         ? const NotificationPreferences()
         : _service.getForUser(_userId!);
+    final userId = _userId;
+    if (userId != null) unawaited(_load(userId));
+  }
+
+  Future<void> _load(String userId) async {
+    final loaded = await _service.loadForUser(userId);
+    if (!mounted || _userId != userId) return;
+    setState(() => _preferences = loaded);
   }
 
   void _save(NotificationPreferences value) {
     final userId = _userId;
     if (userId == null) return;
-    _service.saveForUser(userId, value);
+    unawaited(_service.saveForUser(userId, value));
     setState(() => _preferences = value);
   }
 
@@ -54,21 +65,85 @@ class _NotificationPreferencesPageState
   @override
   Widget build(BuildContext context) {
     if (_userId == null) {
-      return Scaffold(
-        appBar: AppBar(title: Text(context.l10n.notificationPreferences)),
-        body: Center(
+      return FigmaCanonicalScaffold(
+        key: const ValueKey('notification-preferences-page'),
+        title: context.l10n.notificationPreferences,
+        child: Center(
           child: Text(context.l10n.signInForNotificationPreferences),
         ),
       );
     }
-    return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.notificationPreferences)),
-      body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          children: [
-          Text(context.l10n.categories, style: Theme.of(context).textTheme.titleLarge),
+    return FigmaCanonicalScaffold(
+      key: const ValueKey('notification-preferences-page'),
+      title: context.l10n.notificationPreferences,
+      padding: EdgeInsets.zero,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        children: [
+          Text('Livrare', style: Theme.of(context).textTheme.titleLarge),
+          SwitchListTile(
+            value: _preferences.inAppEnabled,
+            title: const Text('Notificări în aplicație'),
+            subtitle: const Text('Păstrează evenimentele în centrul FluviAI.'),
+            onChanged: (value) =>
+                _save(_preferences.copyWith(inAppEnabled: value)),
+          ),
+          SwitchListTile(
+            value: _preferences.pushEnabled,
+            title: const Text('Notificări push'),
+            subtitle: const Text(
+              'Primește alerte și când FluviAI este în fundal sau închisă.',
+            ),
+            onChanged: (value) =>
+                _save(_preferences.copyWith(pushEnabled: value)),
+          ),
+          ListTile(
+            title: const Text('Mod de livrare'),
+            trailing: DropdownButton<NotificationDeliveryMode>(
+              value: _preferences.deliveryMode,
+              items: NotificationDeliveryMode.values
+                  .map(
+                    (mode) => DropdownMenuItem(
+                      value: mode,
+                      child: Text(switch (mode) {
+                        NotificationDeliveryMode.instant => 'Instant',
+                        NotificationDeliveryMode.digest => 'Digest',
+                        NotificationDeliveryMode.off => 'Oprit',
+                      }),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (mode) {
+                if (mode != null) {
+                  _save(_preferences.copyWith(deliveryMode: mode));
+                }
+              },
+            ),
+          ),
+          ListTile(
+            title: const Text('Rază alerte'),
+            subtitle: const Text(
+              'Folosită pentru rapoarte și capturi din apropiere.',
+            ),
+            trailing: DropdownButton<int>(
+              value: _preferences.radiusKm,
+              items: const [10, 25, 50, 100]
+                  .map(
+                    (km) => DropdownMenuItem(value: km, child: Text('$km km')),
+                  )
+                  .toList(),
+              onChanged: (km) {
+                if (km != null) {
+                  _save(_preferences.copyWith(radiusKm: km));
+                }
+              },
+            ),
+          ),
+          const Divider(),
+          Text(
+            context.l10n.categories,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           for (final category in NotificationCategory.values)
             SwitchListTile(
               value: _preferences.isCategoryEnabled(category),
@@ -82,7 +157,10 @@ class _NotificationPreferencesPageState
               },
             ),
           const Divider(),
-          Text(context.l10n.priority, style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            context.l10n.priority,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           ListTile(
             leading: Icon(Icons.notifications_off_outlined),
             title: Text(context.l10n.notificationPrioritySilent),
@@ -91,12 +169,16 @@ class _NotificationPreferencesPageState
           ListTile(
             leading: Icon(Icons.notifications_active_outlined),
             title: Text(context.l10n.notificationPriorityImportant),
-            subtitle: Text(context.l10n.notificationPriorityImportantDescription),
+            subtitle: Text(
+              context.l10n.notificationPriorityImportantDescription,
+            ),
           ),
           ListTile(
             leading: Icon(Icons.warning_amber_rounded),
             title: Text(context.l10n.notificationPriorityCritical),
-            subtitle: Text(context.l10n.notificationPriorityCriticalDescription),
+            subtitle: Text(
+              context.l10n.notificationPriorityCriticalDescription,
+            ),
           ),
           const Divider(),
           SwitchListTile(
@@ -150,8 +232,7 @@ class _NotificationPreferencesPageState
               },
             ),
           ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -163,6 +244,7 @@ class _NotificationPreferencesPageState
     final l10n = context.l10n;
     return switch (category) {
       NotificationCategory.waterAlerts => l10n.notificationWaterAlerts,
+      NotificationCategory.weatherAlerts => l10n.notificationWeatherAlerts,
       NotificationCategory.favoriteStations =>
         l10n.notificationFavouriteStations,
       NotificationCategory.communityReports =>

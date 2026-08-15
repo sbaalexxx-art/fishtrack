@@ -1,3 +1,4 @@
+import 'package:fishtrack/core/network/api_client.dart';
 import 'package:fishtrack/models/station.dart';
 import 'package:fishtrack/services/map_search_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,4 +42,38 @@ void main() {
   test('station search returns an empty list for no match', () {
     expect(service.searchStations('Isaccea', stations), isEmpty);
   });
+
+  test('global search can use the native Mapbox runtime token', () async {
+    final client = _RecordingApiClient();
+    final runtimeService = MapSearchService(
+      apiClient: client,
+      accessTokenProvider: () async => 'pk.runtime-test',
+    );
+
+    final results = await runtimeService.search('Bristol');
+
+    expect(results.single.name, 'Bristol');
+    final request = Uri.parse(client.requests.single);
+    expect(request.host, 'api.mapbox.com');
+    expect(request.queryParameters['access_token'], 'pk.runtime-test');
+  });
+}
+
+class _RecordingApiClient extends ApiClient {
+  final List<String> requests = [];
+
+  @override
+  Future<dynamic> get(String url) async {
+    requests.add(url);
+    return {
+      'features': [
+        {
+          'geometry': {
+            'coordinates': [-2.5879, 51.4545],
+          },
+          'properties': {'name': 'Bristol', 'place_formatted': 'England'},
+        },
+      ],
+    };
+  }
 }

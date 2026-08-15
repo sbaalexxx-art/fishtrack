@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../core/navigation/app_destination.dart';
+import '../core/navigation/app_navigator.dart';
+
 import '../l10n/l10n.dart';
 import '../services/fishing_score_service.dart';
 
@@ -20,14 +23,26 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
     _decision = _service.calculate();
   }
 
-  void _reload() => setState(
-    () => _decision = _service.calculate(forceRefresh: true),
-  );
+  void _reload() =>
+      setState(() => _decision = _service.calculate(forceRefresh: true));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.fishingInsights)),
+      appBar: AppBar(
+        title: Text(context.l10n.fishingInsights),
+        actions: [
+          IconButton(
+            key: const Key('fluvi-ask-action'),
+            tooltip: Localizations.localeOf(context).languageCode == 'ro'
+                ? 'Întreabă Fluvi'
+                : 'Ask Fluvi',
+            onPressed: () =>
+                AppNavigator.open(context, AppDestination.askFluvi),
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+          ),
+        ],
+      ),
       body: FutureBuilder<FishingScoreResult>(
         future: _decision,
         builder: (context, snapshot) {
@@ -139,8 +154,7 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
                     color: Colors.grey,
                     factors: result.missingFactors
                         .map(
-                          (factor) =>
-                              _localizedMissingFactor(context, factor),
+                          (factor) => _localizedMissingFactor(context, factor),
                         )
                         .toList(growable: false),
                   ),
@@ -176,10 +190,7 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
     };
   }
 
-  static String _localizedRecommendation(
-    BuildContext context,
-    String value,
-  ) {
+  static String _localizedRecommendation(BuildContext context, String value) {
     if (!_isRomanian(context)) return value;
     return switch (value.trim().toLowerCase()) {
       'not enough data yet' => 'Nu există încă suficiente date',
@@ -240,11 +251,9 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
       'usable air temperature' => 'Temperatură acceptabilă a aerului',
       'moderate atmospheric pressure' => 'Presiune atmosferică moderată',
       'moderate humidity' => 'Umiditate moderată',
-      'low precipitation probability' =>
-        'Probabilitate redusă de precipitații',
+      'low precipitation probability' => 'Probabilitate redusă de precipitații',
       'useful cloud cover' => 'Nebulozitate favorabilă',
-      'verified water level available' =>
-        'Nivel verificat al apei disponibil',
+      'verified water level available' => 'Nivel verificat al apei disponibil',
       'stable water trend' => 'Tendință stabilă a nivelului apei',
       'rising water trend' => 'Nivelul apei este în creștere',
       'water history supports the trend' =>
@@ -258,8 +267,7 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
       'unfavourable humidity' => 'Umiditate nefavorabilă',
       'high precipitation probability' =>
         'Probabilitate ridicată de precipitații',
-      'very bright, clear conditions' =>
-        'Condiții foarte luminoase și senine',
+      'very bright, clear conditions' => 'Condiții foarte luminoase și senine',
       'falling water trend' => 'Nivelul apei este în scădere',
       'water reading is outdated' =>
         'Măsurătoarea nivelului apei este învechită',
@@ -310,21 +318,22 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
       final countText = counted.group(1)!;
       final count = int.parse(countText);
       return switch (counted.group(2)!.toLowerCase()) {
-        'positive reports' => count == 1
-            ? '1 raportare pozitivă'
-            : '$countText raportări pozitive',
-        'caution reports' => count == 1
-            ? '1 raportare de avertizare'
-            : '$countText raportări de avertizare',
-        'recent catches' => count == 1
-            ? '1 captură recentă'
-            : '$countText capturi recente',
-        'recently reported species' => count == 1
-            ? '1 specie raportată recent'
-            : '$countText specii raportate recent',
-        'catches include weight data' => count == 1
-            ? '1 captură include date despre greutate'
-            : '$countText capturi includ date despre greutate',
+        'positive reports' =>
+          count == 1 ? '1 raportare pozitivă' : '$countText raportări pozitive',
+        'caution reports' =>
+          count == 1
+              ? '1 raportare de avertizare'
+              : '$countText raportări de avertizare',
+        'recent catches' =>
+          count == 1 ? '1 captură recentă' : '$countText capturi recente',
+        'recently reported species' =>
+          count == 1
+              ? '1 specie raportată recent'
+              : '$countText specii raportate recent',
+        'catches include weight data' =>
+          count == 1
+              ? '1 captură include date despre greutate'
+              : '$countText capturi includ date despre greutate',
         _ => value,
       };
     }
@@ -354,23 +363,16 @@ class _FishingInsightsPageState extends State<FishingInsightsPage> {
     if (!_isRomanian(context)) return value;
     final exactValue = switch (value.trim().toLowerCase()) {
       'no data' => 'Nu există date',
-      'no sunrise/sunset data' =>
-        'Nu există date despre răsărit și apus',
+      'no sunrise/sunset data' => 'Nu există date despre răsărit și apus',
       'location required' => 'Este necesară locația',
       'not available' => 'Indisponibil',
       _ => null,
     };
     if (exactValue != null) return exactValue;
-    return value.replaceAll(
-      RegExp(r'\sor\s', caseSensitive: false),
-      ' sau ',
-    );
+    return value.replaceAll(RegExp(r'\sor\s', caseSensitive: false), ' sau ');
   }
 
-  static String _localizedMoonPhaseValue(
-    BuildContext context,
-    String value,
-  ) {
+  static String _localizedMoonPhaseValue(BuildContext context, String value) {
     if (!_isRomanian(context)) return value;
     final match = RegExp(
       r'^(.+?)\s*•\s*(\d+(?:\.\d+)?)% illuminated$',

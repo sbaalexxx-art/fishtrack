@@ -6,9 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/station.dart';
 import '../core/cache/timed_cache.dart';
+import '../core/water/water_history_analysis.dart';
 import '../models/water_level.dart';
 import '../repositories/water_repository.dart';
 import 'location_service.dart';
+import 'diagnostics_service.dart';
 
 enum WaterUiStatus {
   availableHistory,
@@ -68,6 +70,7 @@ class WaterStationDetailsResult {
     required this.source,
     required this.sourceName,
     required this.measurementTimestamp,
+    this.freshnessTimestamp,
     required this.dataAge,
     required this.isStale,
     required this.history,
@@ -82,6 +85,7 @@ class WaterStationDetailsResult {
   final WaterLevelSource? source;
   final String? sourceName;
   final DateTime? measurementTimestamp;
+  final DateTime? freshnessTimestamp;
   final Duration? dataAge;
   final bool isStale;
   final List<WaterLevel> history;
@@ -90,6 +94,11 @@ class WaterStationDetailsResult {
   final double? dailyDeltaCm;
   final WaterTrend? trend;
   final String? safeDiagnosticMessage;
+
+  DateTime? get effectiveFreshnessTimestamp =>
+      freshnessTimestamp ??
+      currentReading?.effectiveFreshnessTimestamp ??
+      measurementTimestamp;
 }
 
 class WaterUiResult {
@@ -99,6 +108,7 @@ class WaterUiResult {
     required this.source,
     required this.sourceName,
     required this.measurementTimestamp,
+    this.freshnessTimestamp,
     required this.dataAge,
     required this.isStale,
     required this.status,
@@ -109,6 +119,7 @@ class WaterUiResult {
     this.trend,
     this.hasEnoughHistory = false,
     this.providerError = false,
+    this.canonicalTrend,
   });
 
   final WaterLevel? latestReading;
@@ -116,6 +127,7 @@ class WaterUiResult {
   final WaterLevelSource? source;
   final String? sourceName;
   final DateTime? measurementTimestamp;
+  final DateTime? freshnessTimestamp;
   final Duration? dataAge;
   final bool isStale;
   final WaterUiStatus status;
@@ -126,6 +138,20 @@ class WaterUiResult {
   final WaterTrend? trend;
   final bool hasEnoughHistory;
   final bool providerError;
+  final WaterTrendResult? canonicalTrend;
+
+  DateTime? get effectiveFreshnessTimestamp =>
+      freshnessTimestamp ??
+      latestReading?.effectiveFreshnessTimestamp ??
+      measurementTimestamp;
+
+  WaterTrendResult? get effectiveCanonicalTrend =>
+      canonicalTrend ??
+      canonicalWaterTrendResult(
+        history,
+        currentObservation: latestReading,
+        stationId: latestReading?.stationId,
+      );
 }
 
 class WaterStationBatchResult {
@@ -173,6 +199,7 @@ class WaterService {
 
   static const cacheDuration = Duration(minutes: 30);
   static const homeRotationInterval = Duration(seconds: 12);
+  static const homeNearbyStationRadiusKm = 100.0;
   static const _maxBatchConcurrency = 4;
   static const _selectionModeKey = 'water_home_station_selection_mode';
   static const _pinnedStationIdKey = 'water_home_pinned_station_id';
@@ -193,6 +220,7 @@ class WaterService {
   static int _waterUiCacheEpoch = 0;
   static int _progressiveBatchGeneration = 0;
   static Station? _selectedStation;
+  static String? _restoredPinnedStationId;
   static Station? _lastAutomaticStation;
   static WaterStationSelectionMode _selectionMode =
       WaterStationSelectionMode.automatic;
@@ -236,6 +264,7 @@ class WaterService {
 
   void selectStation(Station station) {
     _selectedStation = station;
+    _restoredPinnedStationId = station.id;
     _selectionMode = WaterStationSelectionMode.pinned;
     _selectionWasExplicitlySet = true;
     unawaited(_persistPinnedStation(station.id));
@@ -244,6 +273,7 @@ class WaterService {
 
   Future<void> setAutomatic() async {
     _selectedStation = null;
+    _restoredPinnedStationId = null;
     _selectionMode = WaterStationSelectionMode.automatic;
     _selectionWasExplicitlySet = true;
     final preferences = await SharedPreferences.getInstance();
@@ -253,20 +283,24 @@ class WaterService {
 
   Future<void> clearSelection() => setAutomatic();
 
-  Future<WaterHomeStationSelection> resolveHomeStationSelection() async {
+  Future<WaterHomeStationSelection> resolveHomeStationSelection({
+    double? currentLatitude,
+    double? currentLongitude,
+  }) async {
     await _restoreSelection();
     final stations = await getStations();
     final canonicalStations = orderCanonicalStations(stations);
 
     if (_selectionMode == WaterStationSelectionMode.pinned) {
-      final pinned = _selectedStation;
-      final restored = pinned == null
+      final pinnedId = _selectedStation?.id ?? _restoredPinnedStationId;
+      final restored = pinnedId == null
           ? null
           : canonicalStations
-                .where((station) => station.id == pinned.id)
+                .where((station) => station.id == pinnedId)
                 .firstOrNull;
       if (restored != null) {
         _selectedStation = restored;
+        _restoredPinnedStationId = restored.id;
         return WaterHomeStationSelection(
           mode: _selectionMode,
           station: restored,
@@ -278,18 +312,33 @@ class WaterService {
     }
 
     try {
-      final position = await _locationService.determinePosition();
+      if (currentLatitude == null || currentLongitude == null) {
+        final position = await _locationService.determinePosition();
+        currentLatitude = position.latitude;
+        currentLongitude = position.longitude;
+      }
+      final latitude = currentLatitude;
+      final longitude = currentLongitude;
       final candidates = rankHomeCandidates(
         stations,
-        latitude: position.latitude,
-        longitude: position.longitude,
+        latitude: latitude,
+        longitude: longitude,
       );
       final automaticStations = rankCanonicalStations(
         canonicalStations,
-        latitude: position.latitude,
-        longitude: position.longitude,
+        latitude: latitude,
+        longitude: longitude,
       );
-      final automaticStation = automaticStations.firstOrNull;
+      final nearest = automaticStations.firstOrNull;
+      final automaticStation =
+          nearest != null &&
+              isStationWithinHomeRadius(
+                nearest,
+                latitude: latitude,
+                longitude: longitude,
+              )
+          ? nearest
+          : null;
       if (automaticStation != null) {
         _lastAutomaticStation = automaticStation;
       }
@@ -305,37 +354,62 @@ class WaterService {
       // Keep automatic mode without inventing a first-station fallback.
     }
 
-    final retainedAutomaticStation = _lastAutomaticStation == null
-        ? null
-        : canonicalStations
-              .where((station) => station.id == _lastAutomaticStation!.id)
-              .firstOrNull;
-    if (retainedAutomaticStation != null) {
-      _lastAutomaticStation = retainedAutomaticStation;
-    }
+    _lastAutomaticStation = null;
     return WaterHomeStationSelection(
       mode: WaterStationSelectionMode.automatic,
-      station: retainedAutomaticStation,
+      station: null,
       candidates: rankHomeCandidates(stations),
       canonicalStations: canonicalStations,
     );
   }
 
+  static bool isStationWithinHomeRadius(
+    Station station, {
+    required double latitude,
+    required double longitude,
+  }) =>
+      Geolocator.distanceBetween(
+        latitude,
+        longitude,
+        station.latitude,
+        station.longitude,
+      ) <=
+      homeNearbyStationRadiusKm * 1000;
+
+  /// Legacy display order retained only for the direct-provider fallback.
+  /// Production selection is driven by the backend catalog and stable IDs.
   static List<String> get canonicalStationNames =>
       WaterRepository.officialAfdjStationOrder;
 
   static List<Station> orderCanonicalStations(Iterable<Station> stations) {
-    final byName = <String, Station>{
-      for (final station in stations)
-        _normalizeStationName(station.name): station,
-    };
+    final seenIds = <String>{};
     return List<Station>.unmodifiable(
-      canonicalStationNames
-          .map((name) => byName[_normalizeStationName(name)])
-          .whereType<Station>(),
+      stations.where((station) {
+        final id = station.id.trim();
+        return id.isNotEmpty && seenIds.add(id);
+      }),
     );
   }
 
+  static List<Station> filterStations(
+    Iterable<Station> stations,
+    String query,
+  ) {
+    final normalizedQuery = _normalizeStationName(query);
+    final ordered = orderCanonicalStations(stations);
+    if (normalizedQuery.isEmpty) return ordered;
+
+    return List<Station>.unmodifiable(
+      ordered.where((station) {
+        return _normalizeStationName(station.name).contains(normalizedQuery) ||
+            _normalizeStationName(station.river).contains(normalizedQuery) ||
+            _normalizeStationName(station.id).contains(normalizedQuery);
+      }),
+    );
+  }
+
+  /// Compatibility helper for older callers and tests. Product selection does
+  /// not depend on names; IDs remain the source of truth.
   static List<String> filterCanonicalStationNames(String query) {
     final normalizedQuery = _normalizeStationName(query);
     if (normalizedQuery.isEmpty) return canonicalStationNames;
@@ -363,10 +437,12 @@ class WaterService {
     required double latitude,
     required double longitude,
   }) {
-    final canonicalOrder = canonicalStationNames
-        .map(_normalizeStationName)
-        .toList(growable: false);
-    final ranked = orderCanonicalStations(stations)
+    final ordered = orderCanonicalStations(stations);
+    final sourceOrder = <String, int>{
+      for (var index = 0; index < ordered.length; index++)
+        ordered[index].id: index,
+    };
+    final ranked = ordered
         .where(
           (station) =>
               station.latitude.isFinite &&
@@ -391,24 +467,20 @@ class WaterService {
       );
       final byDistance = leftDistance.compareTo(rightDistance);
       if (byDistance != 0) return byDistance;
-      return canonicalOrder
-          .indexOf(_normalizeStationName(left.name))
-          .compareTo(canonicalOrder.indexOf(_normalizeStationName(right.name)));
+      return (sourceOrder[left.id] ?? 0x3fffffff).compareTo(
+        sourceOrder[right.id] ?? 0x3fffffff,
+      );
     });
     return List<Station>.unmodifiable(ranked);
   }
 
   static List<Station> eligibleHomeStations(Iterable<Station> stations) {
-    final canonicalNames = WaterRepository.officialAfdjStationOrder
-        .map(_normalizeStationName)
-        .toSet();
     final seenIds = <String>{};
     return stations
         .where(
           (station) =>
               station.id.trim().isNotEmpty &&
               seenIds.add(station.id) &&
-              canonicalNames.contains(_normalizeStationName(station.name)) &&
               station.latitude.isFinite &&
               station.longitude.isFinite &&
               station.latitude.abs() <= 90 &&
@@ -424,10 +496,12 @@ class WaterService {
     double? latitude,
     double? longitude,
   }) {
-    final candidates = eligibleHomeStations(stations).toList();
-    final canonicalOrder = WaterRepository.officialAfdjStationOrder
-        .map(_normalizeStationName)
-        .toList();
+    final ordered = eligibleHomeStations(stations);
+    final sourceOrder = <String, int>{
+      for (var index = 0; index < ordered.length; index++)
+        ordered[index].id: index,
+    };
+    final candidates = ordered.toList();
     candidates.sort((left, right) {
       if (latitude != null && longitude != null) {
         final leftDistance = Geolocator.distanceBetween(
@@ -445,30 +519,18 @@ class WaterService {
         final byDistance = leftDistance.compareTo(rightDistance);
         if (byDistance != 0) return byDistance;
       }
-      final leftOrder = canonicalOrder.indexOf(
-        _normalizeStationName(left.name),
+      final bySourceOrder = (sourceOrder[left.id] ?? 0x3fffffff).compareTo(
+        sourceOrder[right.id] ?? 0x3fffffff,
       );
-      final rightOrder = canonicalOrder.indexOf(
-        _normalizeStationName(right.name),
-      );
-      return leftOrder != rightOrder
-          ? leftOrder.compareTo(rightOrder)
-          : left.name.compareTo(right.name);
+      if (bySourceOrder != 0) return bySourceOrder;
+      return left.id.compareTo(right.id);
     });
-
-    if (latitude == null || longitude == null) {
-      final baziasIndex = candidates.indexWhere(
-        (station) => _normalizeStationName(station.name) == 'bazias',
-      );
-      if (baziasIndex == 0 && candidates.length > 1) {
-        candidates.add(candidates.removeAt(0));
-      }
-    }
     return List<Station>.unmodifiable(candidates.take(5));
   }
 
   static void resetStationSelectionForTest() {
     _selectedStation = null;
+    _restoredPinnedStationId = null;
     _lastAutomaticStation = null;
     _selectionMode = WaterStationSelectionMode.automatic;
     _selectionRestore = null;
@@ -483,19 +545,12 @@ class WaterService {
       final pinnedId = preferences.getString(_pinnedStationIdKey);
       if (savedMode == 'pinned' && pinnedId != null && pinnedId.isNotEmpty) {
         _selectionMode = WaterStationSelectionMode.pinned;
-        _selectedStation = Station(
-          id: pinnedId,
-          name: '',
-          river: '',
-          level: double.nan,
-          trend: WaterTrend.stable,
-          latitude: 0,
-          longitude: 0,
-          lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-        );
+        _selectedStation = null;
+        _restoredPinnedStationId = pinnedId;
       } else {
         _selectionMode = WaterStationSelectionMode.automatic;
         _selectedStation = null;
+        _restoredPinnedStationId = null;
       }
     }();
   }
@@ -554,8 +609,9 @@ class WaterService {
       final result = _withCurrentFreshness(restored, now);
       await _restoreSelection();
       if (_selectionMode == WaterStationSelectionMode.pinned &&
-          _selectedStation?.id == station.id) {
+          (_selectedStation?.id ?? _restoredPinnedStationId) == station.id) {
         _selectedStation = station;
+        _restoredPinnedStationId = station.id;
       } else if (_selectionMode == WaterStationSelectionMode.automatic) {
         _lastAutomaticStation = station;
       }
@@ -649,6 +705,9 @@ class WaterService {
         'source': (result.source ?? latest.source).name,
         'source_name': result.sourceName ?? latest.sourceName,
         'measurement_timestamp': latest.timestamp.toUtc().toIso8601String(),
+        'freshness_timestamp': latest.effectiveFreshnessTimestamp
+            .toUtc()
+            .toIso8601String(),
         'previous_reading': result.previousReading == null
             ? null
             : _waterLevelToPersistedMap(result.previousReading!),
@@ -674,7 +733,7 @@ class WaterService {
 
   bool _shouldPersistHomeSnapshot(Station station) {
     if (_selectionMode == WaterStationSelectionMode.pinned) {
-      return _selectedStation?.id == station.id;
+      return (_selectedStation?.id ?? _restoredPinnedStationId) == station.id;
     }
     return _lastAutomaticStation == null ||
         _lastAutomaticStation?.id == station.id;
@@ -687,6 +746,8 @@ class WaterService {
         : result.history.last.timestamp;
     return '${station.id}:${latest.timestamp.toUtc().microsecondsSinceEpoch}:'
         '${latest.value}:${latest.source.name}:${result.history.length}:'
+        '${latest.reportedDeltaCm24h}:${latest.waterTemperatureC}:'
+        '${latest.forecast.length}:'
         '${lastHistoryTimestamp.toUtc().microsecondsSinceEpoch}';
   }
 
@@ -712,6 +773,9 @@ class WaterService {
       'level': latest.value,
       'trend': latest.trend.name,
       'last_update': latest.timestamp.toUtc().toIso8601String(),
+      'water_freshness_timestamp': latest.effectiveFreshnessTimestamp
+          .toUtc()
+          .toIso8601String(),
       'water_type': station.waterBodyType.name,
       'species': station.species,
       'difficulty': station.difficulty.name,
@@ -720,6 +784,9 @@ class WaterService {
       'has_known_trend': latest.hasKnownTrend,
       'water_level_unit': latest.unit,
       'water_level_source': latest.source.name,
+      'water_measurement_precision': latest.measurementPrecision.name,
+      'reported_delta_cm_24h': latest.reportedDeltaCm24h,
+      'water_temperature_c': latest.waterTemperatureC,
     };
   }
 
@@ -728,11 +795,28 @@ class WaterService {
       'station_id': reading.stationId,
       'value': reading.value,
       'timestamp': reading.timestamp.toUtc().toIso8601String(),
+      'freshness_timestamp': reading.freshnessTimestamp
+          ?.toUtc()
+          .toIso8601String(),
+      'measurement_precision': reading.measurementPrecision.name,
       'trend': reading.trend.name,
       'source': reading.source.name,
       'unit': reading.unit,
       'source_name': reading.sourceName,
       'has_known_trend': reading.hasKnownTrend,
+      'metric_code': reading.metricCode,
+      'measurement_datum': reading.measurementDatum,
+      'history_contract': reading.historyContract,
+      'is_quality_valid': reading.isQualityValid,
+      'measurement_resolution': reading.measurementResolution,
+      'reported_delta_cm_24h': reading.reportedDeltaCm24h,
+      'water_temperature_c': reading.waterTemperatureC,
+      'forecast': reading.forecast
+          .map((point) => point.toJson())
+          .toList(growable: false),
+      'forecast_updated_at': reading.forecastUpdatedAt
+          ?.toUtc()
+          .toIso8601String(),
     };
   }
 
@@ -851,6 +935,9 @@ class WaterService {
         ? (map['value'] as num).toDouble()
         : double.tryParse(map['value']?.toString() ?? '');
     final timestamp = DateTime.tryParse(map['timestamp']?.toString() ?? '');
+    final freshnessTimestamp = DateTime.tryParse(
+      map['freshness_timestamp']?.toString() ?? '',
+    );
     final unit = map['unit']?.toString().trim();
     final source = WaterLevelSource.parse(map['source']);
     final parsedTrend = _waterTrendFromName(map['trend']);
@@ -870,6 +957,10 @@ class WaterService {
       stationId: stationId,
       value: value,
       timestamp: timestamp,
+      freshnessTimestamp: freshnessTimestamp,
+      measurementPrecision: WaterMeasurementPrecision.parse(
+        map['measurement_precision'],
+      ),
       trend: parsedTrend ?? WaterTrend.stable,
       source: source,
       unit: unit,
@@ -877,6 +968,24 @@ class WaterService {
           ? _canonicalSourceName(source)
           : sourceName,
       hasKnownTrend: hasKnownTrend,
+      metricCode: map['metric_code']?.toString() ?? 'water_level',
+      measurementDatum: map['measurement_datum']?.toString() ?? 'source_native',
+      historyContract:
+          map['history_contract']?.toString() ?? 'canonical_water_level',
+      isQualityValid: map['is_quality_valid'] != false,
+      measurementResolution: map['measurement_resolution'] is num
+          ? (map['measurement_resolution'] as num).toDouble()
+          : double.tryParse(map['measurement_resolution']?.toString() ?? ''),
+      reportedDeltaCm24h: map['reported_delta_cm_24h'] is num
+          ? (map['reported_delta_cm_24h'] as num).toDouble()
+          : double.tryParse(map['reported_delta_cm_24h']?.toString() ?? ''),
+      waterTemperatureC: map['water_temperature_c'] is num
+          ? (map['water_temperature_c'] as num).toDouble()
+          : double.tryParse(map['water_temperature_c']?.toString() ?? ''),
+      forecast: WaterForecastPoint.listFromJson(map['forecast']),
+      forecastUpdatedAt: DateTime.tryParse(
+        map['forecast_updated_at']?.toString() ?? '',
+      ),
     );
     return _isValidReading(reading) ? reading : null;
   }
@@ -899,7 +1008,8 @@ class WaterService {
       .replaceAll('ș', 's')
       .replaceAll('ş', 's')
       .replaceAll('ț', 't')
-      .replaceAll('ţ', 't');
+      .replaceAll('ţ', 't')
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '');
 
   Future<List<WaterLevel>> getHistory(
     String stationId, {
@@ -945,6 +1055,7 @@ class WaterService {
         source: source,
         sourceName: currentResult.sourceName,
         measurementTimestamp: currentResult.measurementTimestamp,
+        freshnessTimestamp: currentResult.effectiveFreshnessTimestamp,
         dataAge: currentResult.dataAge,
         isStale: currentResult.isStale,
         history: const <WaterLevel>[],
@@ -985,6 +1096,7 @@ class WaterService {
       source: source,
       sourceName: currentResult.sourceName ?? _canonicalSourceName(source),
       measurementTimestamp: currentResult.measurementTimestamp,
+      freshnessTimestamp: currentResult.effectiveFreshnessTimestamp,
       dataAge: currentResult.dataAge,
       isStale: currentResult.isStale,
       history: List<WaterLevel>.unmodifiable(history),
@@ -1032,7 +1144,15 @@ class WaterService {
     final key = _waterUiCacheKey(station, limit, historyWindow);
     final now = DateTime.now();
     final activeRequest = _waterUiInFlight[key];
-    if (activeRequest != null) return activeRequest;
+    if (activeRequest != null) {
+      DiagnosticsService.instance.record(
+        category: DiagnosticCategory.water,
+        operation: 'water_ui_deduped',
+        message: 'Reused in-flight Water request',
+        metadata: <String, Object?>{'station_id': station.id},
+      );
+      return activeRequest;
+    }
 
     if (forceRefresh) {
       _waterUiCache.remove(key);
@@ -1045,9 +1165,18 @@ class WaterService {
           cached.result,
           canUpdateLastKnownGood: true,
         );
-        return Future<WaterUiResult>.value(
-          _withCurrentFreshness(resolved, now),
+        final fresh = _withCurrentFreshness(resolved, now);
+        DiagnosticsService.instance.record(
+          category: DiagnosticCategory.cache,
+          operation: 'water_cache_hit',
+          message: fresh.status.name,
+          metadata: <String, Object?>{
+            'station_id': station.id,
+            'source': fresh.sourceName,
+            'history_points': fresh.history.length,
+          },
         );
+        return Future<WaterUiResult>.value(fresh);
       }
     }
 
@@ -1074,7 +1203,21 @@ class WaterService {
                   unawaited(_persistHomeSnapshot(station, resolved));
                 }
               }
-              return _withCurrentFreshness(resolved, DateTime.now());
+              final fresh = _withCurrentFreshness(resolved, DateTime.now());
+              DiagnosticsService.instance.record(
+                category: DiagnosticCategory.water,
+                operation: 'water_ui_result',
+                message: fresh.status.name,
+                metadata: <String, Object?>{
+                  'station_id': station.id,
+                  'source': fresh.sourceName,
+                  'level_cm': fresh.latestReading?.value,
+                  'history_points': fresh.history.length,
+                  'stale': fresh.isStale,
+                  'provider_error': fresh.providerError,
+                },
+              );
+              return fresh;
             })
             .whenComplete(() {
               if (identical(_waterUiInFlight[key], request)) {
@@ -1196,19 +1339,33 @@ class WaterService {
     final compatibleReadings = selectedReading == null
         ? const <WaterLevel>[]
         : _historyThroughSelectedReading(validReadings, selectedReading);
-    final history = _withCompatibleTrends(compatibleReadings);
+    final canonicalTrend = canonicalWaterTrendResult(
+      compatibleReadings,
+      currentObservation: selectedReading,
+      stationId: station.id,
+    );
+    final history =
+        canonicalTrend?.history.realObservations ?? const <WaterLevel>[];
+    final reportedDeltaCm24h = selectedReading?.reportedDeltaCm24h;
+    final hasReportedDelta =
+        reportedDeltaCm24h != null && reportedDeltaCm24h.isFinite;
+    final reportedTrend = hasReportedDelta
+        ? waterTrendFromRealDelta(
+            reportedDeltaCm24h,
+            measurementResolution: selectedReading?.measurementResolution,
+          )
+        : null;
+    final displayTrend = reportedTrend ?? canonicalTrend?.trend.displayTrend;
     final latestReading = selectedReading == null
         ? null
-        : _withCompatibleTrend(selectedReading, compatibleReadings);
-    final previousReading = latestReading == null
-        ? null
-        : _previousCompatibleReading(latestReading, history);
-    final deltaCm = latestReading == null || previousReading == null
-        ? null
-        : latestReading.value - previousReading.value;
-    final comparisonDuration = latestReading == null || previousReading == null
-        ? null
-        : latestReading.timestamp.difference(previousReading.timestamp);
+        : _copyWithResolvedTrend(selectedReading, displayTrend);
+    final previousReading = canonicalTrend?.delta?.referenceObservation;
+    final deltaCm = hasReportedDelta
+        ? reportedDeltaCm24h
+        : canonicalTrend?.delta?.value;
+    final comparisonDuration = hasReportedDelta
+        ? const Duration(hours: 24)
+        : canonicalTrend?.delta?.actualInterval;
     final measurementTimestamp = latestReading?.timestamp;
 
     final status = history.length >= 2
@@ -1232,24 +1389,11 @@ class WaterService {
       previousReading: previousReading,
       deltaCm: deltaCm,
       comparisonDuration: comparisonDuration,
-      trend: latestReading?.hasKnownTrend == true ? latestReading?.trend : null,
+      trend: displayTrend,
       hasEnoughHistory: previousReading != null,
       providerError: repositoryResult.hadProviderError,
+      canonicalTrend: canonicalTrend,
     );
-  }
-
-  static WaterLevel? _previousCompatibleReading(
-    WaterLevel latest,
-    List<WaterLevel> history,
-  ) {
-    for (final candidate in history.reversed) {
-      if (_sourcesCanShareHistory(candidate.source, latest.source) &&
-          candidate.unit.toLowerCase() == 'cm' &&
-          candidate.timestamp.isBefore(latest.timestamp)) {
-        return candidate;
-      }
-    }
-    return null;
   }
 
   static List<WaterLevel> _historyThroughSelectedReading(
@@ -1676,7 +1820,7 @@ class WaterService {
 
     try {
       final position = await _locationService.determinePosition();
-      return stations.reduce((nearest, candidate) {
+      final nearest = stations.reduce((nearest, candidate) {
         final nearestDistance = Geolocator.distanceBetween(
           position.latitude,
           position.longitude,
@@ -1691,8 +1835,15 @@ class WaterService {
         );
         return candidateDistance < nearestDistance ? candidate : nearest;
       });
+      return isStationWithinHomeRadius(
+            nearest,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          )
+          ? nearest
+          : null;
     } on LocationFailure {
-      return stations.first;
+      return null;
     }
   }
 
@@ -1751,6 +1902,7 @@ class WaterService {
       trend: previous.trend,
       hasEnoughHistory: previous.hasEnoughHistory,
       providerError: true,
+      canonicalTrend: previous.effectiveCanonicalTrend,
     );
   }
 
@@ -1767,7 +1919,10 @@ class WaterService {
     DateTime now,
   ) {
     final timestamp = result.measurementTimestamp;
-    final dataAge = timestamp == null ? null : _nonNegativeAge(now, timestamp);
+    final freshnessTimestamp = result.effectiveFreshnessTimestamp;
+    final dataAge = freshnessTimestamp == null
+        ? null
+        : _nonNegativeAge(now, freshnessTimestamp);
     final isStale =
         dataAge != null && dataAge > WaterRepository.defaultFreshnessThreshold;
     return WaterUiResult(
@@ -1776,6 +1931,7 @@ class WaterService {
       source: result.source,
       sourceName: result.sourceName,
       measurementTimestamp: timestamp,
+      freshnessTimestamp: freshnessTimestamp,
       dataAge: dataAge,
       isStale: isStale,
       status: result.status,
@@ -1786,6 +1942,7 @@ class WaterService {
       trend: result.trend,
       hasEnoughHistory: result.hasEnoughHistory,
       providerError: result.providerError,
+      canonicalTrend: result.effectiveCanonicalTrend,
     );
   }
 
@@ -1800,11 +1957,17 @@ class WaterService {
       stationId: station.id,
       value: station.level,
       timestamp: station.lastUpdate,
+      freshnessTimestamp: station.waterFreshnessTimestamp,
+      measurementPrecision: WaterMeasurementPrecision.parse(
+        station.waterMeasurementPrecision,
+      ),
       trend: station.trend,
       source: WaterLevelSource.parse(station.waterLevelSource),
       unit: station.waterLevelUnit,
       sourceName: station.waterLevelSource,
       hasKnownTrend: station.hasKnownTrend,
+      reportedDeltaCm24h: station.reportedDeltaCm24h,
+      waterTemperatureC: station.waterTemperatureC,
     );
   }
 
@@ -1820,27 +1983,89 @@ class WaterService {
     ];
     if (candidates.isEmpty) return null;
 
-    final freshAfdj = candidates.where(
-      (reading) =>
-          reading.source == WaterLevelSource.afdj &&
-          _isFreshReading(reading, now),
-    );
-    if (freshAfdj.isNotEmpty) {
-      return freshAfdj.reduce(
-        (current, candidate) =>
-            candidate.timestamp.toUtc().isAfter(current.timestamp.toUtc())
-            ? candidate
-            : current,
-      );
+    final official = candidates
+        .where((reading) => _isOfficialSource(reading.source))
+        .toList(growable: false);
+    final authoritativeCandidates = official.isEmpty ? candidates : official;
+    final fresh = authoritativeCandidates
+        .where((reading) => _isFreshReading(reading, now))
+        .toList(growable: false);
+    final freshAfdj = fresh
+        .where((reading) => reading.source == WaterLevelSource.afdj)
+        .toList(growable: false);
+    final preferred = freshAfdj.isNotEmpty
+        ? freshAfdj
+        : fresh.isNotEmpty
+        ? fresh
+        : authoritativeCandidates;
+    return preferred.reduce((current, candidate) {
+      final currentTimestamp = current.timestamp.toUtc();
+      final candidateTimestamp = candidate.timestamp.toUtc();
+      if (candidateTimestamp.isAfter(currentTimestamp)) return candidate;
+      if (candidateTimestamp.isBefore(currentTimestamp)) return current;
+      return _mergeEquivalentReadings(current, candidate);
+    });
+  }
+
+  static WaterLevel _mergeEquivalentReadings(
+    WaterLevel current,
+    WaterLevel candidate,
+  ) {
+    if (current.stationId != candidate.stationId ||
+        current.source != candidate.source ||
+        current.unit != candidate.unit ||
+        current.value != candidate.value) {
+      return current;
     }
 
-    final official = candidates.where(
-      (reading) => _isOfficialSource(reading.source),
+    final reportedDeltaCm24h =
+        current.reportedDeltaCm24h ?? candidate.reportedDeltaCm24h;
+    final reportedTrend = waterTrendFromRealDelta(
+      reportedDeltaCm24h,
+      measurementResolution:
+          current.measurementResolution ?? candidate.measurementResolution,
     );
-    final authoritativeCandidates = official.isEmpty ? candidates : official;
-    return authoritativeCandidates.reduce(
-      (current, candidate) =>
-          candidate.timestamp.isAfter(current.timestamp) ? candidate : current,
+    final resolvedTrend =
+        reportedTrend ?? current.knownTrend ?? candidate.knownTrend;
+    final forecast = current.forecast.isNotEmpty
+        ? current.forecast
+        : candidate.forecast;
+    final forecastUpdatedAt = current.forecastUpdatedAt == null
+        ? candidate.forecastUpdatedAt
+        : candidate.forecastUpdatedAt == null
+        ? current.forecastUpdatedAt
+        : current.forecastUpdatedAt!.isAfter(candidate.forecastUpdatedAt!)
+        ? current.forecastUpdatedAt
+        : candidate.forecastUpdatedAt;
+
+    return WaterLevel(
+      stationId: current.stationId,
+      value: current.value,
+      timestamp: current.timestamp,
+      freshnessTimestamp:
+          current.freshnessTimestamp ?? candidate.freshnessTimestamp,
+      measurementPrecision:
+          current.measurementPrecision == WaterMeasurementPrecision.unknown
+          ? candidate.measurementPrecision
+          : current.measurementPrecision,
+      trend: resolvedTrend ?? WaterTrend.stable,
+      source: current.source,
+      unit: current.unit,
+      sourceName: current.sourceName.trim().isNotEmpty
+          ? current.sourceName
+          : candidate.sourceName,
+      hasKnownTrend: resolvedTrend != null,
+      metricCode: current.metricCode,
+      measurementDatum: current.measurementDatum,
+      historyContract: current.historyContract,
+      isQualityValid: current.isQualityValid && candidate.isQualityValid,
+      measurementResolution:
+          current.measurementResolution ?? candidate.measurementResolution,
+      reportedDeltaCm24h: reportedDeltaCm24h,
+      waterTemperatureC:
+          current.waterTemperatureC ?? candidate.waterTemperatureC,
+      forecast: forecast,
+      forecastUpdatedAt: forecastUpdatedAt,
     );
   }
 
@@ -1852,9 +2077,19 @@ class WaterService {
         !_isValidReading(reading)) {
       return null;
     }
-    final current = reading.hasKnownTrend
-        ? reading
-        : _copyWithTrend(reading, null);
+    // The fast station payload contains one real observation. Provider-published
+    // Δ24h is still valid without reconstructing a previous point; chart history
+    // remains unavailable until the canonical history request completes.
+    final reportedDeltaCm24h = reading.reportedDeltaCm24h;
+    final hasReportedDelta =
+        reportedDeltaCm24h != null && reportedDeltaCm24h.isFinite;
+    final reportedTrend = hasReportedDelta
+        ? waterTrendFromRealDelta(
+            reportedDeltaCm24h,
+            measurementResolution: reading.measurementResolution,
+          )
+        : reading.knownTrend;
+    final current = _copyWithResolvedTrend(reading, reportedTrend);
     return _withCurrentFreshness(
       WaterUiResult(
         latestReading: current,
@@ -1866,6 +2101,10 @@ class WaterService {
         isStale: false,
         status: WaterUiStatus.insufficientHistory,
         safeDiagnosticMessage: null,
+        deltaCm: hasReportedDelta ? reportedDeltaCm24h : null,
+        comparisonDuration:
+            hasReportedDelta ? const Duration(hours: 24) : null,
+        trend: reportedTrend,
       ),
       now,
     );
@@ -1901,41 +2140,20 @@ class WaterService {
         candidateReading.unit != currentReading.unit ||
         candidateReading.trend != currentReading.trend ||
         candidateReading.hasKnownTrend != currentReading.hasKnownTrend ||
+        candidateReading.reportedDeltaCm24h !=
+            currentReading.reportedDeltaCm24h ||
+        candidateReading.waterTemperatureC != currentReading.waterTemperatureC ||
+        candidateReading.forecast.length != currentReading.forecast.length ||
         candidate.history.length != current.history.length ||
         candidate.safeDiagnosticMessage != current.safeDiagnosticMessage;
   }
 
   static bool _isFreshReading(WaterLevel reading, DateTime now) {
-    final age = now.toUtc().difference(reading.timestamp.toUtc());
+    final age = now.toUtc().difference(
+      reading.effectiveFreshnessTimestamp.toUtc(),
+    );
     return age >= const Duration(minutes: -5) &&
         age <= WaterRepository.defaultFreshnessThreshold;
-  }
-
-  static List<WaterLevel> _withCompatibleTrends(List<WaterLevel> readings) {
-    return List<WaterLevel>.unmodifiable(
-      List.generate(
-        readings.length,
-        (index) => _copyWithTrend(
-          readings[index],
-          index == 0 ? null : readings[index - 1],
-        ),
-        growable: false,
-      ),
-    );
-  }
-
-  static WaterLevel _withCompatibleTrend(
-    WaterLevel reading,
-    List<WaterLevel> compatibleHistory,
-  ) {
-    WaterLevel? previous;
-    for (final candidate in compatibleHistory.reversed) {
-      if (candidate.timestamp.isBefore(reading.timestamp)) {
-        previous = candidate;
-        break;
-      }
-    }
-    return _copyWithTrend(reading, previous);
   }
 
   static WaterLevel _copyWithTrend(WaterLevel reading, WaterLevel? previous) {
@@ -1945,29 +2163,88 @@ class WaterService {
         stationId: reading.stationId,
         value: reading.value,
         timestamp: reading.timestamp,
+        freshnessTimestamp: reading.freshnessTimestamp,
+        measurementPrecision: reading.measurementPrecision,
         trend: WaterTrend.stable,
         source: reading.source,
         unit: reading.unit,
         sourceName: reading.sourceName,
         hasKnownTrend: false,
+        metricCode: reading.metricCode,
+        measurementDatum: reading.measurementDatum,
+        historyContract: reading.historyContract,
+        isQualityValid: reading.isQualityValid,
+        measurementResolution: reading.measurementResolution,
+        reportedDeltaCm24h: reading.reportedDeltaCm24h,
+        waterTemperatureC: reading.waterTemperatureC,
+        forecast: reading.forecast,
+        forecastUpdatedAt: reading.forecastUpdatedAt,
       );
     }
 
     final difference = reading.value - previous.value;
-    final trend = difference.abs() <= .01
-        ? WaterTrend.stable
-        : difference > 0
-        ? WaterTrend.rising
-        : WaterTrend.falling;
+    final resolutions = <double>[
+      if (reading.measurementResolution case final value?
+          when value.isFinite && value > 0)
+        value,
+      if (previous.measurementResolution case final value?
+          when value.isFinite && value > 0)
+        value,
+    ];
+    final resolution = resolutions.isEmpty
+        ? null
+        : resolutions.reduce((a, b) => a > b ? a : b);
+    final trend = waterTrendFromRealDelta(
+      difference,
+      measurementResolution: resolution,
+    )!;
     return WaterLevel(
       stationId: reading.stationId,
       value: reading.value,
       timestamp: reading.timestamp,
+      freshnessTimestamp: reading.freshnessTimestamp,
+      measurementPrecision: reading.measurementPrecision,
       trend: trend,
       source: reading.source,
       unit: reading.unit,
       sourceName: reading.sourceName,
       hasKnownTrend: true,
+      metricCode: reading.metricCode,
+      measurementDatum: reading.measurementDatum,
+      historyContract: reading.historyContract,
+      isQualityValid: reading.isQualityValid,
+      measurementResolution: reading.measurementResolution,
+      reportedDeltaCm24h: reading.reportedDeltaCm24h,
+      waterTemperatureC: reading.waterTemperatureC,
+      forecast: reading.forecast,
+      forecastUpdatedAt: reading.forecastUpdatedAt,
+    );
+  }
+
+  static WaterLevel _copyWithResolvedTrend(
+    WaterLevel reading,
+    WaterTrend? trend,
+  ) {
+    return WaterLevel(
+      stationId: reading.stationId,
+      value: reading.value,
+      timestamp: reading.timestamp,
+      freshnessTimestamp: reading.freshnessTimestamp,
+      measurementPrecision: reading.measurementPrecision,
+      trend: trend ?? WaterTrend.stable,
+      source: reading.source,
+      unit: reading.unit,
+      sourceName: reading.sourceName,
+      hasKnownTrend: trend != null,
+      metricCode: reading.metricCode,
+      measurementDatum: reading.measurementDatum,
+      historyContract: reading.historyContract,
+      isQualityValid: reading.isQualityValid,
+      measurementResolution: reading.measurementResolution,
+      reportedDeltaCm24h: reading.reportedDeltaCm24h,
+      waterTemperatureC: reading.waterTemperatureC,
+      forecast: reading.forecast,
+      forecastUpdatedAt: reading.forecastUpdatedAt,
     );
   }
 

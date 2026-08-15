@@ -5,6 +5,9 @@ import '../l10n/l10n.dart';
 import '../services/community_service.dart';
 import '../widgets/loading_list_skeleton.dart';
 import '../widgets/trust_badge.dart';
+import '../core/navigation/app_destination.dart';
+import '../core/navigation/app_navigator.dart';
+import 'report_detail_page.dart';
 
 enum _ArchivePeriod {
   day('Last 24h', Duration(hours: 24)),
@@ -53,7 +56,18 @@ class _ReportsArchivePageState extends State<ReportsArchivePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.reportsArchive)),
+      appBar: AppBar(
+        title: Text(context.l10n.reportsArchive),
+        actions: [
+          IconButton(
+            key: const Key('reports-archive-add-action'),
+            tooltip: context.l10n.createReport,
+            onPressed: () =>
+                AppNavigator.open(context, AppDestination.addReport),
+            icon: const Icon(Icons.add_location_alt_rounded),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -65,7 +79,9 @@ class _ReportsArchivePageState extends State<ReportsArchivePage> {
                   for (final period in _ArchivePeriod.values)
                     ButtonSegment(
                       value: period,
-                      label: Text(_localizedArchiveLabel(context, period.label)),
+                      label: Text(
+                        _localizedArchiveLabel(context, period.label),
+                      ),
                     ),
                 ],
                 selected: {_period},
@@ -277,9 +293,9 @@ class _ReportTile extends StatelessWidget {
     try {
       await const CommunityService().reportAbuse(report.id, reason);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.reportSubmitted)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(context.l10n.reportSubmitted)));
       }
     } on CommunityException catch (error) {
       if (context.mounted) {
@@ -293,14 +309,17 @@ class _ReportTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: ListTile(
+      onTap: () => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          settings: RouteSettings(name: '/reports/${report.id}'),
+          builder: (_) => ReportDetailPage(post: report),
+        ),
+      ),
       leading: const Icon(Icons.report_outlined),
       title: Text(
         report.reportCategory == null
             ? report.title
-            : _localizedCategoryLabel(
-                context,
-                report.reportCategory!.label,
-              ),
+            : _localizedCategoryLabel(context, report.reportCategory!.label),
       ),
       trailing: IconButton(
         tooltip: context.l10n.reportAbuse,
@@ -428,8 +447,7 @@ String _localizedAbuseReason(BuildContext context, String value) {
     'spam' => 'Spam',
     'fake information' => 'Informații false',
     'offensive content' => 'Conținut ofensator',
-    'dangerous/illegal activity' =>
-      'Activitate periculoasă sau ilegală',
+    'dangerous/illegal activity' => 'Activitate periculoasă sau ilegală',
     'other' => 'Alt motiv',
     _ => value,
   };

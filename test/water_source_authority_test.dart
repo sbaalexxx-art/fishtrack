@@ -1,3 +1,4 @@
+import 'package:fishtrack/core/water/water_history_analysis.dart';
 import 'package:fishtrack/models/station.dart';
 import 'package:fishtrack/models/water_level.dart';
 import 'package:fishtrack/repositories/water_repository.dart';
@@ -76,6 +77,59 @@ void main() {
     },
   );
 
+  test('one AFDJ observation keeps its real value and unknown trend', () async {
+    final reading = _reading(
+      value: 535,
+      timestamp: _now().subtract(const Duration(hours: 1)),
+      source: WaterLevelSource.afdj,
+      trend: WaterTrend.stable,
+      hasKnownTrend: true,
+    );
+    final result = await WaterService(
+      repository: _FakeWaterRepository([reading]),
+    ).getWaterUiResult(_stationFrom(reading));
+
+    expect(result.latestReading?.value, 535);
+    expect(result.source, WaterLevelSource.afdj);
+    expect(result.history, hasLength(1));
+    expect(result.deltaCm, isNull);
+    expect(result.previousReading, isNull);
+    expect(result.trend, isNull);
+    expect(result.latestReading?.hasKnownTrend, isFalse);
+    expect(result.latestReading?.knownTrend, isNull);
+    expect(
+      result.effectiveCanonicalTrend?.trend.direction,
+      WaterDirection.unknown,
+    );
+  });
+
+  test(
+    'one DanubeHIS observation keeps negative level and unknown trend',
+    () async {
+      final reading = _reading(
+        value: -18,
+        timestamp: _now().subtract(const Duration(hours: 1)),
+        source: WaterLevelSource.danubeHis,
+      );
+      final result = await WaterService(
+        repository: _FakeWaterRepository([reading]),
+      ).getWaterUiResult(_stationFrom(reading));
+
+      expect(result.latestReading?.value, -18);
+      expect(result.source, WaterLevelSource.danubeHis);
+      expect(result.history, hasLength(1));
+      expect(result.deltaCm, isNull);
+      expect(result.previousReading, isNull);
+      expect(result.trend, isNull);
+      expect(result.latestReading?.hasKnownTrend, isFalse);
+      expect(result.latestReading?.knownTrend, isNull);
+      expect(
+        result.effectiveCanonicalTrend?.trend.direction,
+        WaterDirection.unknown,
+      );
+    },
+  );
+
   test('older official reading wins over newer Manual reading', () async {
     final now = _now();
     final official = _reading(
@@ -124,6 +178,53 @@ void main() {
       expect(result.source, WaterLevelSource.afdj);
     },
   );
+
+  test('fresh AFDJ date-only reading outranks fresh HIS', () async {
+    final now = _now();
+    final afdj = _reading(
+      value: 535,
+      timestamp: DateTime.utc(now.year, now.month, now.day),
+      freshnessTimestamp: now.subtract(const Duration(minutes: 10)),
+      measurementPrecision: WaterMeasurementPrecision.date,
+      source: WaterLevelSource.afdj,
+    );
+    final danubeHis = _reading(
+      value: 540,
+      timestamp: now.subtract(const Duration(hours: 1)),
+      source: WaterLevelSource.danubeHis,
+    );
+    final service = WaterService(repository: _FakeWaterRepository([danubeHis]));
+
+    final result = await service.getWaterUiResult(_stationFrom(afdj));
+
+    expect(result.latestReading?.value, 535);
+    expect(result.source, WaterLevelSource.afdj);
+    expect(result.isStale, isFalse);
+  });
+
+  test('stale AFDJ cannot block a fresh HIS fallback', () async {
+    final now = _now();
+    final afdj = _reading(
+      value: 535,
+      timestamp: now.subtract(const Duration(hours: 1)),
+      freshnessTimestamp: now.subtract(const Duration(days: 3)),
+      measurementPrecision: WaterMeasurementPrecision.date,
+      source: WaterLevelSource.afdj,
+    );
+    final danubeHis = _reading(
+      value: 540,
+      timestamp: now.subtract(const Duration(hours: 2)),
+      freshnessTimestamp: now.subtract(const Duration(minutes: 20)),
+      source: WaterLevelSource.danubeHis,
+    );
+    final service = WaterService(repository: _FakeWaterRepository([danubeHis]));
+
+    final result = await service.getWaterUiResult(_stationFrom(afdj));
+
+    expect(result.latestReading?.value, 540);
+    expect(result.source, WaterLevelSource.danubeHis);
+    expect(result.isStale, isFalse);
+  });
 
   test(
     'Manual remains available and unverified without official data',
@@ -254,7 +355,11 @@ void main() {
       expect(result.history.map((reading) => reading.value), [535, 537, 535]);
       expect(result.history.last.timestamp, current.timestamp);
       expect(result.deltaCm, -2);
-      expect(result.latestReading?.trend, WaterTrend.falling);
+      expect(result.latestReading?.hasKnownTrend, isFalse);
+      expect(
+        result.effectiveCanonicalTrend?.trend.direction,
+        WaterDirection.oscillating,
+      );
     },
   );
 
@@ -352,6 +457,9 @@ WaterLevel _reading({
   required double value,
   required DateTime timestamp,
   required WaterLevelSource source,
+  DateTime? freshnessTimestamp,
+  WaterMeasurementPrecision measurementPrecision =
+      WaterMeasurementPrecision.exact,
   WaterTrend trend = WaterTrend.stable,
   bool hasKnownTrend = false,
 }) {
@@ -359,6 +467,8 @@ WaterLevel _reading({
     stationId: 'bazias',
     value: value,
     timestamp: timestamp,
+    freshnessTimestamp: freshnessTimestamp,
+    measurementPrecision: measurementPrecision,
     trend: trend,
     source: source,
     sourceName: source.name,
@@ -376,9 +486,11 @@ Station _stationFrom(WaterLevel reading) {
     latitude: 44.8167,
     longitude: 21.3833,
     lastUpdate: reading.timestamp,
+    waterFreshnessTimestamp: reading.freshnessTimestamp,
     hasWaterLevel: true,
     waterLevelUnit: reading.unit,
     waterLevelSource: reading.source.name,
+    waterMeasurementPrecision: reading.measurementPrecision.name,
     hasKnownTrend: reading.hasKnownTrend,
   );
 }

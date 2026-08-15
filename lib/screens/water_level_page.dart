@@ -3,8 +3,12 @@ import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/formatters/water_freshness_formatter.dart';
+import '../core/context/selected_context.dart';
+import '../core/navigation/app_destination.dart';
+import '../core/navigation/app_navigator.dart';
 import '../core/water/water_history_analysis.dart';
 import '../l10n/l10n.dart';
 import '../models/station.dart';
@@ -52,6 +56,44 @@ WaterHomeStationSelection waterDetailsSelectionForHandoff(
         candidates: resolvedSelection.candidates,
         canonicalStations: resolvedSelection.canonicalStations,
       );
+
+WaterTrendResult? waterHubCanonicalTrend(WaterUiResult? result) =>
+    result?.effectiveCanonicalTrend;
+
+@immutable
+class WaterHistoryChartSegment {
+  const WaterHistoryChartSegment(this.realObservations);
+
+  final List<WaterLevel> realObservations;
+
+  bool get hasLine => realObservations.length >= 2;
+  bool get usesBezier => realObservations.length >= 3;
+}
+
+List<WaterHistoryChartSegment> waterHistoryChartSegments(
+  List<WaterLevel> readings,
+) => List<WaterHistoryChartSegment>.unmodifiable(
+  realWaterHistorySegments(readings).map(
+    (segment) =>
+        WaterHistoryChartSegment(List<WaterLevel>.unmodifiable(segment)),
+  ),
+);
+
+WaterLevel? waterHistoryObservationForTimestamp(
+  List<WaterHistoryChartSegment> segments,
+  double timestamp,
+) {
+  final timestampMillis = timestamp.round();
+  for (final segment in segments) {
+    for (final observation in segment.realObservations) {
+      if (observation.timestamp.toUtc().millisecondsSinceEpoch ==
+          timestampMillis) {
+        return observation;
+      }
+    }
+  }
+  return null;
+}
 
 class WaterDetailsSummary {
   const WaterDetailsSummary._({
@@ -111,9 +153,15 @@ class WaterDetailsSummary {
 }
 
 class WaterLevelPage extends StatefulWidget {
-  const WaterLevelPage({super.key, this.initialStation, this.waterService});
+  const WaterLevelPage({
+    super.key,
+    this.initialStation,
+    this.initialPeriod,
+    this.waterService,
+  });
 
   final Station? initialStation;
+  final WaterDetailsPeriod? initialPeriod;
   final WaterService? waterService;
 
   @override
@@ -127,7 +175,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
   WaterHomeStationSelection? _selection;
   Station? _station;
   WaterUiResult? _result;
-  WaterDetailsPeriod _period = WaterDetailsPeriod.sevenDays;
+  late WaterDetailsPeriod _period;
   bool _loadingStation = true;
   bool _loadingResult = false;
   bool _loadFailed = false;
@@ -138,6 +186,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
   void initState() {
     super.initState();
     _waterService = widget.waterService ?? WaterService();
+    _period = widget.initialPeriod ?? WaterDetailsPeriod.sevenDays;
     final initialStation =
         widget.initialStation ?? _waterService.lastAutomaticStation;
     if (initialStation != null) {
@@ -209,6 +258,7 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
   }
 
   void _listenForResult(Station station, int requestId, bool forceRefresh) {
+    _publishSelectedContext(station);
     _resultSubscription = _waterService
         .getProgressiveWaterUiResults(
           station,
@@ -237,6 +287,22 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
           },
           cancelOnError: false,
         );
+  }
+
+  void _publishSelectedContext(Station station) {
+    ProviderContainer container;
+    try {
+      container = ProviderScope.containerOf(context, listen: false);
+    } on StateError {
+      return;
+    }
+    container.read(selectedContextProvider.notifier).publishStation(station);
+  }
+
+  void _openAlertEditor() {
+    final station = _station;
+    if (station == null) return;
+    AppNavigator.open(context, AppDestination.newAlert, arguments: station);
   }
 
   Future<void> _refresh() => _loadHomeStation(forceRefresh: true);
@@ -319,6 +385,14 @@ class _WaterLevelPageState extends State<WaterLevelPage> {
         foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         actions: [
+          IconButton(
+            key: const Key('water-create-alert-button'),
+            tooltip: Localizations.localeOf(context).languageCode == 'ro'
+                ? 'Creează alertă'
+                : 'Create alert',
+            onPressed: station == null ? null : _openAlertEditor,
+            icon: const Icon(Icons.add_alert_rounded),
+          ),
           IconButton(
             key: const Key('water-station-menu-button'),
             tooltip: 'Alege stația',
@@ -446,7 +520,10 @@ class _WaterStationSelectorSheetState
   Widget build(BuildContext context) {
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
-    final names = WaterService.filterCanonicalStationNames(_query);
+    final stations = WaterService.filterStations(
+      widget.selection.canonicalStations,
+      _query,
+    );
     const cyan = Color(0xFF12D8D6);
     return AnimatedPadding(
       duration: const Duration(milliseconds: 160),
@@ -586,7 +663,7 @@ class _WaterStationSelectorSheetState
                       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                       child: Divider(color: Colors.white10, height: 1),
                     ),
-                    if (names.isEmpty)
+                    if (stations.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 32),
                         child: Center(
@@ -597,38 +674,27 @@ class _WaterStationSelectorSheetState
                         ),
                       )
                     else
-                      for (final name in names)
-                        Builder(
-                          builder: (context) {
-                            final station = WaterService.canonicalStationNamed(
-                              widget.selection.canonicalStations,
-                              name,
-                            );
-                            final selected =
-                                widget.selection.mode ==
-                                    WaterStationSelectionMode.pinned &&
-                                station?.id == widget.currentStation?.id;
-                            return _WaterStationTile(
-                              key: Key(
-                                'water-station-${name.toLowerCase().replaceAll(' ', '-')}',
-                              ),
-                              title: name,
-                              subtitle: station == null
-                                  ? 'Date indisponibile momentan'
-                                  : selected
-                                  ? 'Fixat'
-                                  : 'Stație oficială',
-                              icon: Icons.location_on_outlined,
-                              selected: selected,
-                              enabled: station != null,
-                              onTap: station == null
-                                  ? null
-                                  : () => Navigator.pop(
-                                      context,
-                                      _WaterStationMenuResult.pinned(station),
-                                    ),
-                            );
-                          },
+                      for (final station in stations)
+                        _WaterStationTile(
+                          key: Key('water-station-${station.id}'),
+                          title: station.name,
+                          subtitle:
+                              widget.selection.mode ==
+                                      WaterStationSelectionMode.pinned &&
+                                  station.id == widget.currentStation?.id
+                              ? 'Fixat'
+                              : station.river.trim().isEmpty
+                              ? 'Date Water disponibile'
+                              : station.river,
+                          icon: Icons.location_on_outlined,
+                          selected:
+                              widget.selection.mode ==
+                                  WaterStationSelectionMode.pinned &&
+                              station.id == widget.currentStation?.id,
+                          onTap: () => Navigator.pop(
+                            context,
+                            _WaterStationMenuResult.pinned(station),
+                          ),
                         ),
                   ],
                 ),
@@ -649,15 +715,15 @@ class _WaterStationTile extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onTap,
-    this.enabled = true,
   });
 
   final String title;
   final String subtitle;
   final IconData icon;
   final bool selected;
-  final bool enabled;
   final VoidCallback? onTap;
+
+  bool get enabled => onTap != null;
 
   @override
   Widget build(BuildContext context) {
@@ -746,27 +812,23 @@ class _WaterDetailsHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final result = this.result;
     final reading = result?.latestReading;
-    final daySummary = result == null
-        ? null
-        : WaterDetailsSummary.fromHistory(
-            result.history,
-            WaterDetailsPeriod.oneDay,
-            stationId: station.id,
-          );
-    final delta = daySummary?.change ?? result?.deltaCm;
+    final canonicalTrend = waterHubCanonicalTrend(result);
+    final delta = result?.deltaCm ?? canonicalTrend?.delta?.value;
     final comparisonDuration =
-        daySummary?.coverage ?? result?.comparisonDuration;
-    final trend = delta == null
-        ? result?.trend
-        : waterTrendFromRealDelta(delta);
+        result?.comparisonDuration ?? canonicalTrend?.delta?.actualInterval;
+    final trend = result?.trend ?? canonicalTrend?.trend.displayTrend;
+    final comparisonType = reading?.reportedDeltaCm24h != null
+        ? WaterComparisonType.daily
+        : canonicalTrend?.delta?.comparisonType;
     final color = _trendColor(trend);
     final hasReading = reading != null && reading.value.isFinite;
-    final freshness = result?.measurementTimestamp == null
+    final freshnessTimestamp = result?.effectiveFreshnessTimestamp;
+    final freshness = freshnessTimestamp == null
         ? context.l10n.updateTimeUnavailable
         : WaterFreshnessFormatter.format(
-            measurementTimestamp: result!.measurementTimestamp!,
+            freshnessTimestamp: freshnessTimestamp,
             now: DateTime.now(),
-            isStale: result.isStale,
+            isStale: result!.isStale,
             locale: Localizations.localeOf(context).languageCode,
           );
     final hasProviderError =
@@ -895,7 +957,7 @@ class _WaterDetailsHero extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${_comparisonContextLabel(context, comparisonDuration)} · ${_trendLabel(context, trend)}',
+                          '${_comparisonContextLabel(context, comparisonDuration, comparisonType: comparisonType)} · ${_trendLabel(context, trend)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall
@@ -932,7 +994,7 @@ class _WaterDetailsHero extends StatelessWidget {
             if (delta == null) ...[
               const SizedBox(height: 8),
               Text(
-                context.l10n.notEnoughHistory,
+                context.l10n.waterTrendUnavailable,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: const Color(0xFF9AA7B2),
                   fontWeight: FontWeight.w600,
@@ -1106,14 +1168,7 @@ class _WaterHistorySection extends StatelessWidget {
               icon: Icons.timeline_rounded,
               message: context.l10n.noWaterData,
             )
-          else if (!hasChart) ...[
-            _SingleWaterObservation(reading: resolvedSummary.readings.single),
-            const SizedBox(height: 12),
-            _InsufficientHistoryMessage(
-              icon: Icons.info_outline_rounded,
-              message: context.l10n.notEnoughHistory,
-            ),
-          ] else ...[
+          else ...[
             SizedBox(
               height: MediaQuery.orientationOf(context) == Orientation.landscape
                   ? 230
@@ -1127,8 +1182,16 @@ class _WaterHistorySection extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             _RealObservationCaption(summary: resolvedSummary),
-            const SizedBox(height: 14),
-            _HistorySummary(summary: resolvedSummary, color: trendColor),
+            if (!hasChart) ...[
+              const SizedBox(height: 12),
+              _InsufficientHistoryMessage(
+                icon: Icons.info_outline_rounded,
+                message: context.l10n.notEnoughHistory,
+              ),
+            ] else ...[
+              const SizedBox(height: 14),
+              _HistorySummary(summary: resolvedSummary, color: trendColor),
+            ],
           ],
           const SizedBox(height: 16),
           _IntervalDeltaSummary(
@@ -1306,48 +1369,6 @@ class _InsufficientHistoryMessage extends StatelessWidget {
           child: Text(
             message,
             style: const TextStyle(color: Colors.white60, fontSize: 12),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _SingleWaterObservation extends StatelessWidget {
-  const _SingleWaterObservation({required this.reading});
-
-  final WaterLevel reading;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: const Color(0xFF071923),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: const Color(0xFF9AA7B2).withValues(alpha: .24)),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.water_drop_outlined, color: Color(0xFF9AA7B2)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${reading.value.toStringAsFixed(0)} ${reading.unit}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _chartDateTimeLabel(reading.timestamp),
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-            ],
           ),
         ),
       ],
@@ -1807,15 +1828,11 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (readings.length < 2) return const SizedBox.shrink();
+    if (readings.isEmpty) return const SizedBox.shrink();
 
     final scale = _WaterChartGeometry.scaleBounds(readings, period);
     final bounds = _WaterChartGeometry.timeBounds(readings, period);
-    final segments = _WaterChartGeometry.contiguousSegments(readings, period);
-    final readingByTimestamp = <int, WaterLevel>{
-      for (final reading in readings)
-        reading.timestamp.toUtc().millisecondsSinceEpoch: reading,
-    };
+    final segments = waterHistoryChartSegments(readings);
     final firstTimestamp = readings.first.timestamp
         .toUtc()
         .millisecondsSinceEpoch
@@ -1824,37 +1841,20 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
         .toUtc()
         .millisecondsSinceEpoch
         .toDouble();
-    final yRange = scale.maximum - scale.minimum;
-    final yInterval = yRange / 3;
-    final xRange = bounds.maximum - bounds.minimum;
-    final midpointX = bounds.minimum + (xRange / 2);
-    final includeTime =
-        Duration(milliseconds: xRange.round()) <= const Duration(days: 3);
-
-    WaterLevel readingForX(double x) =>
-        readingByTimestamp[x.round()] ??
-        readings.reduce((nearest, candidate) {
-          final nearestDistance =
-              (nearest.timestamp.toUtc().millisecondsSinceEpoch - x).abs();
-          final candidateDistance =
-              (candidate.timestamp.toUtc().millisecondsSinceEpoch - x).abs();
-          return candidateDistance < nearestDistance ? candidate : nearest;
-        });
 
     bool showObservationDot(FlSpot spot) {
       if (readings.length <= 10) return true;
-      final index = readings.indexWhere(
-        (reading) =>
-            reading.timestamp.toUtc().millisecondsSinceEpoch == spot.x.round(),
-      );
+      final observation = waterHistoryObservationForTimestamp(segments, spot.x);
+      if (observation == null) return false;
+      final index = readings.indexOf(observation);
       return index <= 0 || index == readings.length - 1 || index % 4 == 0;
     }
 
     final bars = <LineChartBarData>[
       for (final segment in segments)
-        if (segment.isNotEmpty)
+        if (segment.realObservations.isNotEmpty)
           LineChartBarData(
-            spots: segment
+            spots: segment.realObservations
                 .map(
                   (reading) => FlSpot(
                     reading.timestamp.toUtc().millisecondsSinceEpoch.toDouble(),
@@ -1862,15 +1862,15 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
                   ),
                 )
                 .toList(growable: false),
-            isCurved: segment.length >= 4,
+            isCurved: segment.usesBezier,
             curveSmoothness: .12,
             preventCurveOverShooting: true,
             color: color,
-            barWidth: segment.length >= 2 ? 2.6 : 0,
+            barWidth: segment.hasLine ? 2.6 : 0,
             isStrokeCapRound: true,
             isStrokeJoinRound: true,
             belowBarData: BarAreaData(
-              show: segment.length >= 3,
+              show: segment.usesBezier,
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -1905,15 +1905,58 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final showMiddleLabel = constraints.maxWidth >= 430;
+        final yLabels = <String>[
+          '${scale.maximum.ceil()} cm',
+          '${((scale.minimum + scale.maximum) / 2).round()} cm',
+          '${scale.minimum.floor()} cm',
+        ];
+        final textScaler = MediaQuery.textScalerOf(context);
+        double measureLabelWidth(String label) {
+          final painter = TextPainter(
+            text: TextSpan(text: label, style: _ChartAxisText.textStyle),
+            textDirection: Directionality.of(context),
+            textScaler: textScaler,
+            maxLines: 1,
+          )..layout();
+          return painter.width;
+        }
+
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final availableHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : 210.0;
+        final widestYLabel = yLabels.map(measureLabelWidth).reduce(math.max);
+        final yAxisWidth = math.min(availableWidth * .30, widestYLabel + 8);
+        final xAxisHeight = math.max(
+          18.0,
+          textScaler.scale(_ChartAxisText.textStyle.fontSize!) + 8,
+        );
+        const chartRightPadding = 4.0;
+        const chartTopPadding = 6.0;
+        final plotWidth = math.max(
+          0.0,
+          availableWidth - yAxisWidth - chartRightPadding,
+        );
+        final plotHeight = math.max(
+          0.0,
+          availableHeight - xAxisHeight - chartTopPadding,
+        );
+        final showMiddleLabel = plotWidth >= 240;
+        final xRange = bounds.maximum - bounds.minimum;
+        final midpointX = bounds.minimum + (xRange / 2);
+        final includeTime =
+            Duration(milliseconds: xRange.round()) <= const Duration(days: 3);
+
         return Stack(
           clipBehavior: Clip.none,
           children: [
             Positioned.fill(
-              left: 43,
-              right: 7,
-              top: 6,
-              bottom: 26,
+              left: yAxisWidth,
+              right: chartRightPadding,
+              top: chartTopPadding,
+              bottom: xAxisHeight,
               child: LineChart(
                 duration: const Duration(milliseconds: 120),
                 curve: Curves.easeOutCubic,
@@ -1925,15 +1968,7 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
                   clipData: const FlClipData.all(),
                   borderData: FlBorderData(show: false),
                   titlesData: const FlTitlesData(show: false),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: yInterval,
-                    getDrawingHorizontalLine: (_) => FlLine(
-                      color: const Color(0xFF12D8D6).withValues(alpha: .10),
-                      strokeWidth: 1,
-                    ),
-                  ),
+                  gridData: const FlGridData(show: false),
                   lineTouchData: LineTouchData(
                     enabled: true,
                     handleBuiltInTouches: true,
@@ -1976,7 +2011,11 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
                           const Color(0xFF07131C).withValues(alpha: .96),
                       getTooltipItems: (touchedSpots) => touchedSpots
                           .map((spot) {
-                            final reading = readingForX(spot.x);
+                            final reading = waterHistoryObservationForTimestamp(
+                              segments,
+                              spot.x,
+                            );
+                            if (reading == null) return null;
                             final value =
                                 reading.value == reading.value.roundToDouble()
                                 ? reading.value.toStringAsFixed(0)
@@ -1992,7 +2031,7 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
                               children: [
                                 TextSpan(
                                   text:
-                                      '${_chartDateTimeLabel(reading.timestamp)}\n',
+                                      '${_chartObservationTimeLabel(context, reading)}\n',
                                   style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 9.5,
@@ -2022,22 +2061,23 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
             Positioned(
               left: 0,
               top: 0,
-              child: _ChartAxisText('${scale.maximum.ceil()} cm'),
+              width: math.max(0, yAxisWidth - 4),
+              child: _ChartAxisText(yLabels[0], textAlign: TextAlign.right),
             ),
             Positioned(
               left: 0,
-              top: (constraints.maxHeight - 26) / 2 - 5,
-              child: _ChartAxisText(
-                '${((scale.minimum + scale.maximum) / 2).round()} cm',
-              ),
+              top: math.max(0, chartTopPadding + (plotHeight / 2) - 5),
+              width: math.max(0, yAxisWidth - 4),
+              child: _ChartAxisText(yLabels[1], textAlign: TextAlign.right),
             ),
             Positioned(
               left: 0,
-              bottom: 22,
-              child: _ChartAxisText('${scale.minimum.floor()} cm'),
+              bottom: math.max(0, xAxisHeight - 4),
+              width: math.max(0, yAxisWidth - 4),
+              child: _ChartAxisText(yLabels[2], textAlign: TextAlign.right),
             ),
             Positioned(
-              left: 43,
+              left: yAxisWidth,
               bottom: 1,
               child: _ChartAxisText(
                 _chartAxisLabel(
@@ -2051,9 +2091,9 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
             ),
             if (showMiddleLabel)
               Positioned(
-                left: constraints.maxWidth / 2 - 28,
+                left: yAxisWidth + (plotWidth / 2) - 36,
                 bottom: 1,
-                width: 56,
+                width: 72,
                 child: _ChartAxisText(
                   _chartAxisLabel(
                     DateTime.fromMillisecondsSinceEpoch(
@@ -2066,7 +2106,7 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
                 ),
               ),
             Positioned(
-              right: 7,
+              right: chartRightPadding,
               bottom: 1,
               child: _ChartAxisText(
                 _chartAxisLabel(
@@ -2089,6 +2129,13 @@ class _InteractiveWaterHistoryChart extends StatelessWidget {
 class _ChartAxisText extends StatelessWidget {
   const _ChartAxisText(this.value, {this.textAlign = TextAlign.left});
 
+  static const textStyle = TextStyle(
+    color: Color(0x75FFFFFF),
+    fontSize: 8.5,
+    fontWeight: FontWeight.w500,
+    height: 1,
+  );
+
   final String value;
   final TextAlign textAlign;
 
@@ -2096,13 +2143,9 @@ class _ChartAxisText extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     value,
     maxLines: 1,
+    overflow: TextOverflow.visible,
     textAlign: textAlign,
-    style: TextStyle(
-      color: Colors.white.withValues(alpha: .46),
-      fontSize: 8.5,
-      fontWeight: FontWeight.w500,
-      height: 1,
-    ),
+    style: textStyle,
   );
 }
 
@@ -2150,6 +2193,16 @@ class _WaterChartGeometry {
         .toUtc()
         .millisecondsSinceEpoch
         .toDouble();
+    if (readings.length == 1) {
+      final padding = math.min(
+        const Duration(hours: 12).inMilliseconds.toDouble(),
+        math.max(
+          const Duration(hours: 1).inMilliseconds.toDouble(),
+          period.duration.inMilliseconds * .05,
+        ),
+      );
+      return (minimum: maximum - padding, maximum: maximum + padding);
+    }
     final selectedMinimum = maximum - period.duration.inMilliseconds;
     final coverage = maximum - actualMinimum;
     final selectedSpan = period.duration.inMilliseconds.toDouble();
@@ -2168,57 +2221,6 @@ class _WaterChartGeometry {
     }
 
     return (minimum: selectedMinimum, maximum: maximum);
-  }
-
-  static List<List<WaterLevel>> contiguousSegments(
-    List<WaterLevel> readings,
-    WaterDetailsPeriod period,
-  ) {
-    if (readings.isEmpty) return const <List<WaterLevel>>[];
-    if (readings.length == 1) {
-      return <List<WaterLevel>>[List<WaterLevel>.unmodifiable(readings)];
-    }
-
-    final gaps = <int>[];
-    for (var index = 1; index < readings.length; index++) {
-      final gap = readings[index].timestamp
-          .toUtc()
-          .difference(readings[index - 1].timestamp.toUtc())
-          .inMilliseconds;
-      if (gap > 0) gaps.add(gap);
-    }
-    gaps.sort();
-    final medianGap = gaps.isEmpty ? 0 : gaps[gaps.length ~/ 2];
-
-    final minimumBreak = period.duration <= const Duration(days: 1)
-        ? const Duration(hours: 10)
-        : period.duration <= const Duration(days: 3)
-        ? const Duration(hours: 24)
-        : period.duration <= const Duration(days: 7)
-        ? const Duration(hours: 72)
-        : const Duration(hours: 120);
-    final dynamicBreak = Duration(milliseconds: (medianGap * 3.5).round());
-    final breakAfter = dynamicBreak > minimumBreak
-        ? dynamicBreak
-        : minimumBreak;
-
-    final segments = <List<WaterLevel>>[];
-    var current = <WaterLevel>[readings.first];
-    for (var index = 1; index < readings.length; index++) {
-      final previous = readings[index - 1];
-      final reading = readings[index];
-      final gap = reading.timestamp.toUtc().difference(
-        previous.timestamp.toUtc(),
-      );
-      if (gap > breakAfter) {
-        segments.add(List<WaterLevel>.unmodifiable(current));
-        current = <WaterLevel>[reading];
-      } else {
-        current.add(reading);
-      }
-    }
-    segments.add(List<WaterLevel>.unmodifiable(current));
-    return List<List<WaterLevel>>.unmodifiable(segments);
   }
 }
 
@@ -2332,10 +2334,13 @@ String _readingSourceLabel(WaterLevel reading) {
   };
 }
 
-String _comparisonContextLabel(BuildContext context, Duration? duration) {
-  if (duration != null &&
-      duration >= const Duration(hours: 20) &&
-      duration <= const Duration(hours: 28)) {
+String _comparisonContextLabel(
+  BuildContext context,
+  Duration? duration, {
+  WaterComparisonType? comparisonType,
+}) {
+  if (comparisonType == WaterComparisonType.daily ||
+      comparisonType == WaterComparisonType.exact24Hours) {
     return context.l10n.waterComparedWithYesterday;
   }
   return context.l10n.waterComparedWithLastReading;
@@ -2353,6 +2358,32 @@ String _chartAxisLabel(DateTime timestamp, {required bool includeTime}) {
   if (!includeTime) return date;
   return '$date ${local.hour.toString().padLeft(2, '0')}:'
       '${local.minute.toString().padLeft(2, '0')}';
+}
+
+String _chartObservationDateLabel(DateTime timestamp) {
+  final local = timestamp.toLocal();
+  return '${local.day.toString().padLeft(2, '0')}.'
+      '${local.month.toString().padLeft(2, '0')}.${local.year}';
+}
+
+String _chartObservationTimeLabel(
+  BuildContext context,
+  WaterLevel observation,
+) {
+  final fullTimestamp = _chartDateTimeLabel(observation.timestamp);
+  final isRo = Localizations.localeOf(context).languageCode == 'ro';
+  return switch (observation.measurementPrecision) {
+    WaterMeasurementPrecision.exact => fullTimestamp,
+    WaterMeasurementPrecision.date => _chartObservationDateLabel(
+      observation.timestamp,
+    ),
+    WaterMeasurementPrecision.interval => '$fullTimestamp · interval',
+    WaterMeasurementPrecision.relative =>
+      '$fullTimestamp · ${isRo ? 'aprox.' : 'approx.'}',
+    WaterMeasurementPrecision.unknown =>
+      '$fullTimestamp · '
+          '${isRo ? 'precizie necunoscut\u0103' : 'unknown precision'}',
+  };
 }
 
 String _chartDateTimeLabel(DateTime timestamp) {

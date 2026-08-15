@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "998093224994",
+    "project_id": "fluviai",
+    "storage_bucket": "fluviai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:998093224994:android:2447d840097960c49f1e7b",
+        "android_client_info": {
+          "package_name": "com.example.fishtrack"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZM77W7LMBwbNJVIU5WihYsJsev81iqk8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/l10n.dart';
 import '../services/community_service.dart';
+import '../services/saved_items_service.dart';
 import '../widgets/trust_badge.dart';
 
 class CatchDetailsPage extends StatefulWidget {
@@ -20,6 +21,7 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
   late Future<List<CommunityComment>> _comments;
   bool _liking = false;
   bool _commenting = false;
+  bool _savingCatch = false;
   String? _error;
 
   @override
@@ -72,6 +74,46 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
       if (mounted) setState(() => _error = error.message);
     } finally {
       if (mounted) setState(() => _commenting = false);
+    }
+  }
+
+
+  Future<void> _saveCatch() async {
+    if (_savingCatch) return;
+    setState(() {
+      _savingCatch = true;
+      _error = null;
+    });
+    try {
+      await const SavedItemsService().save(
+        type: 'catch',
+        referenceId: _post.id,
+        title: _post.title,
+        subtitle: _post.body.isEmpty ? null : _post.body,
+        latitude: _post.latitude,
+        longitude: _post.longitude,
+        metadata: <String, Object?>{
+          'author_id': _post.userId,
+          if (_post.imageUrl != null) 'image_url': _post.imageUrl,
+          if (_post.weight != null) 'weight_kg': _post.weight,
+          if (_post.length != null) 'length_cm': _post.length,
+          'created_at': _post.createdAt.toUtc().toIso8601String(),
+        },
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localizations.localeOf(context).languageCode == 'ro'
+                ? 'Captura a fost salvată.'
+                : 'Catch saved.',
+          ),
+        ),
+      );
+    } on SavedItemsException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _savingCatch = false);
     }
   }
 
@@ -142,17 +184,33 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
               Text(_post.body),
             ],
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _liking ? null : _toggleLike,
-                icon: Icon(
-                  _post.isLiked
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
+            Row(
+              children: [
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _liking ? null : _toggleLike,
+                      icon: Icon(
+                        _post.isLiked
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                      ),
+                      label: Text(context.l10n.likes(_post.likeCount)),
+                    ),
+                  ),
                 ),
-                label: Text(context.l10n.likes(_post.likeCount)),
-              ),
+                TextButton.icon(
+                  key: const ValueKey('catch-save-action'),
+                  onPressed: _savingCatch ? null : _saveCatch,
+                  icon: const Icon(Icons.bookmark_add_outlined),
+                  label: Text(
+                    Localizations.localeOf(context).languageCode == 'ro'
+                        ? 'Salvează'
+                        : 'Save',
+                  ),
+                ),
+              ],
             ),
             const Divider(height: 28),
             Text(

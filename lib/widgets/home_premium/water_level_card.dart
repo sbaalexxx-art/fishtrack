@@ -49,9 +49,49 @@ Color waterCardTrendColor(WaterTrend? trend) => switch (trend) {
 bool shouldShowWaterHistoryChart(List<WaterLevel> history) =>
     history.length >= 2;
 
+WaterTrendResult? homeWaterCanonicalTrend(WaterUiResult? result) =>
+    result?.effectiveCanonicalTrend;
+
 bool isApproximatelyDailyWaterComparison(Duration duration) {
   final hours = duration.inMinutes.abs() / 60;
   return hours >= 20 && hours <= 28;
+}
+
+enum _WaterHomeDisplayState { live, cache, offline, stale, unavailable, error }
+
+_WaterHomeDisplayState _resolveWaterHomeDisplayState({
+  required bool hasReading,
+  required bool isStale,
+  required bool isRefreshing,
+  required WaterUiStatus status,
+  required bool? isDefinitelyOffline,
+}) {
+  if (isDefinitelyOffline == true) {
+    return _WaterHomeDisplayState.offline;
+  }
+  if (!hasReading) {
+    return status == WaterUiStatus.providerError
+        ? _WaterHomeDisplayState.error
+        : _WaterHomeDisplayState.unavailable;
+  }
+  if (isStale) {
+    return _WaterHomeDisplayState.stale;
+  }
+  if (isRefreshing ||
+      status == WaterUiStatus.providerError ||
+      isDefinitelyOffline == null) {
+    return _WaterHomeDisplayState.cache;
+  }
+  if (shouldShowWaterLiveBadge(
+    hasRealReading: hasReading,
+    isStale: isStale,
+    status: status,
+    connectivityKnown: true,
+    isDefinitelyOffline: false,
+  )) {
+    return _WaterHomeDisplayState.live;
+  }
+  return _WaterHomeDisplayState.cache;
 }
 
 class WaterLevelCardPremium extends StatefulWidget {
@@ -279,10 +319,16 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
 
   void _updateConnectivity(List<ConnectivityResult> results) {
     final isDefinitelyOffline =
-        results.isNotEmpty &&
+        results.isEmpty ||
         results.every((result) => result == ConnectivityResult.none);
     if (!mounted || _isDefinitelyOffline == isDefinitelyOffline) return;
+    final reconnected = _isDefinitelyOffline == true && !isDefinitelyOffline;
     setState(() => _isDefinitelyOffline = isDefinitelyOffline);
+    if (reconnected) unawaited(_initializeStationSelection());
+  }
+
+  void _retryWater() {
+    unawaited(_initializeStationSelection());
   }
 
   @override
@@ -310,31 +356,23 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         final waterValue = latestReading?.value ?? station?.level;
         final waterUnit =
             latestReading?.unit ?? station?.waterLevelUnit ?? 'cm';
-        final measurementTimestamp =
-            waterResult?.measurementTimestamp ??
-            (hasStationReading ? station!.lastUpdate : null);
-        final measurementAge = measurementTimestamp == null
+        final freshnessTimestamp =
+            waterResult?.effectiveFreshnessTimestamp ??
+            (hasStationReading
+                ? station!.waterFreshnessTimestamp ?? station.lastUpdate
+                : null);
+        final freshnessAge = freshnessTimestamp == null
             ? null
-            : DateTime.now().toUtc().difference(measurementTimestamp.toUtc());
+            : DateTime.now().toUtc().difference(freshnessTimestamp.toUtc());
         final isStale =
             waterResult?.isStale ??
-            (measurementAge != null &&
-                measurementAge > WaterRepository.defaultFreshnessThreshold);
+            (freshnessAge != null &&
+                freshnessAge > WaterRepository.defaultFreshnessThreshold);
         final reliabilityStatus =
             waterResult?.status ??
             (hasReading
                 ? WaterUiStatus.insufficientHistory
                 : WaterUiStatus.unavailable);
-        final hasProviderError =
-            reliabilityStatus == WaterUiStatus.providerError;
-        final showLiveBadge = shouldShowWaterLiveBadge(
-          hasRealReading: hasReading,
-          isStale: isStale,
-          status: reliabilityStatus,
-          connectivityKnown: _isDefinitelyOffline != null,
-          isDefinitelyOffline: _isDefinitelyOffline ?? false,
-        );
-        final showNonLiveBadge = !hasProviderError && (isStale || !hasReading);
         final stationName =
             station?.name ??
             (snapshot.hasError
@@ -347,14 +385,14 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         final waterLevel = hasReading && waterValue != null
             ? '${waterValue.toStringAsFixed(0)} $waterUnit'
             : null;
-        final lastUpdate = measurementTimestamp == null
+        final lastUpdate = freshnessTimestamp == null
             ? (snapshot.hasError
                   ? Localizations.localeOf(context).languageCode == 'ro'
                         ? 'Încercați din nou în câteva momente'
                         : 'Please try again in a few moments'
                   : null)
             : WaterFreshnessFormatter.format(
-                measurementTimestamp: measurementTimestamp,
+                freshnessTimestamp: freshnessTimestamp,
                 now: DateTime.now(),
                 isStale: isStale,
                 locale: Localizations.localeOf(context).languageCode,
@@ -374,14 +412,20 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
               final layout = widget.layout;
               final narrow = constraints.maxWidth < 340;
               final hasFiniteHeight = constraints.maxHeight.isFinite;
-              final compactHeightLimit = layout.isTablet ? 145.0 : 130.0;
+              final compactHeightLimit = layout.isTablet ? 184.0 : 174.0;
               final compact =
                   hasFiniteHeight &&
                   constraints.maxHeight <= compactHeightLimit;
+              final tightHeight =
+                  hasFiniteHeight && constraints.maxHeight <= 140;
+              final textScale = MediaQuery.textScalerOf(context).scale(1);
+              final accessibilityLayout = textScale >= 1.3;
               final cardPadding = layout.isSmallPhone
                   ? 7.0
                   : (layout.isTablet ? 10.0 : 8.0);
-              final verticalPadding = (compact ? 5.0 : cardPadding) * .80;
+              final verticalPadding = tightHeight
+                  ? 2.0
+                  : (compact ? 5.0 : cardPadding) * .80;
               final fullHistory = waterResult?.history ?? const <WaterLevel>[];
               final baseHistory = realWaterHistorySeries(
                 fullHistory,
@@ -394,34 +438,44 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                   _waterResultStationId == station.id &&
                   _isWaterResultLoading;
               final canShowHistory = shouldShowWaterHistoryChart(history);
-              final historyDelta = realWaterSeriesDelta(history);
-              final historyTrend = waterTrendFromRealDelta(historyDelta);
+              final canonicalTrend = homeWaterCanonicalTrend(waterResult);
+              final historyDelta =
+                  waterResult?.deltaCm ?? canonicalTrend?.delta?.value;
+              final historyTrend =
+                  waterResult?.trend ?? canonicalTrend?.trend.displayTrend;
               final historyColor = waterCardTrendColor(historyTrend);
-              const insufficientHistoryColor = Color(0xFF9AA7B2);
+              final historyComparisonDuration =
+                  waterResult?.comparisonDuration ??
+                  canonicalTrend?.delta?.actualInterval;
+              final hasOfficialDailyDelta =
+                  waterResult?.latestReading?.reportedDeltaCm24h != null &&
+                  historyComparisonDuration != null &&
+                  isApproximatelyDailyWaterComparison(
+                    historyComparisonDuration,
+                  );
               final truthfulTrend =
-                  canShowHistory &&
                   historyTrend != null &&
-                  historyDelta != null;
+                  historyDelta != null &&
+                  (canShowHistory || hasOfficialDailyDelta);
               final deltaLabel = formatWaterCardDelta(historyDelta, waterUnit);
               final isRo = Localizations.localeOf(context).languageCode == 'ro';
-              final historyComparisonDuration = history.length >= 2
-                  ? history.last.timestamp.difference(history.first.timestamp)
-                  : waterResult?.comparisonDuration;
               final changeLabel = _changeLabel(
                 context,
                 historyComparisonDuration,
+                comparisonType: hasOfficialDailyDelta
+                    ? WaterComparisonType.daily
+                    : canonicalTrend?.delta?.comparisonType,
               );
               final trendStatus = historyTrend == null
-                  ? context.l10n.notEnoughHistory
+                  ? context.l10n.waterTrendUnavailable
                   : _statusFor(context, historyTrend);
-              final badgeLabel = hasReading
-                  ? isStale
-                        ? (isRo ? 'DATE VECHI' : 'STALE DATA')
-                        : (isRo ? 'DATE REALE' : 'LIVE DATA')
-                  : (isRo ? 'FĂRĂ DATE' : 'NO DATA');
-              final badgeColor = hasReading && !isStale
-                  ? const Color(0xFF00BCD4)
-                  : Colors.white38;
+              final displayState = _resolveWaterHomeDisplayState(
+                hasReading: hasReading,
+                isStale: isStale,
+                isRefreshing: _isWaterResultLoading,
+                status: reliabilityStatus,
+                isDefinitelyOffline: _isDefinitelyOffline,
+              );
 
               if (isInitialLoading) {
                 return Container(
@@ -497,34 +551,111 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
               }
 
               if (!hasReading) {
-                return Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: cardPadding,
-                    vertical: verticalPadding,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF162F40), Color(0xFF0D2230)],
-                    ),
+                final canOpenDetails =
+                    station != null && widget.onOpenDetails != null;
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
                     borderRadius: BorderRadius.circular(15),
-                    border: Border.all(
-                      color: const Color(0xFF00BCD4).withValues(alpha: .26),
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      isRo
-                          ? 'Date despre ap\u0103 indisponibile momentan'
-                          : 'Water data is temporarily unavailable',
-                      key: const Key('water-home-no-data-message'),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.caption.copyWith(
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w600,
+                    onTap: canOpenDetails
+                        ? () => widget.onOpenDetails!(station)
+                        : null,
+                    child: Ink(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: cardPadding,
+                        vertical: verticalPadding,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF162F40), Color(0xFF0D2230)],
+                        ),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: const Color(0xFF00BCD4).withValues(alpha: .26),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.water_rounded,
+                                color: const Color(0xFF22D3EE),
+                                size: (compact ? 17 : 19) * layout.iconScale,
+                              ),
+                              SizedBox(width: compact ? 6 : 8),
+                              Expanded(
+                                child: Text(
+                                  stationName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.cardTitle.copyWith(
+                                    fontSize:
+                                        (compact ? 13 : 15) *
+                                        layout.titleFontScale,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              _WaterStatusBadge(
+                                state: displayState,
+                                compact: compact,
+                                onRetry:
+                                    displayState ==
+                                            _WaterHomeDisplayState.error ||
+                                        displayState ==
+                                            _WaterHomeDisplayState.unavailable
+                                    ? _retryWater
+                                    : null,
+                              ),
+                              if (canOpenDetails) ...[
+                                const SizedBox(width: 3),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: Colors.white54,
+                                  size: 18 * layout.iconScale,
+                                ),
+                              ],
+                            ],
+                          ),
+                          Expanded(
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    displayState == _WaterHomeDisplayState.error
+                                        ? Icons.error_outline_rounded
+                                        : Icons.show_chart_rounded,
+                                    color: Colors.white38,
+                                    size: compact ? 18 : 22,
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Flexible(
+                                    child: Text(
+                                      displayState ==
+                                              _WaterHomeDisplayState.error
+                                          ? context.l10n.errorGeneric
+                                          : context.l10n.waterUnavailable,
+                                      key: const Key(
+                                        'water-home-no-data-message',
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: AppTextStyles.caption.copyWith(
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -612,89 +743,116 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                     ? _setAutomatic
                                     : null,
                                 borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: compact ? 6 : 8,
-                                    vertical: compact ? 2 : 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: .025),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(
-                                        alpha: .13,
-                                      ),
+                                child: Tooltip(
+                                  message: context.l10n.waterAutomatic,
+                                  child: Container(
+                                    constraints: BoxConstraints(
+                                      minWidth: tightHeight ? 0 : 44,
+                                      minHeight: tightHeight ? 0 : 44,
                                     ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _selectionMode ==
-                                                WaterStationSelectionMode.pinned
-                                            ? Icons.push_pin_rounded
-                                            : Icons.my_location_rounded,
-                                        color:
-                                            _selectionMode ==
-                                                WaterStationSelectionMode.pinned
-                                            ? const Color(0xFF22D3EE)
-                                            : Colors.white54,
-                                        size: compact ? 12 : 14,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: compact ? 6 : 8,
+                                      vertical: compact ? 2 : 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: .025,
                                       ),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        _selectionMode ==
-                                                WaterStationSelectionMode.pinned
-                                            ? context.l10n.waterPinned
-                                            : context.l10n.waterAutomatic,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: AppTextStyles.caption.copyWith(
-                                          color: Colors.white70,
-                                          fontSize: compact ? 8.5 : 10,
-                                          fontWeight: FontWeight.w600,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: .13,
                                         ),
                                       ),
-                                    ],
+                                    ),
+                                    child: Semantics(
+                                      button:
+                                          _selectionMode ==
+                                          WaterStationSelectionMode.pinned,
+                                      onTap:
+                                          _selectionMode ==
+                                              WaterStationSelectionMode.pinned
+                                          ? _setAutomatic
+                                          : null,
+                                      label:
+                                          _selectionMode ==
+                                              WaterStationSelectionMode.pinned
+                                          ? '${context.l10n.waterPinned}. '
+                                                '${context.l10n.waterAutomatic}'
+                                          : context.l10n.waterAutomatic,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            _selectionMode ==
+                                                    WaterStationSelectionMode
+                                                        .pinned
+                                                ? Icons.push_pin_rounded
+                                                : Icons.my_location_rounded,
+                                            color:
+                                                _selectionMode ==
+                                                    WaterStationSelectionMode
+                                                        .pinned
+                                                ? const Color(0xFF22D3EE)
+                                                : Colors.white54,
+                                            size: compact ? 12 : 14,
+                                          ),
+                                          if (!accessibilityLayout) ...[
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              _selectionMode ==
+                                                      WaterStationSelectionMode
+                                                          .pinned
+                                                  ? context.l10n.waterPinned
+                                                  : context.l10n.waterAutomatic,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: AppTextStyles.caption
+                                                  .copyWith(
+                                                    color: Colors.white70,
+                                                    fontSize: compact
+                                                        ? 8.5
+                                                        : 10,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                            if (showLiveBadge || showNonLiveBadge) ...[
-                              SizedBox(width: compact ? 4 : 6),
-                              Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: compact ? 6 : 7,
-                                  vertical: compact ? 2 : 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: badgeColor.withValues(alpha: 0.06),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: badgeColor.withValues(alpha: 0.46),
-                                  ),
-                                ),
-                                child: Text(
-                                  badgeLabel,
-                                  maxLines: 1,
-                                  style: AppTextStyles.caption.copyWith(
-                                    color: badgeColor,
-                                    fontSize: narrow || compact ? 7 : 8,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.46,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            SizedBox(width: compact ? 4 : 6),
+                            _WaterStatusBadge(
+                              state: displayState,
+                              compact: compact || narrow,
+                              onRetry:
+                                  displayState ==
+                                          _WaterHomeDisplayState.error ||
+                                      displayState ==
+                                          _WaterHomeDisplayState.unavailable
+                                  ? _retryWater
+                                  : null,
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.white54,
+                              size: 18 * layout.iconScale,
+                            ),
                           ],
                         ),
-                        SizedBox(height: compact ? 3 : 5),
+                        SizedBox(height: tightHeight ? 1 : (compact ? 3 : 5)),
                         Expanded(
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Expanded(
-                                flex: narrow ? 44 : 40,
+                                flex: narrow || accessibilityLayout ? 44 : 36,
                                 child: Padding(
                                   padding: EdgeInsets.only(
                                     left: compact ? 0 : 1,
@@ -716,120 +874,171 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                         ),
                                       ),
                                       SizedBox(height: compact ? 1 : 2),
-                                      Text(
-                                        truthfulTrend
-                                            ? deltaLabel
-                                            : waterLevel!,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize:
-                                              (truthfulTrend
-                                                  ? (compact
-                                                        ? 22
-                                                        : (narrow ? 25 : 29))
-                                                  : (compact
-                                                        ? 21
-                                                        : (narrow ? 23 : 27))) *
-                                              layout.titleFontScale,
-                                          height: .98,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: -.35,
-                                          color: truthfulTrend
-                                              ? historyColor
-                                              : Colors.white,
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: FittedBox(
+                                          alignment: Alignment.centerLeft,
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            truthfulTrend
+                                                ? deltaLabel
+                                                : waterLevel!,
+                                            maxLines: 1,
+                                            style: TextStyle(
+                                              fontSize:
+                                                  (truthfulTrend
+                                                      ? (compact
+                                                            ? 22
+                                                            : (narrow
+                                                                  ? 25
+                                                                  : 29))
+                                                      : (compact
+                                                            ? 21
+                                                            : (narrow
+                                                                  ? 23
+                                                                  : 27))) *
+                                                  layout.titleFontScale,
+                                              height: .98,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: -.35,
+                                              color: truthfulTrend
+                                                  ? historyColor
+                                                  : Colors.white,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                       if (truthfulTrend && compact) ...[
                                         const SizedBox(height: 1),
-                                        Text(
-                                          changeLabel,
-                                          key: const Key(
-                                            'water-home-change-label',
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: AppTextStyles.caption.copyWith(
-                                            color: Colors.white54,
-                                            fontSize: 8.2,
-                                            height: 1,
-                                            fontWeight: FontWeight.w600,
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: FittedBox(
+                                            alignment: Alignment.centerLeft,
+                                            fit: BoxFit.scaleDown,
+                                            child: Text(
+                                              accessibilityLayout
+                                                  ? '$changeLabel \u00b7 '
+                                                        '${isRo ? 'Cota' : 'Level'}: '
+                                                        '$waterLevel'
+                                                  : changeLabel,
+                                              key: const Key(
+                                                'water-home-change-label',
+                                              ),
+                                              maxLines: 1,
+                                              style: AppTextStyles.caption
+                                                  .copyWith(
+                                                    color: Colors.white54,
+                                                    fontSize: 8.2,
+                                                    height: 1,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                            ),
                                           ),
                                         ),
                                         const SizedBox(height: 1),
-                                        Row(
-                                          children: [
-                                            Text.rich(
-                                              TextSpan(
-                                                children: [
-                                                  TextSpan(
-                                                    text: isRo
-                                                        ? 'Cota: '
-                                                        : 'Level: ',
-                                                    style: AppTextStyles.caption
-                                                        .copyWith(
-                                                          color: Colors.white54,
-                                                          fontSize: 8.2,
-                                                          height: 1,
-                                                        ),
+                                        if (accessibilityLayout)
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                _iconFor(historyTrend),
+                                                color: historyColor,
+                                                size: 10.5,
+                                              ),
+                                              const SizedBox(width: 2),
+                                              Expanded(
+                                                child: Text(
+                                                  trendStatus,
+                                                  key: const Key(
+                                                    'water-home-trend-status',
                                                   ),
-                                                  TextSpan(
-                                                    text: waterLevel!,
-                                                    style: AppTextStyles.caption
-                                                        .copyWith(
-                                                          color: Colors.white,
-                                                          fontSize: 9.1,
+                                                  maxLines: 1,
+                                                  style: TextStyle(
+                                                    color: historyColor,
+                                                    fontSize: 8.6,
+                                                    height: 1,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        else
+                                          Row(
+                                            children: [
+                                              Text.rich(
+                                                TextSpan(
+                                                  children: [
+                                                    TextSpan(
+                                                      text: isRo
+                                                          ? 'Cota: '
+                                                          : 'Level: ',
+                                                      style: AppTextStyles
+                                                          .caption
+                                                          .copyWith(
+                                                            color:
+                                                                Colors.white54,
+                                                            fontSize: 8.2,
+                                                            height: 1,
+                                                          ),
+                                                    ),
+                                                    TextSpan(
+                                                      text: waterLevel!,
+                                                      style: AppTextStyles
+                                                          .caption
+                                                          .copyWith(
+                                                            color: Colors.white,
+                                                            fontSize: 9.1,
+                                                            height: 1,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                key: const Key(
+                                                  'water-home-current-level',
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.visible,
+                                                softWrap: false,
+                                              ),
+                                              const SizedBox(width: 5),
+                                              Expanded(
+                                                child: Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.end,
+                                                  children: [
+                                                    Icon(
+                                                      _iconFor(historyTrend),
+                                                      color: historyColor,
+                                                      size: 10.5,
+                                                    ),
+                                                    const SizedBox(width: 2),
+                                                    Flexible(
+                                                      child: Text(
+                                                        trendStatus,
+                                                        key: const Key(
+                                                          'water-home-trend-status',
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        textAlign:
+                                                            TextAlign.right,
+                                                        style: TextStyle(
+                                                          color: historyColor,
+                                                          fontSize: 8.6,
                                                           height: 1,
                                                           fontWeight:
-                                                              FontWeight.w700,
+                                                              FontWeight.w600,
                                                         ),
-                                                  ),
-                                                ],
-                                              ),
-                                              key: const Key(
-                                                'water-home-current-level',
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.visible,
-                                              softWrap: false,
-                                            ),
-                                            const SizedBox(width: 5),
-                                            Expanded(
-                                              child: Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.end,
-                                                children: [
-                                                  Icon(
-                                                    _iconFor(historyTrend),
-                                                    color: historyColor,
-                                                    size: 10.5,
-                                                  ),
-                                                  const SizedBox(width: 2),
-                                                  Flexible(
-                                                    child: Text(
-                                                      trendStatus,
-                                                      key: const Key(
-                                                        'water-home-trend-status',
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      textAlign:
-                                                          TextAlign.right,
-                                                      style: TextStyle(
-                                                        color: historyColor,
-                                                        fontSize: 8.6,
-                                                        height: 1,
-                                                        fontWeight:
-                                                            FontWeight.w600,
                                                       ),
                                                     ),
-                                                  ),
-                                                ],
+                                                  ],
+                                                ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
+                                            ],
+                                          ),
                                       ] else ...[
                                         if (truthfulTrend) ...[
                                           const SizedBox(height: 2),
@@ -881,41 +1090,37 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                           ),
                                           const SizedBox(height: 3),
                                         ],
-                                        Row(
-                                          children: [
-                                            Icon(
-                                              truthfulTrend
-                                                  ? _iconFor(historyTrend)
-                                                  : Icons.help_outline_rounded,
-                                              color: truthfulTrend
-                                                  ? historyColor
-                                                  : insufficientHistoryColor,
-                                              size: 15,
-                                            ),
-                                            const SizedBox(width: 3),
-                                            Flexible(
-                                              child: Text(
-                                                truthfulTrend
-                                                    ? trendStatus
-                                                    : context
-                                                          .l10n
-                                                          .notEnoughHistory,
-                                                key: const Key(
-                                                  'water-home-trend-status',
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  color: truthfulTrend
-                                                      ? historyColor
-                                                      : insufficientHistoryColor,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
+                                        if (truthfulTrend)
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                _iconFor(historyTrend),
+                                                color: historyColor,
+                                                size: 15,
+                                              ),
+                                              const SizedBox(width: 3),
+                                              Flexible(
+                                                child: FittedBox(
+                                                  alignment:
+                                                      Alignment.centerLeft,
+                                                  fit: BoxFit.scaleDown,
+                                                  child: Text(
+                                                    trendStatus,
+                                                    key: const Key(
+                                                      'water-home-trend-status',
+                                                    ),
+                                                    maxLines: 1,
+                                                    style: TextStyle(
+                                                      color: historyColor,
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
+                                            ],
+                                          ),
                                       ],
                                     ],
                                   ),
@@ -930,7 +1135,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                               ),
                               SizedBox(width: narrow ? 6 : 8),
                               Expanded(
-                                flex: narrow ? 56 : 60,
+                                flex: narrow || accessibilityLayout ? 56 : 64,
                                 child: Container(
                                   padding: EdgeInsets.fromLTRB(
                                     compact ? 5 : 7,
@@ -979,7 +1184,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                                   BorderRadius.circular(7),
                                             ),
                                             child: Text(
-                                              _homeHistoryWindowLabel(
+                                              formatHomeWaterHistoryWindowLabel(
                                                 history,
                                                 isRo: isRo,
                                               ),
@@ -1018,19 +1223,36 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                                     ).languageCode,
                                               )
                                             : Center(
-                                                child: Text(
-                                                  context.l10n.notEnoughHistory,
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  textAlign: TextAlign.center,
-                                                  style: AppTextStyles.caption
-                                                      .copyWith(
-                                                        color: Colors.white38,
-                                                        fontSize: compact
-                                                            ? 8
-                                                            : 9.5,
-                                                      ),
+                                                child: Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.show_chart_rounded,
+                                                      color: Colors.white30,
+                                                      size: compact ? 13 : 15,
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      context
+                                                          .l10n
+                                                          .waterTrendUnavailable,
+                                                      maxLines: 2,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                      style: AppTextStyles
+                                                          .caption
+                                                          .copyWith(
+                                                            color:
+                                                                Colors.white38,
+                                                            fontSize: compact
+                                                                ? 8
+                                                                : 9.5,
+                                                          ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                       ),
@@ -1041,39 +1263,64 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                             ],
                           ),
                         ),
-                        SizedBox(height: compact ? 2 : 4),
-                        if (sourceLabel != null || lastUpdate != null)
-                          Row(
-                            children: [
-                              if (sourceLabel != null)
-                                Expanded(
-                                  child: Text(
+                        if (!tightHeight) SizedBox(height: compact ? 2 : 4),
+                        if (!tightHeight &&
+                            (sourceLabel != null || lastUpdate != null))
+                          if (accessibilityLayout)
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 2,
+                              children: [
+                                if (sourceLabel != null)
+                                  Text(
                                     '${context.l10n.source}: $sourceLabel',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                     style: AppTextStyles.caption.copyWith(
                                       color: Colors.white54,
                                       fontSize: compact ? 8.5 : 10.5,
                                     ),
                                   ),
-                                ),
-                              if (sourceLabel != null && lastUpdate != null)
-                                SizedBox(width: compact ? 6 : 10),
-                              if (lastUpdate != null)
-                                Flexible(
-                                  child: Text(
+                                if (lastUpdate != null)
+                                  Text(
                                     '${context.l10n.lastUpdated}: $lastUpdate',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.end,
                                     style: AppTextStyles.caption.copyWith(
                                       color: Colors.white54,
                                       fontSize: compact ? 8.5 : 10.5,
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
+                              ],
+                            )
+                          else
+                            Row(
+                              children: [
+                                if (sourceLabel != null)
+                                  Expanded(
+                                    child: Text(
+                                      '${context.l10n.source}: $sourceLabel',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.caption.copyWith(
+                                        color: Colors.white54,
+                                        fontSize: compact ? 8.5 : 10.5,
+                                      ),
+                                    ),
+                                  ),
+                                if (sourceLabel != null && lastUpdate != null)
+                                  SizedBox(width: compact ? 6 : 10),
+                                if (lastUpdate != null)
+                                  Flexible(
+                                    child: Text(
+                                      '${context.l10n.lastUpdated}: $lastUpdate',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.end,
+                                      style: AppTextStyles.caption.copyWith(
+                                        color: Colors.white54,
+                                        fontSize: compact ? 8.5 : 10.5,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                       ],
                     ),
                   ),
@@ -1109,14 +1356,21 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
         null => null,
       };
 
-  static String _changeLabel(BuildContext context, Duration? duration) {
+  static String _changeLabel(
+    BuildContext context,
+    Duration? duration, {
+    WaterComparisonType? comparisonType,
+  }) {
     final isRo = Localizations.localeOf(context).languageCode == 'ro';
     if (duration == null) {
       return isRo ? 'Schimbare între citiri' : 'Change between readings';
     }
 
     final absoluteMinutes = duration.inMinutes.abs();
-    if (isApproximatelyDailyWaterComparison(duration)) {
+    if (comparisonType == WaterComparisonType.daily) {
+      return isRo ? 'Față de ieri' : 'Daily change';
+    }
+    if (comparisonType == WaterComparisonType.exact24Hours) {
       return isRo ? 'Schimbare în 24h' : '24h change';
     }
     if (absoluteMinutes < 60) {
@@ -1131,6 +1385,115 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
 
     final days = math.max(2, (hours / 24).round());
     return isRo ? 'Schimbare în $days zile' : 'Change over $days days';
+  }
+}
+
+class _WaterStatusBadge extends StatelessWidget {
+  const _WaterStatusBadge({
+    required this.state,
+    required this.compact,
+    this.onRetry,
+  });
+
+  final _WaterHomeDisplayState state;
+  final bool compact;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRo = Localizations.localeOf(context).languageCode == 'ro';
+    final (label, color, icon) = switch (state) {
+      _WaterHomeDisplayState.live => (
+        'LIVE',
+        const Color(0xFF22D3EE),
+        Icons.wifi_tethering_rounded,
+      ),
+      _WaterHomeDisplayState.cache => (
+        'CACHE',
+        const Color(0xFFFFC857),
+        Icons.storage_rounded,
+      ),
+      _WaterHomeDisplayState.offline => (
+        'OFFLINE',
+        const Color(0xFF9AA7B2),
+        Icons.cloud_off_outlined,
+      ),
+      _WaterHomeDisplayState.stale => (
+        isRo ? 'DATE VECHI' : 'STALE',
+        const Color(0xFFFFA24A),
+        Icons.schedule_rounded,
+      ),
+      _WaterHomeDisplayState.unavailable => (
+        isRo ? 'INDISPONIBIL' : 'UNAVAILABLE',
+        const Color(0xFF9AA7B2),
+        Icons.info_outline_rounded,
+      ),
+      _WaterHomeDisplayState.error => (
+        isRo ? 'EROARE' : 'ERROR',
+        const Color(0xFFFF6B6B),
+        Icons.error_outline_rounded,
+      ),
+    };
+
+    final badge = Container(
+      constraints: BoxConstraints(maxWidth: compact ? 86 : 104),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 5 : 7,
+        vertical: compact ? 2 : 3,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: .46)),
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: compact ? 11 : 12),
+            const SizedBox(width: 3),
+            Text(
+              label,
+              maxLines: 1,
+              style: AppTextStyles.caption.copyWith(
+                color: color,
+                fontSize: compact ? 8.5 : 9.5,
+                height: 1,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .36,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final retry = onRetry;
+    if (retry == null) {
+      return Semantics(
+        label: label,
+        child: Tooltip(message: label, child: badge),
+      );
+    }
+    return Semantics(
+      label: '$label. ${context.l10n.retry}',
+      button: true,
+      onTap: retry,
+      child: Tooltip(
+        message: context.l10n.retry,
+        excludeFromSemantics: true,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: retry,
+            child: Center(child: badge),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1151,20 +1514,30 @@ List<WaterLevel> _adaptiveChartHistorySeries(List<WaterLevel> readings) {
     if (window.length >= 2) return window;
   }
 
-  return const <WaterLevel>[];
+  // Keep sparse real observations inspectable. The chart renderer splits
+  // excessive timestamp gaps into separate segments rather than drawing a
+  // misleading continuous line.
+  return readings;
 }
 
-String _homeHistoryWindowLabel(
+List<List<WaterLevel>> _waterHistorySegments(List<WaterLevel> readings) {
+  return realWaterHistorySegments(readings);
+}
+
+String formatHomeWaterHistoryWindowLabel(
   List<WaterLevel> readings, {
   required bool isRo,
 }) {
   if (readings.length < 2) return '';
   final span = readings.last.timestamp.difference(readings.first.timestamp);
-  final window = span <= const Duration(hours: 24)
+  final absoluteSpan = span.abs();
+  final window = absoluteSpan <= const Duration(hours: 24)
       ? '24h'
-      : span <= const Duration(hours: 48)
+      : absoluteSpan <= const Duration(hours: 48)
       ? '48h'
-      : '72h';
+      : absoluteSpan <= const Duration(hours: 72)
+      ? '72h'
+      : '${math.max(73, (absoluteSpan.inMinutes / 60).round())}h';
   final count = readings.length;
   final observations = isRo
       ? (count == 1 ? 'măsurare' : 'măsurători')
@@ -1205,6 +1578,22 @@ class _WaterHistoryLineChart extends StatelessWidget {
           ),
         )
         .toList(growable: false);
+    final segmentSpots = _waterHistorySegments(readings)
+        .map(
+          (segment) => segment
+              .map(
+                (reading) => FlSpot(
+                  reading.timestamp.millisecondsSinceEpoch.toDouble(),
+                  reading.value,
+                ),
+              )
+              .toList(growable: false),
+        )
+        .toList(growable: false);
+    final readingByX = <double, WaterLevel>{
+      for (final reading in readings)
+        reading.timestamp.millisecondsSinceEpoch.toDouble(): reading,
+    };
     final rawMinX = spots.first.x;
     final rawMaxX = spots.last.x;
     final xRange = rawMaxX - rawMinX;
@@ -1225,7 +1614,7 @@ class _WaterHistoryLineChart extends StatelessWidget {
     final valueMidpoint = (minValue + maxValue) / 2;
     final minY = valueMidpoint - (visualRange / 2);
     final maxY = valueMidpoint + (visualRange / 2);
-    final lastIndex = spots.length - 1;
+    final latestX = spots.last.x;
 
     return LineChart(
       duration: const Duration(milliseconds: 220),
@@ -1278,7 +1667,7 @@ class _WaterHistoryLineChart extends StatelessWidget {
                 const Color(0xFF081720).withValues(alpha: .94),
             getTooltipItems: (touchedSpots) => touchedSpots
                 .map((spot) {
-                  final reading = readings[spot.spotIndex];
+                  final reading = readingByX[spot.x]!;
                   final value = reading.value == reading.value.roundToDouble()
                       ? reading.value.toStringAsFixed(0)
                       : reading.value.toStringAsFixed(1);
@@ -1323,44 +1712,48 @@ class _WaterHistoryLineChart extends StatelessWidget {
           ],
         ),
         lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: spots.length >= 3,
-            curveSmoothness: .18,
-            preventCurveOverShooting: true,
-            color: color,
-            barWidth: 2.55,
-            isStrokeCapRound: true,
-            belowBarData: BarAreaData(
-              show: true,
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  color.withValues(alpha: .24),
-                  color.withValues(alpha: .015),
-                ],
+          for (final segment in segmentSpots)
+            LineChartBarData(
+              spots: segment,
+              isCurved: segment.length >= 3,
+              curveSmoothness: .18,
+              preventCurveOverShooting: true,
+              color: color,
+              barWidth: 2.55,
+              isStrokeCapRound: true,
+              belowBarData: BarAreaData(
+                show: true,
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    color.withValues(alpha: .24),
+                    color.withValues(alpha: .015),
+                  ],
+                ),
+              ),
+              dotData: FlDotData(
+                show: true,
+                checkToShowDot: (spot, barData) =>
+                    spots.length <= 8 ||
+                    spot.x == segment.first.x ||
+                    spot.x == segment.last.x ||
+                    spot.x == latestX,
+                getDotPainter: (spot, percent, barData, index) {
+                  final isLatest = spot.x == latestX;
+                  final isSegmentEdge =
+                      index == 0 || index == segment.length - 1;
+                  return FlDotCirclePainter(
+                    radius: isLatest ? 3.4 : (isSegmentEdge ? 2.8 : 2.0),
+                    color: color,
+                    strokeColor: Colors.white.withValues(
+                      alpha: isLatest ? .92 : .62,
+                    ),
+                    strokeWidth: isLatest ? 1.4 : .8,
+                  );
+                },
               ),
             ),
-            dotData: FlDotData(
-              show: true,
-              checkToShowDot: (spot, barData) =>
-                  spots.length <= 8 ||
-                  spot.x == spots.first.x ||
-                  spot.x == spots[lastIndex].x,
-              getDotPainter: (spot, percent, barData, index) {
-                final isEdge = index == 0 || index == lastIndex;
-                return FlDotCirclePainter(
-                  radius: isEdge ? 3.2 : 2.2,
-                  color: color,
-                  strokeColor: Colors.white.withValues(
-                    alpha: isEdge ? .82 : .60,
-                  ),
-                  strokeWidth: isEdge ? 1.2 : .8,
-                );
-              },
-            ),
-          ),
         ],
       ),
     );

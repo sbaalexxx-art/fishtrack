@@ -1,11 +1,11 @@
 abstract final class WaterFreshnessFormatter {
   static String format({
-    required DateTime measurementTimestamp,
+    required DateTime freshnessTimestamp,
     required DateTime now,
     required bool isStale,
     required String locale,
   }) {
-    final measuredAge = now.difference(measurementTimestamp);
+    final measuredAge = now.difference(freshnessTimestamp);
     final age = measuredAge.isNegative ? Duration.zero : measuredAge;
     final isRomanian = locale.toLowerCase().startsWith('ro');
 

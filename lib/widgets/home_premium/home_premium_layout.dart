@@ -116,30 +116,30 @@ class HomePremiumLayout {
 
     if (isTablet) {
       horizontalPadding = bounded(
-        shortestSide * .04,
-        24,
-        isLandscape ? 32 : 28,
+        shortestSide * .025,
+        18,
+        isLandscape ? 26 : 22,
       );
       titleFontScale = 1.08;
       bodyFontScale = 1.05;
       iconScale = 1.10;
     } else if (isLandscape) {
-      horizontalPadding = bounded(shortestSide * .04, 14, 18);
+      horizontalPadding = bounded(shortestSide * .025, 8, 12);
       titleFontScale = .90;
       bodyFontScale = .90;
       iconScale = .90;
     } else if (isSmallPhone) {
-      horizontalPadding = bounded(shortestSide * .035, 12, 14);
+      horizontalPadding = bounded(shortestSide * .025, 8, 9);
       titleFontScale = .90;
       bodyFontScale = .90;
       iconScale = .90;
     } else if (isNormalPhone) {
-      horizontalPadding = bounded(shortestSide * .036, 14, 16);
+      horizontalPadding = bounded(shortestSide * .024, 8, 10);
       titleFontScale = .95;
       bodyFontScale = .95;
       iconScale = .95;
     } else if (isLargePhone) {
-      horizontalPadding = bounded(shortestSide * .038, 16, 20);
+      horizontalPadding = bounded(shortestSide * .023, 9, 11);
       titleFontScale = 1;
       bodyFontScale = 1;
       iconScale = 1;
@@ -154,20 +154,20 @@ class HomePremiumLayout {
       const landscapePhoneMaximumNavigationHeight = 58.0;
       const landscapePhoneMinimumMapHeight = 150.0;
       const landscapePhoneMaximumMapHeight = 230.0;
-      const landscapePhoneMinimumWaterHeight = 124.0;
-      const landscapePhoneMaximumWaterHeight = 140.0;
-      const landscapePhoneMinimumWeatherHeight = 120.0;
-      const landscapePhoneMaximumWeatherHeight = 132.0;
-      const landscapePhoneMinimumStandardSectionHeight = 132.0;
-      const landscapePhoneMaximumStandardSectionHeight = 156.0;
+      const landscapePhoneMinimumWaterHeight = 146.0;
+      const landscapePhoneMaximumWaterHeight = 164.0;
+      const landscapePhoneMinimumWeatherHeight = 108.0;
+      const landscapePhoneMaximumWeatherHeight = 122.0;
+      const landscapePhoneMinimumStandardSectionHeight = 126.0;
+      const landscapePhoneMaximumStandardSectionHeight = 142.0;
       const landscapePhoneMinimumRecentCatchesHeight = 156.0;
-      const landscapePhoneMaximumRecentCatchesHeight = 200.0;
+      const landscapePhoneMaximumRecentCatchesHeight = 184.0;
       const landscapePhoneHeaderSpacingFactor = 1.75;
       const landscapePhoneMapHeightFactor = .62;
-      const landscapePhoneWaterHeightFactor = .42;
-      const landscapePhoneWeatherHeightFactor = .38;
-      const landscapePhoneStandardSectionHeightFactor = .42;
-      const landscapePhoneRecentCatchesHeightFactor = .50;
+      const landscapePhoneWaterHeightFactor = .46;
+      const landscapePhoneWeatherHeightFactor = .34;
+      const landscapePhoneStandardSectionHeightFactor = .40;
+      const landscapePhoneRecentCatchesHeightFactor = .48;
 
       sectionGap = bounded(
         usableHeight * .012,
@@ -238,15 +238,15 @@ class HomePremiumLayout {
         usableHeight,
       );
       heroMapHeight = bounded(firstHomeViewportHeight * .34, 220, 320);
-      waterCardHeight = bounded(usableHeight * .20, 135, 160);
-      weatherCardHeight = bounded(waterCardHeight * .74, 132, 150);
-      standardSectionHeight = bounded(usableHeight * .36, 132, 184);
-      recentCatchesHeight = bounded(usableHeight * .48, 156, 240);
+      waterCardHeight = bounded(usableHeight * .24, 156, 184);
+      weatherCardHeight = bounded(waterCardHeight * .72, 116, 136);
+      standardSectionHeight = bounded(usableHeight * .30, 140, 172);
+      recentCatchesHeight = bounded(usableHeight * .40, 170, 220);
     } else {
       sectionGap = bounded(
-        shortestSide * (isTablet ? .02 : .027),
-        isTablet ? 12 : 8,
-        isTablet ? 16 : 12,
+        shortestSide * (isTablet ? .016 : .018),
+        isTablet ? 10 : 6,
+        isTablet ? 14 : 8,
       );
       headerHeight = bounded(
         usableHeight * .085,
@@ -261,47 +261,50 @@ class HomePremiumLayout {
         0,
         usableHeight,
       );
+      final portraitMapHeightFactor = isTablet
+          ? .42
+          : (isSmallPhone ? .38 : .40);
       heroMapHeight = bounded(
-        firstHomeViewportHeight * (isTablet ? .41 : .42),
-        isTablet ? 320 : 250,
+        firstHomeViewportHeight * portraitMapHeightFactor,
+        isTablet ? 320 : (isSmallPhone ? 220 : 250),
         isTablet ? 480 : 390,
       );
       if (isTablet) {
-        waterCardHeight = bounded(usableHeight * .15, 145, 175);
-        weatherCardHeight = bounded(waterCardHeight * .74, 145, 165);
+        waterCardHeight = bounded(usableHeight * .19, 176, 204);
+        weatherCardHeight = bounded(waterCardHeight * .66, 120, 138);
       } else {
         final waterMinimum = isSmallPhone
-            ? 116.0
-            : (isNormalPhone ? 122.0 : 128.0);
+            ? 158.0
+            : (isNormalPhone ? 166.0 : 172.0);
         final waterMaximum = isSmallPhone
-            ? 126.0
-            : (isNormalPhone ? 134.0 : 140.0);
+            ? 170.0
+            : (isNormalPhone ? 180.0 : 186.0);
         final weatherMinimum = isSmallPhone
-            ? 125.0
-            : (isNormalPhone ? 128.0 : 132.0);
+            ? 112.0
+            : (isNormalPhone ? 116.0 : 118.0);
         final weatherMaximum = isSmallPhone
-            ? 136.0
-            : (isNormalPhone ? 142.0 : 150.0);
+            ? 122.0
+            : (isNormalPhone ? 126.0 : 130.0);
         waterCardHeight = bounded(
-          usableHeight * .16,
+          usableHeight * .205,
           waterMinimum,
           waterMaximum,
         );
         weatherCardHeight = bounded(
-          waterCardHeight * .74,
+          waterCardHeight * .70,
           weatherMinimum,
           weatherMaximum,
         );
       }
       standardSectionHeight = bounded(
-        usableHeight * (isTablet ? .18 : .19),
-        isTablet ? 172 : 140,
-        isTablet ? 212 : 176,
+        usableHeight * (isTablet ? .16 : .18),
+        isTablet ? 152 : 138,
+        isTablet ? 188 : 164,
       );
       recentCatchesHeight = bounded(
-        usableHeight * .25,
-        isTablet ? 220 : 180,
-        isTablet ? 300 : 240,
+        usableHeight * .22,
+        isTablet ? 190 : (isSmallPhone ? 168 : 176),
+        isTablet ? 246 : 220,
       );
     }
 

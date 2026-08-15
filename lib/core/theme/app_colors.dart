@@ -1,32 +1,34 @@
 import 'package:flutter/material.dart';
 
+import 'fluviai_commercial_tokens.dart';
+
 class AppColors {
   AppColors._();
 
-  // Background
-  static const Color background = Color(0xFF121212);
+  // Canonical aliases retained for the older widgets still in the runtime.
+  static const Color background = FluviAICommercialTokens.background;
 
   // Cards
-  static const Color card = Color(0xFF1C1C1E);
+  static const Color card = FluviAICommercialTokens.surface;
 
   // Primary
-  static const Color primary = Color(0xFF1E88E5);
+  static const Color primary = FluviAICommercialTokens.accent;
 
   // Trend colors
-  static const Color rising = Color(0xFF2196F3);
-  static const Color stable = Color(0xFFFFC107);
-  static const Color falling = Color(0xFFE53935);
+  static const Color rising = FluviAICommercialTokens.waterRising;
+  static const Color stable = FluviAICommercialTokens.waterStable;
+  static const Color falling = FluviAICommercialTokens.waterFalling;
 
   // Sections
-  static const Color weather = Color(0xFFFF9800);
-  static const Color community = Color(0xFF4CAF50);
-  static const Color ai = Color(0xFF42A5F5);
+  static const Color weather = FluviAICommercialTokens.warning;
+  static const Color community = FluviAICommercialTokens.waterStable;
+  static const Color ai = FluviAICommercialTokens.brandFocus;
 
   // Text
-  static const Color textPrimary = Colors.white;
-  static const Color textSecondary = Colors.white70;
-  static const Color textMuted = Colors.white54;
+  static const Color textPrimary = FluviAICommercialTokens.textPrimary;
+  static const Color textSecondary = FluviAICommercialTokens.textSecondary;
+  static const Color textMuted = FluviAICommercialTokens.textMuted;
 
   // Divider
-  static const Color divider = Colors.white12;
+  static const Color divider = FluviAICommercialTokens.border;
 }
