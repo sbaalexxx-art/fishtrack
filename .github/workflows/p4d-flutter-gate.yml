@@ -31,6 +31,17 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
+      - name: Format Hydro Dispatch dock for capture
+        run: dart format lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart
+
+      - name: Upload formatted Hydro Dispatch dock
+        uses: actions/upload-artifact@v4
+        with:
+          name: hydro-dispatch-dock-formatted-source
+          path: lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Verify P4D formatting
         run: >-
           dart format --output=none --set-exit-if-changed
