@@ -19,7 +19,7 @@ For every production backend capability:
 9. No fabricated values or hardcoded operational truth.
 10. Android/iOS build gates pass and Samsung SM-S928B physical QA is recorded before CLOSED/PASS.
 
-Any row marked `BACKEND ONLY`, `MOBILE CONTRACT`, or `UI OPEN` keeps the product checkpoint OPEN.
+Any row marked `BACKEND ONLY`, `MOBILE CONTRACT`, `UI OPEN`, or `QA OPEN` keeps the product checkpoint OPEN.
 
 ## Hydro Dispatch Olt P3/P4
 
@@ -28,7 +28,7 @@ Any row marked `BACKEND ONLY`, `MOBILE CONTRACT`, or `UI OPEN` keeps the product
 | Today + tomorrow dispatch probability | `get_hydro_dispatch_olt_today_tomorrow_v3` | `HydroDispatchService.getTodayTomorrow` + `HydroDispatchMobileController` | MOBILE CONTRACT |
 | Sanitized AI explanation context | `get_hydro_dispatch_olt_ai_context_v1` | `HydroDispatchService.getAiContext` + controller | MOBILE CONTRACT |
 | Community observed state | `get_hydro_dispatch_olt_observed_state_v1` | included in AI/product context; detail UI connection pending | MOBILE CONTRACT |
-| Explicit observed-event feedback | `submit_hydro_dispatch_observation_v1` | `HydroDispatchService.submitObservedEvent` | MOBILE CONTRACT / REPORT FLOW OPEN |
+| Explicit observed-event feedback | `submit_hydro_dispatch_observation_v1` | canonical Community report → mounted `HydroDispatchRouteBridge` → optional event selection → `HydroDispatchService.submitObservedEvent` | MOBILE CONNECTED / QA OPEN |
 | Start field validation | `start_hydro_dispatch_field_validation_v1` | `HydroDispatchService.startFieldValidation` + controller | MOBILE CONTRACT / UI OPEN |
 | Active field validation | `get_my_active_hydro_dispatch_field_validation_v1` | `HydroDispatchService.getActiveFieldValidation` + controller | MOBILE CONTRACT / UI OPEN |
 | Finish field validation | `finish_hydro_dispatch_field_validation_v1` | `HydroDispatchService.finishFieldValidation` + controller | MOBILE CONTRACT / UI OPEN |
@@ -50,6 +50,7 @@ Any row marked `BACKEND ONLY`, `MOBILE CONTRACT`, or `UI OPEN` keeps the product
 - Existing Mapbox runtime and Hydro Intelligence UI remain the presentation base.
 - Existing notification inbox/preferences remain the user notification control center.
 - Existing `SavedItemsService` remains the saved/favorites storage bridge.
+- Existing Community report publisher remains canonical; Hydro Dispatch only adds an optional post-publish OBSERVED association when the current route is a real CHE.
 
 ## P4D release gate
 
@@ -64,7 +65,7 @@ P4D cannot be CLOSED/PASS until all of the following are true:
 - [x] Existing hydropower route bound to P4 state without redesign.
 - [ ] Today/Tomorrow product data is visible in the existing CHE/Water flow.
 - [ ] Hydro Alert action creates/disables the real P4 rule.
-- [ ] Report flow can submit explicit turbining observed events.
+- [ ] Report flow can submit explicit turbining observed events — implementation connected; compile/device QA pending.
 - [ ] Field validation UI uses real current GPS and start/finish RPCs.
 - [ ] AI/Fluvi explanation reads sanitized P4 AI context only.
 - [ ] Loading/cache/error/retry behavior is visible and verified.
@@ -77,6 +78,13 @@ P4D cannot be CLOSED/PASS until all of the following are true:
 - [ ] Samsung SM-S928B: tapping Hydro push opens correct CHE PASS.
 - [ ] Samsung SM-S928B: Hydro Today/Tomorrow/Alert/field validation functional PASS.
 - [ ] Product/Visual review PASS.
+
+## UI governance for current P4D work
+
+- Current approved design remains the implementation base.
+- No screen is rebuilt from scratch for P4D.
+- Backend/mobile wiring may be added invisibly or through existing actions today.
+- Visual polish and higher-level UI refinement are a separate controlled pass; they must not replace or break production contracts.
 
 ## Non-negotiable data-truth rules
 
