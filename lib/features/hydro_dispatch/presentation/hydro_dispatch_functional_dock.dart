@@ -22,6 +22,16 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
     required this.onOpenPremium,
   });
 
+  static const _surface = Color(0xFF081218);
+  static const _card = Color(0xFF102029);
+  static const _cardStrong = Color(0xFF132831);
+  static const _border = Color(0xFF28434D);
+  static const _cyan = Color(0xFF43D9CC);
+  static const _white = Color(0xFFF6F9FB);
+  static const _secondary = Color(0xFFA7BBC5);
+  static const _muted = Color(0xFF78909C);
+  static const _amber = Color(0xFFF0B94B);
+
   final HydroDispatchMobileState state;
   final String plantName;
   final bool isRomanian;
@@ -35,8 +45,77 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
   final Future<void> Function() onFinishUnknown;
   final VoidCallback onOpenPremium;
 
+  ThemeData _dockTheme(BuildContext context) {
+    final base = Theme.of(context);
+    return base.copyWith(
+      colorScheme: base.colorScheme.copyWith(
+        surface: _surface,
+        surfaceContainerHighest: _card,
+        onSurface: _white,
+        onSurfaceVariant: _secondary,
+        outlineVariant: _border,
+        primary: _cyan,
+        onPrimary: const Color(0xFF021513),
+      ),
+      textTheme: base.textTheme.apply(
+        bodyColor: _white,
+        displayColor: _white,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final themed = _dockTheme(context);
+    if (!isPremium) {
+      return Theme(
+        data: themed,
+        child: DraggableScrollableSheet(
+          key: const ValueKey('hydro-dispatch-functional-dock-locked'),
+          initialChildSize: .30,
+          minChildSize: .24,
+          maxChildSize: .45,
+          snap: true,
+          snapSizes: const [.30, .45],
+          builder: (context, scrollController) => Material(
+            elevation: 22,
+            color: _surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            clipBehavior: Clip.antiAlias,
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(18, 9, 18, 28),
+              children: [
+                const _DockHandle(),
+                const SizedBox(height: 14),
+                Text(
+                  'Hydro PRO · $plantName',
+                  style: const TextStyle(
+                    color: _white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isRomanian
+                      ? 'Harta Hydro, probabilitatea de uzinare, intervalele estimate, AI/ML și notificările Hydro sunt funcții Pro.'
+                      : 'Hydro Map, generation probability, estimated windows, Hydro AI/ML and notifications are Pro features.',
+                  style: const TextStyle(color: _secondary, height: 1.35),
+                ),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: onOpenPremium,
+                  icon: const Icon(Icons.workspace_premium_rounded),
+                  label: Text(isRomanian ? 'Vezi Hydro Pro' : 'View Hydro Pro'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final today = HydroDispatchPresentation.day(
       state.today,
       isRomanian: isRomanian,
@@ -52,302 +131,365 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
       aiToday,
       isRomanian: isRomanian,
     );
-    final colors = Theme.of(context).colorScheme;
     final mutationBusy =
         state.isLoading ||
         state.isAlertMutationRunning ||
         state.isValidationMutationRunning ||
         locationMutationRunning;
 
-    return DraggableScrollableSheet(
-      initialChildSize: .16,
-      minChildSize: .105,
-      maxChildSize: .74,
-      snap: true,
-      snapSizes: const [.16, .42, .74],
-      builder: (context, scrollController) => Material(
-        elevation: 18,
-        color: colors.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        clipBehavior: Clip.antiAlias,
-        child: ListView(
-          controller: scrollController,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: colors.onSurfaceVariant.withValues(alpha: .55),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
+    return Theme(
+      data: themed,
+      child: DraggableScrollableSheet(
+        key: const ValueKey('hydro-dispatch-functional-dock'),
+        // Product QA must see the actual forecast immediately. The previous
+        // 16% initial size could visually disappear into the legacy CHE page.
+        initialChildSize: .44,
+        minChildSize: .30,
+        maxChildSize: .82,
+        snap: true,
+        snapSizes: const [.44, .82],
+        builder: (context, scrollController) => Material(
+          elevation: 24,
+          color: _surface,
+          shadowColor: Colors.black.withValues(alpha: .75),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          clipBehavior: Clip.antiAlias,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: _cyan, width: 1.1)),
             ),
-            const SizedBox(height: 10),
-            Row(
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(18, 9, 18, 30),
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hydro Dispatch · $plantName',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                const _DockHandle(),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: _cyan.withValues(alpha: .12),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: _cyan.withValues(alpha: .45)),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        observed,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall,
+                      child: const Icon(Icons.bolt_rounded, color: _cyan),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hydro Dispatch · $plantName',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _white,
+                              fontSize: 18,
+                              height: 1.1,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            observed,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _secondary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                if (state.isLoading)
-                  const SizedBox.square(
-                    dimension: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else
-                  IconButton(
-                    tooltip: isRomanian ? 'Actualizează' : 'Refresh',
-                    onPressed: () => unawaited(onRetry()),
-                    icon: const Icon(Icons.refresh_rounded),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _DayCard(data: today)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: isPremium
-                      ? _DayCard(data: tomorrow)
-                      : _PremiumLockCard(
-                          isRomanian: isRomanian,
-                          title: isRomanian ? 'Mâine' : 'Tomorrow',
-                          onOpenPremium: onOpenPremium,
+                    ),
+                    if (state.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _cyan,
+                          ),
                         ),
+                      )
+                    else
+                      IconButton(
+                        tooltip: isRomanian ? 'Actualizează' : 'Refresh',
+                        onPressed: () => unawaited(onRetry()),
+                        color: _cyan,
+                        icon: const Icon(Icons.refresh_rounded),
+                      ),
+                  ],
                 ),
-              ],
-            ),
-            if (state.lastError != null) ...[
-              const SizedBox(height: 10),
-              _StatusPanel(
-                icon: Icons.sync_problem_rounded,
-                title: isRomanian
-                    ? 'Conexiune degradată'
-                    : 'Degraded connection',
-                message: state.lastError!,
-              ),
-            ],
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: mutationBusy
-                      ? null
-                      : isPremium
-                      ? () => unawaited(onToggleAlert())
-                      : onOpenPremium,
-                  icon: Icon(
-                    isPremium && state.alertEnabled
-                        ? Icons.notifications_active_rounded
-                        : Icons.notifications_none_rounded,
+                const SizedBox(height: 12),
+                if (state.usingPersistedCache)
+                  _TruthStrip(
+                    icon: Icons.offline_bolt_rounded,
+                    text: isRomanian
+                        ? 'CACHE · ultima predicție validă salvată'
+                        : 'CACHE · last valid saved prediction',
+                    color: _amber,
                   ),
-                  label: Text(
-                    isPremium
-                        ? state.alertEnabled
-                              ? (isRomanian ? 'Alertă activă' : 'Alert enabled')
-                              : (isRomanian
-                                    ? 'Activează alerta'
-                                    : 'Enable alert')
-                        : (isRomanian
-                              ? 'Alerte · Premium'
-                              : 'Alerts · Premium'),
+                if (state.usingPersistedCache) const SizedBox(height: 9),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _DayCard(
+                        data: today,
+                        primary: true,
+                        isRomanian: isRomanian,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _DayCard(
+                        data: tomorrow,
+                        primary: false,
+                        isRomanian: isRomanian,
+                      ),
+                    ),
+                  ],
+                ),
+                if (state.lastError != null) ...[
+                  const SizedBox(height: 10),
+                  _StatusPanel(
+                    icon: Icons.sync_problem_rounded,
+                    title: isRomanian
+                        ? 'Conexiune degradată'
+                        : 'Degraded connection',
+                    message: state.lastError!,
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: mutationBusy
+                          ? null
+                          : () => unawaited(onToggleAlert()),
+                      icon: Icon(
+                        state.alertEnabled
+                            ? Icons.notifications_active_rounded
+                            : Icons.notifications_none_rounded,
+                      ),
+                      label: Text(
+                        state.alertEnabled
+                            ? (isRomanian ? 'Alertă activă' : 'Alert enabled')
+                            : (isRomanian
+                                  ? 'Activează alerta'
+                                  : 'Enable alert'),
+                      ),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: mutationBusy ? null : onOpenObservationReport,
+                      icon: const Icon(Icons.add_location_alt_rounded),
+                      label: Text(
+                        isRomanian ? 'Raport din teren' : 'Field report',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                _StatusPanel(
+                  icon: Icons.auto_awesome_rounded,
+                  title: isRomanian ? 'Explicație Fluvi AI' : 'Fluvi AI explanation',
+                  message: HydroDispatchPresentation.aiExplanation(
+                    aiToday,
+                    isRomanian: isRomanian,
                   ),
                 ),
-                FilledButton.tonalIcon(
-                  onPressed: mutationBusy ? null : onOpenObservationReport,
-                  icon: const Icon(Icons.add_location_alt_rounded),
-                  label: Text(isRomanian ? 'Raport din teren' : 'Field report'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            _FieldValidationPanel(
-              state: state,
-              isRomanian: isRomanian,
-              busy: mutationBusy,
-              onStart: onStartValidation,
-              onNoTurbining: onFinishNoTurbining,
-              onUnknown: onFinishUnknown,
-              onPositiveReport: onOpenObservationReport,
-            ),
-            const SizedBox(height: 14),
-            if (isPremium)
-              _StatusPanel(
-                icon: Icons.auto_awesome_rounded,
-                title: isRomanian ? 'Explicație Fluvi' : 'Fluvi explanation',
-                message: HydroDispatchPresentation.aiExplanation(
-                  aiToday,
+                const SizedBox(height: 14),
+                _FieldValidationPanel(
+                  state: state,
                   isRomanian: isRomanian,
+                  busy: mutationBusy,
+                  onStart: onStartValidation,
+                  onNoTurbining: onFinishNoTurbining,
+                  onUnknown: onFinishUnknown,
+                  onPositiveReport: onOpenObservationReport,
                 ),
-              )
-            else
-              _PremiumLockCard(
-                isRomanian: isRomanian,
-                title: isRomanian
-                    ? 'Explicație Hydro avansată'
-                    : 'Advanced Hydro explanation',
-                onOpenPremium: onOpenPremium,
-              ),
-            if (state.lastCompletedValidation case final result?) ...[
-              const SizedBox(height: 12),
-              _StatusPanel(
-                icon: result.calibrationEligible
-                    ? Icons.verified_rounded
-                    : Icons.info_outline_rounded,
-                title: isRomanian
-                    ? 'Ultima validare de teren'
-                    : 'Last field validation',
-                message: result.calibrationEligible
-                    ? (isRomanian
-                          ? 'Eligibilă pentru calibrare · ${result.durationMinutes.toStringAsFixed(0)} min.'
-                          : 'Calibration eligible · ${result.durationMinutes.toStringAsFixed(0)} min.')
-                    : (isRomanian
-                          ? 'Neeligibilă pentru calibrare · ${result.calibrationReason}.'
-                          : 'Not calibration eligible · ${result.calibrationReason}.'),
-              ),
-            ],
-            const SizedBox(height: 10),
-            Text(
-              isRomanian
-                  ? 'Probabilitățile sunt estimări. OBSERVED înseamnă observație comunitară în teren, nu confirmare oficială Hidroelectrica/operator.'
-                  : 'Probabilities are estimates. OBSERVED means community field evidence, not official Hidroelectrica/operator confirmation.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                if (state.lastCompletedValidation case final result?) ...[
+                  const SizedBox(height: 12),
+                  _StatusPanel(
+                    icon: result.calibrationEligible
+                        ? Icons.verified_rounded
+                        : Icons.info_outline_rounded,
+                    title: isRomanian
+                        ? 'Ultima validare de teren'
+                        : 'Last field validation',
+                    message: result.calibrationEligible
+                        ? (isRomanian
+                              ? 'Eligibilă pentru calibrare · ${result.durationMinutes.toStringAsFixed(0)} min.'
+                              : 'Calibration eligible · ${result.durationMinutes.toStringAsFixed(0)} min.')
+                        : (isRomanian
+                              ? 'Neeligibilă pentru calibrare · ${result.calibrationReason}.'
+                              : 'Not calibration eligible · ${result.calibrationReason}.'),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Text(
+                  isRomanian
+                      ? 'Probabilitățile sunt estimări, nu confirmări oficiale. OBSERVED înseamnă observație comunitară în teren.'
+                      : 'Probabilities are estimates, not official confirmations. OBSERVED means community field evidence.',
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 10,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
+class _DockHandle extends StatelessWidget {
+  const _DockHandle();
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Container(
+      width: 46,
+      height: 4,
+      decoration: BoxDecoration(
+        color: HydroDispatchFunctionalDock._secondary,
+        borderRadius: BorderRadius.circular(99),
+      ),
+    ),
+  );
+}
+
+class _TruthStrip extends StatelessWidget {
+  const _TruthStrip({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .08),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: color.withValues(alpha: .42)),
+    ),
+    child: Row(
+      children: [
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class _DayCard extends StatelessWidget {
-  const _DayCard({required this.data});
+  const _DayCard({
+    required this.data,
+    required this.primary,
+    required this.isRomanian,
+  });
 
   final HydroDispatchDayPresentation data;
+  final bool primary;
+  final bool isRomanian;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final accent = primary
+        ? HydroDispatchFunctionalDock._cyan
+        : HydroDispatchFunctionalDock._secondary;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: .48),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.outlineVariant),
+        color: primary
+            ? HydroDispatchFunctionalDock._cardStrong
+            : HydroDispatchFunctionalDock._card,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: accent.withValues(alpha: .55)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             data.dayLabel.toUpperCase(),
-            style: Theme.of(context).textTheme.labelSmall,
+            style: TextStyle(
+              color: accent,
+              fontSize: 10,
+              letterSpacing: .7,
+              fontWeight: FontWeight.w900,
+            ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
           Text(
             data.probabilityLabel,
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+            style: const TextStyle(
+              color: HydroDispatchFunctionalDock._white,
+              fontSize: 26,
+              height: 1,
+              fontWeight: FontWeight.w900,
+            ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 5),
+          Text(
+            data.available
+                ? data.windowLabel
+                : (isRomanian ? 'Predicție indisponibilă' : 'Forecast unavailable'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: HydroDispatchFunctionalDock._white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
           Text(
             data.statusLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: const TextStyle(
+              color: HydroDispatchFunctionalDock._secondary,
+              fontSize: 10,
+            ),
           ),
-          const SizedBox(height: 5),
-          Text(
-            data.available ? data.windowLabel : data.statusLabel,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 4),
           Text(
             '${data.evidenceLabel} · ${data.confidenceLabel}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall,
+            style: const TextStyle(
+              color: HydroDispatchFunctionalDock._muted,
+              fontSize: 9,
+            ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PremiumLockCard extends StatelessWidget {
-  const _PremiumLockCard({
-    required this.isRomanian,
-    required this.title,
-    required this.onOpenPremium,
-  });
-
-  final bool isRomanian;
-  final String title;
-  final VoidCallback onOpenPremium;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onOpenPremium,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHighest.withValues(alpha: .36),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: colors.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.workspace_premium_rounded, size: 20),
-            const SizedBox(height: 6),
-            Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              isRomanian ? 'Disponibil în Premium' : 'Available in Premium',
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -380,8 +522,8 @@ class _FieldValidationPanel extends StatelessWidget {
         icon: Icons.gps_fixed_rounded,
         title: isRomanian ? 'Validare GPS în teren' : 'GPS field validation',
         message: isRomanian
-            ? 'Pornește doar când ești fizic lângă CHE. Backendul verifică distanța și păstrează snapshotul predicției înainte de observație.'
-            : 'Start only when physically near the plant. The backend verifies distance and freezes the prediction snapshot before observation.',
+            ? 'Pornește numai când ești fizic lângă CHE. Backendul verifică distanța și îngheață predicția înainte de observație.'
+            : 'Start only when physically near the plant. The backend verifies distance and freezes the prediction before observation.',
         action: FilledButton.icon(
           onPressed: busy ? null : () => unawaited(onStart()),
           icon: const Icon(Icons.play_arrow_rounded),
@@ -394,8 +536,8 @@ class _FieldValidationPanel extends StatelessWidget {
       icon: Icons.gps_fixed_rounded,
       title: isRomanian ? 'Validare GPS activă' : 'GPS validation active',
       message: isRomanian
-          ? 'Pentru rezultat pozitiv publică un raport „uzinare începută/activă”. Pentru rezultat negativ, rămâi în teren suficient timp și închide sesiunea mai jos.'
-          : 'For a positive result publish a “generation started/active” field report. For a negative result remain on site long enough and close the session below.',
+          ? 'Pentru rezultat pozitiv publică observația de uzinare. Pentru rezultat negativ rămâi în teren suficient timp și închide sesiunea.'
+          : 'For a positive result publish the generation observation. For a negative result remain on site long enough and close the session.',
       action: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -438,38 +580,48 @@ class _StatusPanel extends StatelessWidget {
   final Widget? action;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: .35),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: HydroDispatchFunctionalDock._card,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: HydroDispatchFunctionalDock._border),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              icon,
+              size: 19,
+              color: HydroDispatchFunctionalDock._cyan,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: HydroDispatchFunctionalDock._white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-            ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        Text(
+          message,
+          style: const TextStyle(
+            color: HydroDispatchFunctionalDock._secondary,
+            fontSize: 11,
+            height: 1.35,
           ),
-          const SizedBox(height: 7),
-          Text(message, style: Theme.of(context).textTheme.bodySmall),
-          if (action != null) ...[const SizedBox(height: 10), action!],
-        ],
-      ),
-    );
-  }
+        ),
+        if (action != null) ...[const SizedBox(height: 10), action!],
+      ],
+    ),
+  );
 }
