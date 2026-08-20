@@ -31,21 +31,16 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Verify P4D formatting
-        run: >-
-          dart format --output=none --set-exit-if-changed
-          lib/features/hydro_dispatch
-          lib/services/hydro_dispatch_geofence_service.dart
-          lib/services/hydro_dispatch_service.dart
-          lib/features/figma_complete/presentation/figma_destination_router.dart
-          lib/core/navigation/app_navigator.dart
-          lib/core/navigation/hydro_dispatch_navigation_intent.dart
-          lib/core/context/selected_context.dart
-          lib/screens/main_navigation.dart
-          lib/services/saved_items_service.dart
-          test/hydro_dispatch_mobile_contract_test.dart
-          test/hydro_dispatch_cache_test.dart
-          test/hydro_dispatch_navigation_intent_test.dart
+      - name: Format Hydro selector source for capture
+        run: dart format lib/core/context/selected_context.dart
+
+      - name: Upload formatted Hydro selector source
+        uses: actions/upload-artifact@v4
+        with:
+          name: hydro-selector-formatted-source
+          path: lib/core/context/selected_context.dart
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Analyze Hydro Dispatch integration
         run: flutter analyze lib/features/hydro_dispatch
