@@ -86,6 +86,16 @@ final hydroDispatchServiceProvider = Provider<HydroDispatchService>(
   (ref) => const HydroDispatchService(),
 );
 
+class _HydroLoadResult<T> {
+  const _HydroLoadResult.success(this.value) : error = null;
+  const _HydroLoadResult.failure(this.error) : value = null;
+
+  final T? value;
+  final Object? error;
+
+  bool get failed => error != null;
+}
+
 class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
   Future<HydroDispatchMobileState>? _activeRefresh;
 
@@ -131,87 +141,129 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
     return refresh(plantId, force: true);
   }
 
+  Future<_HydroLoadResult<T>> _capture<T>(Future<T> request) async {
+    try {
+      return _HydroLoadResult<T>.success(await request);
+    } on Object catch (error) {
+      return _HydroLoadResult<T>.failure(error);
+    }
+  }
+
   Future<HydroDispatchMobileState> _refresh(String plantId) async {
-    final samePlant = state.plantId == plantId;
+    final previous = state;
+    final samePlant = previous.plantId == plantId;
     state = HydroDispatchMobileState(
       status: HydroDispatchMobileStatus.loading,
       plantId: plantId,
       forecasts: samePlant
-          ? state.forecasts
+          ? previous.forecasts
           : const <HydroDispatchDayForecast>[],
       aiContext: samePlant
-          ? state.aiContext
+          ? previous.aiContext
           : const <HydroDispatchAiContext>[],
-      alertRule: samePlant ? state.alertRule : null,
-      activeValidation: samePlant ? state.activeValidation : null,
+      alertRule: samePlant ? previous.alertRule : null,
+      activeValidation: samePlant ? previous.activeValidation : null,
       lastCompletedValidation: samePlant
-          ? state.lastCompletedValidation
+          ? previous.lastCompletedValidation
           : null,
-      refreshedAt: samePlant ? state.refreshedAt : null,
+      refreshedAt: samePlant ? previous.refreshedAt : null,
+      isAlertMutationRunning: previous.isAlertMutationRunning,
+      isValidationMutationRunning: previous.isValidationMutationRunning,
+    );
+
+    final stopwatch = Stopwatch()..start();
+
+    final forecastsRequest = _capture<List<HydroDispatchDayForecast>>(
+      _service.getTodayTomorrow(plantId),
+    );
+    final aiRequest = _capture<List<HydroDispatchAiContext>>(
+      _service.getAiContext(plantId),
+    );
+    final ruleRequest = _capture<HydroDispatchAlertRule?>(
+      _service.getAlertRule(plantId),
+    );
+    final validationRequest = _capture<HydroDispatchFieldValidationSession?>(
+      _service.getActiveFieldValidation(),
+    );
+
+    final forecastsResult = await forecastsRequest;
+    final aiResult = await aiRequest;
+    final ruleResult = await ruleRequest;
+    final validationResult = await validationRequest;
+
+    final forecasts = forecastsResult.value ??
+        (samePlant
+            ? previous.forecasts
+            : const <HydroDispatchDayForecast>[]);
+    final ai = aiResult.value ??
+        (samePlant ? previous.aiContext : const <HydroDispatchAiContext>[]);
+    final rule = ruleResult.failed
+        ? (samePlant ? previous.alertRule : null)
+        : ruleResult.value;
+    final activeValidation = validationResult.failed
+        ? (samePlant ? previous.activeValidation : null)
+        : validationResult.value;
+
+    final failures = <Object>[
+      if (forecastsResult.error case final error?) error,
+      if (aiResult.error case final error?) error,
+      if (ruleResult.error case final error?) error,
+      if (validationResult.error case final error?) error,
+    ];
+    final usable = forecasts.isNotEmpty || ai.isNotEmpty;
+    final nextStatus = failures.isEmpty
+        ? (usable
+              ? HydroDispatchMobileStatus.ready
+              : HydroDispatchMobileStatus.degraded)
+        : (usable
+              ? HydroDispatchMobileStatus.degraded
+              : HydroDispatchMobileStatus.error);
+
+    stopwatch.stop();
+    state = HydroDispatchMobileState(
+      status: nextStatus,
+      plantId: plantId,
+      forecasts: forecasts,
+      aiContext: ai,
+      alertRule: rule,
+      activeValidation: activeValidation,
+      lastCompletedValidation: samePlant
+          ? previous.lastCompletedValidation
+          : null,
+      lastError: failures.isEmpty ? null : failures.first.toString(),
+      refreshedAt: DateTime.now(),
       isAlertMutationRunning: state.isAlertMutationRunning,
       isValidationMutationRunning: state.isValidationMutationRunning,
     );
 
-    final stopwatch = Stopwatch()..start();
-    try {
-      final results = await Future.wait<Object?>([
-        _service.getTodayTomorrow(plantId),
-        _service.getAiContext(plantId),
-        _service.getAlertRule(plantId),
-        _service.getActiveFieldValidation(),
-      ]);
-      final forecasts = results[0] as List<HydroDispatchDayForecast>;
-      final ai = results[1] as List<HydroDispatchAiContext>;
-      final rule = results[2] as HydroDispatchAlertRule?;
-      final activeValidation =
-          results[3] as HydroDispatchFieldValidationSession?;
-      final usable = forecasts.isNotEmpty || ai.isNotEmpty;
-      state = HydroDispatchMobileState(
-        status: usable
-            ? HydroDispatchMobileStatus.ready
-            : HydroDispatchMobileStatus.degraded,
-        plantId: plantId,
-        forecasts: forecasts,
-        aiContext: ai,
-        alertRule: rule,
-        activeValidation: activeValidation,
-        lastCompletedValidation: state.lastCompletedValidation,
-        refreshedAt: DateTime.now(),
-      );
-      stopwatch.stop();
-      DiagnosticsService.instance.record(
-        category: DiagnosticCategory.ai,
-        operation: 'hydro_dispatch_refresh',
-        message: state.status.name,
-        duration: stopwatch.elapsed,
-        metadata: <String, Object?>{
-          'plant_id': plantId,
-          'forecast_rows': forecasts.length,
-          'ai_rows': ai.length,
-          'alert_enabled': rule?.enabled == true,
-          'field_validation_active': activeValidation != null,
-        },
-      );
-      return state;
-    } on Object catch (error, stackTrace) {
-      stopwatch.stop();
-      final hadCached = state.hasUsableData;
-      state = state.copyWith(
-        status: hadCached
-            ? HydroDispatchMobileStatus.degraded
-            : HydroDispatchMobileStatus.error,
-        lastError: error.toString(),
-        refreshedAt: DateTime.now(),
-      );
+    DiagnosticsService.instance.record(
+      category: DiagnosticCategory.ai,
+      operation: 'hydro_dispatch_refresh',
+      message: state.status.name,
+      duration: stopwatch.elapsed,
+      metadata: <String, Object?>{
+        'plant_id': plantId,
+        'forecast_rows': forecasts.length,
+        'ai_rows': ai.length,
+        'alert_enabled': rule?.enabled == true,
+        'field_validation_active': activeValidation != null,
+        'partial_failures': failures.length,
+      },
+    );
+
+    if (failures.isNotEmpty) {
       DiagnosticsService.instance.recordError(
         category: DiagnosticCategory.ai,
-        operation: 'hydro_dispatch_refresh',
-        error: error,
-        stackTrace: stackTrace,
-        metadata: <String, Object?>{'plant_id': plantId},
+        operation: 'hydro_dispatch_refresh_partial',
+        error: failures.first,
+        metadata: <String, Object?>{
+          'plant_id': plantId,
+          'failure_count': failures.length,
+          'usable_data_preserved': usable,
+        },
       );
-      return state;
     }
+    return state;
   }
 
   Future<HydroDispatchAlertRule?> enableDefaultAlert() async {
