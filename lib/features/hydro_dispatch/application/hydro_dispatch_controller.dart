@@ -205,10 +205,10 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
         : validationResult.value;
 
     final failures = <Object>[
-      if (forecastsResult.error case final error?) error,
-      if (aiResult.error case final error?) error,
-      if (ruleResult.error case final error?) error,
-      if (validationResult.error case final error?) error,
+      ?forecastsResult.error,
+      ?aiResult.error,
+      ?ruleResult.error,
+      ?validationResult.error,
     ];
     final usable = forecasts.isNotEmpty || ai.isNotEmpty;
     final nextStatus = failures.isEmpty
