@@ -103,9 +103,8 @@ class _HydroDispatchCanonicalRouteState
   }
 
   @override
-  Widget build(BuildContext context) => HydroDispatchRouteBridge(
-    child: widget.child,
-  );
+  Widget build(BuildContext context) =>
+      HydroDispatchRouteBridge(child: widget.child);
 }
 
 WaterMapPin? _bestExactHydropowerMatch(
