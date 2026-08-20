@@ -33,9 +33,7 @@ void main() {
 
     test('non-CHE selection cancels an armed selector', () {
       var called = false;
-      HydroDispatchNavigationIntent.arm(
-        onSelected: (_, _) => called = true,
-      );
+      HydroDispatchNavigationIntent.arm(onSelected: (_, _) => called = true);
 
       HydroDispatchNavigationIntent.notifySelection();
 
