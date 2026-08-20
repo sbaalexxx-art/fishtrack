@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/hydro-dispatch-olt-p4d-recovery
+  pull_request:
+    branches:
+      - recovery/figma-production-integration
   workflow_dispatch:
 
 permissions:
