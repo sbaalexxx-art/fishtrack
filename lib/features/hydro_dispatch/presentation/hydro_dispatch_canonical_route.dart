@@ -39,14 +39,18 @@ class _HydroDispatchCanonicalRouteState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCanonicalPlant());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _ensureCanonicalPlant(),
+    );
   }
 
   @override
   void didUpdateWidget(covariant HydroDispatchCanonicalRoute oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.plantLabel != widget.plantLabel) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCanonicalPlant());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _ensureCanonicalPlant(),
+      );
     }
   }
 
@@ -66,7 +70,9 @@ class _HydroDispatchCanonicalRouteState
       _lastResolvedLabel = normalizedLabel;
       return;
     }
-    if (_lastResolvedLabel == normalizedLabel && selectedPlantId != null) return;
+    if (_lastResolvedLabel == normalizedLabel && selectedPlantId != null) {
+      return;
+    }
 
     _resolving = true;
     try {
