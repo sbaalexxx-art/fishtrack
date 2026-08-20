@@ -15,6 +15,7 @@ import '../core/runtime/app_runtime.dart';
 import '../services/community_service.dart';
 import '../services/firebase_observability_service.dart';
 import '../services/firebase_push_service.dart';
+import '../services/water_asset_service.dart';
 import '../models/station.dart';
 import '../features/commercial_home/data/commercial_home_data_source.dart';
 import '../widgets/navigation/fluviai_navigation.dart';
@@ -117,22 +118,65 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
 
   void _handlePushOpened(RemoteMessage message) {
     if (!mounted) return;
-    unawaited(
-      FirebaseObservabilityService.instance.logEvent(
-        'notification_center_opened_from_push',
-        parameters: <String, Object>{
-          'event_type':
-              (message.data['type'] ?? message.data['event_type'] ?? 'unknown')
-                  .toString(),
-        },
-      ),
+    unawaited(_routePushOpened(message));
+  }
+
+  Future<void> _routePushOpened(RemoteMessage message) async {
+    final eventType =
+        (message.data['type'] ?? message.data['event_type'] ?? 'unknown')
+            .toString();
+    final entityType = message.data['entity_type']?.toString().trim() ?? '';
+    final entityId = message.data['entity_id']?.toString().trim() ?? '';
+
+    await FirebaseObservabilityService.instance.logEvent(
+      'push_deep_link_opened',
+      parameters: <String, Object>{
+        'event_type': eventType,
+        'entity_type': entityType.isEmpty ? 'none' : entityType,
+      },
     );
-    unawaited(
-      AppNavigator.open<void>(
-        context,
-        AppDestination.notifications,
-        selectMainTab: _selectPage,
-      ),
+    if (!mounted) return;
+
+    if (entityType == 'hydropower_plant' && entityId.isNotEmpty) {
+      try {
+        final state = await const WaterAssetService().getHydropowerPlantState(
+          entityId,
+        );
+        if (!mounted) return;
+        if (state != null) {
+          ref.read(selectedContextProvider.notifier).select(
+                SelectedContext(
+                  countryCode: state.countryCode,
+                  locationName: state.name,
+                  latitude: state.latitude,
+                  longitude: state.longitude,
+                  waterId: state.waterBodyId,
+                  damId: state.damId,
+                  reservoirId: state.reservoirId,
+                  hydropowerPlantId: state.plantId,
+                  source: state.evidenceSource,
+                  observedAt: state.evidenceObservedAt,
+                ),
+              );
+          await AppNavigator.open<void>(
+            context,
+            AppDestination.hydropower,
+            arguments: state.name,
+            selectMainTab: _selectPage,
+          );
+          return;
+        }
+      } on Exception {
+        // The notification inbox remains a truthful fallback when the target
+        // entity cannot be resolved (offline, stale auth, or backend error).
+      }
+    }
+
+    if (!mounted) return;
+    await AppNavigator.open<void>(
+      context,
+      AppDestination.notifications,
+      selectMainTab: _selectPage,
     );
   }
 
@@ -315,13 +359,16 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
     final lat = selected.latitude!;
     final lng = selected.longitude!;
     final referenceId =
+        selected.hydropowerPlantId ??
         selected.placeId ??
         selected.waterId ??
         selected.stationId ??
         'coord:${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}';
     final title =
         selected.primaryLabel ?? (isRomanian ? 'Loc salvat' : 'Saved place');
-    final itemType = selected.reservoirId != null
+    final itemType = selected.hydropowerPlantId != null
+        ? 'hydropower_plant'
+        : selected.reservoirId != null
         ? 'reservoir'
         : selected.damId != null
         ? 'dam'
@@ -342,6 +389,8 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
           if (selected.region != null) 'region': selected.region,
           if (selected.stationId != null) 'station_id': selected.stationId,
           if (selected.waterId != null) 'water_id': selected.waterId,
+          if (selected.hydropowerPlantId != null)
+            'hydropower_plant_id': selected.hydropowerPlantId,
           if (selected.source != null) 'source': selected.source,
         },
       );
