@@ -86,4 +86,14 @@ jobs:
       - name: Build Android debug APK
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-        run: flutter build apk --debug --no-pub
+        run: >-
+          flutter build apk --debug --no-pub
+          --dart-define=MAPBOX_ACCESS_TOKEN="$MAPBOX_ACCESS_TOKEN"
+
+      - name: Upload Samsung QA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluviai-hydro-p4d-samsung-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 3
