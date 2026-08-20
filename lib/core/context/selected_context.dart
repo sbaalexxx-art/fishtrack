@@ -8,6 +8,7 @@ import '../../services/diagnostics_service.dart';
 
 import '../../models/station.dart';
 import '../../models/water_asset.dart';
+import '../../services/water_asset_service.dart';
 import '../../services/water_service.dart';
 import '../navigation/hydro_dispatch_navigation_intent.dart';
 import 'current_location.dart';
@@ -163,6 +164,8 @@ class SelectedContext {
 }
 
 class SelectedContextController extends Notifier<SelectedContext?> {
+  static const WaterAssetService _waterAssetService = WaterAssetService();
+
   @override
   SelectedContext? build() => null;
 
@@ -171,10 +174,19 @@ class SelectedContextController extends Notifier<SelectedContext?> {
     final next = selection.copyWith(selectedAt: selectedAt);
     state = next;
 
-    HydroDispatchNavigationIntent.notifySelection(
-      plantId: next.hydropowerPlantId,
-      plantName: next.locationName ?? next.primaryLabel,
-    );
+    final plantId = next.hydropowerPlantId?.trim();
+    if (plantId != null && plantId.isNotEmpty) {
+      HydroDispatchNavigationIntent.notifySelection(
+        plantId: plantId,
+        plantName: next.locationName ?? next.primaryLabel,
+      );
+    } else if (HydroDispatchNavigationIntent.isArmed) {
+      // Hydro Map contains overlapping dam/reservoir/CHE entities. When the
+      // Dispatch selector is active, a Water annotation with the same canonical
+      // identity must not steal the tap from the CHE. Resolve the selected
+      // Water context back to a real hydropower entity before navigating.
+      unawaited(_resolveHydroDispatchPlant(next));
+    }
 
     final countryCode = next.countryCode?.trim().toUpperCase();
     if (countryCode == null || countryCode.isEmpty) return;
@@ -195,6 +207,75 @@ class SelectedContextController extends Notifier<SelectedContext?> {
           .selectCountry(countryCode: countryCode, region: region),
     );
   }
+
+  Future<void> _resolveHydroDispatchPlant(SelectedContext selection) async {
+    final label =
+        (selection.locationName ?? selection.waterName ?? selection.primaryLabel)
+            ?.trim();
+    if (label == null || label.isEmpty) return;
+
+    try {
+      final candidates = <WaterMapPin>[];
+      final seen = <String>{};
+
+      final waterBodyId = selection.waterId?.trim();
+      if (waterBodyId != null && waterBodyId.isNotEmpty) {
+        final states = await _waterAssetService.getHydropowerPlantStates(
+          waterBodyId: waterBodyId,
+        );
+        for (final plant in states) {
+          if (plant.latitude == null || plant.longitude == null) continue;
+          final pin = waterMapPinFromHydropowerState(
+            plant,
+            riverName: selection.riverName,
+          );
+          if (seen.add(pin.entityId)) candidates.add(pin);
+        }
+      }
+
+      final searched = await _waterAssetService.searchHydropower(
+        label,
+        limit: 8,
+        anchorLatitude: selection.latitude,
+        anchorLongitude: selection.longitude,
+      );
+      for (final pin in searched) {
+        if (seen.add(pin.entityId)) candidates.add(pin);
+      }
+
+      if (!HydroDispatchNavigationIntent.isArmed || candidates.isEmpty) return;
+
+      final target = _normalizeHydroDispatchName(label);
+      WaterMapPin? resolved;
+      for (final candidate in candidates) {
+        if (_normalizeHydroDispatchName(candidate.name) == target) {
+          resolved = candidate;
+          break;
+        }
+      }
+      resolved ??= candidates.length == 1 ? candidates.first : null;
+      if (resolved == null || !HydroDispatchNavigationIntent.isArmed) return;
+
+      HydroDispatchNavigationIntent.notifySelection(
+        plantId: resolved.entityId,
+        plantName: resolved.name,
+      );
+    } on Exception {
+      // Keep the selector armed. The map remains usable and no approximate CHE
+      // is invented when canonical Water/Hydro resolution is unavailable.
+    }
+  }
+
+  String _normalizeHydroDispatchName(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll('ă', 'a')
+      .replaceAll('â', 'a')
+      .replaceAll('î', 'i')
+      .replaceAll('ș', 's')
+      .replaceAll('ş', 's')
+      .replaceAll('ț', 't')
+      .replaceAll('ţ', 't');
 
   /// Publishes an explicit station choice and persists it as the Water
   /// selection. Use [publishStation] for automatic/GPS-derived context so the
