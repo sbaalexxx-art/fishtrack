@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../services/diagnostics_service.dart';
 import '../../../services/hydro_dispatch_service.dart';
+import 'hydro_dispatch_cache.dart';
 
 enum HydroDispatchMobileStatus { idle, loading, ready, degraded, error }
 
@@ -18,6 +19,7 @@ class HydroDispatchMobileState {
     this.lastCompletedValidation,
     this.lastError,
     this.refreshedAt,
+    this.usingPersistedCache = false,
     this.isAlertMutationRunning = false,
     this.isValidationMutationRunning = false,
   });
@@ -31,6 +33,7 @@ class HydroDispatchMobileState {
   final HydroDispatchFieldValidationResult? lastCompletedValidation;
   final String? lastError;
   final DateTime? refreshedAt;
+  final bool usingPersistedCache;
   final bool isAlertMutationRunning;
   final bool isValidationMutationRunning;
 
@@ -59,6 +62,7 @@ class HydroDispatchMobileState {
     String? lastError,
     bool clearLastError = false,
     DateTime? refreshedAt,
+    bool? usingPersistedCache,
     bool? isAlertMutationRunning,
     bool? isValidationMutationRunning,
   }) => HydroDispatchMobileState(
@@ -75,6 +79,7 @@ class HydroDispatchMobileState {
         : lastCompletedValidation ?? this.lastCompletedValidation,
     lastError: clearLastError ? null : lastError ?? this.lastError,
     refreshedAt: refreshedAt ?? this.refreshedAt,
+    usingPersistedCache: usingPersistedCache ?? this.usingPersistedCache,
     isAlertMutationRunning:
         isAlertMutationRunning ?? this.isAlertMutationRunning,
     isValidationMutationRunning:
@@ -84,6 +89,10 @@ class HydroDispatchMobileState {
 
 final hydroDispatchServiceProvider = Provider<HydroDispatchService>(
   (ref) => const HydroDispatchService(),
+);
+
+final hydroDispatchCacheProvider = Provider<HydroDispatchCache>(
+  (ref) => const HydroDispatchCache(),
 );
 
 class _HydroLoadResult<T> {
@@ -100,6 +109,7 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
   Future<HydroDispatchMobileState>? _activeRefresh;
 
   HydroDispatchService get _service => ref.read(hydroDispatchServiceProvider);
+  HydroDispatchCache get _cache => ref.read(hydroDispatchCacheProvider);
 
   @override
   HydroDispatchMobileState build() => const HydroDispatchMobileState();
@@ -149,28 +159,43 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
     }
   }
 
+  Future<HydroDispatchCachedSnapshot?> _restoreCache(String plantId) async {
+    try {
+      return await _cache.restore(plantId);
+    } on Object {
+      return null;
+    }
+  }
+
   Future<HydroDispatchMobileState> _refresh(String plantId) async {
     final previous = state;
     final samePlant = previous.plantId == plantId;
+    final cached = samePlant && previous.hasUsableData
+        ? null
+        : await _restoreCache(plantId);
+
     state = HydroDispatchMobileState(
       status: HydroDispatchMobileStatus.loading,
       plantId: plantId,
       forecasts: samePlant
           ? previous.forecasts
-          : const <HydroDispatchDayForecast>[],
+          : cached?.forecasts ?? const <HydroDispatchDayForecast>[],
       aiContext: samePlant
           ? previous.aiContext
-          : const <HydroDispatchAiContext>[],
+          : cached?.aiContext ?? const <HydroDispatchAiContext>[],
       alertRule: samePlant ? previous.alertRule : null,
       activeValidation: samePlant ? previous.activeValidation : null,
       lastCompletedValidation: samePlant
           ? previous.lastCompletedValidation
           : null,
-      refreshedAt: samePlant ? previous.refreshedAt : null,
+      refreshedAt: samePlant ? previous.refreshedAt : cached?.savedAt,
+      usingPersistedCache:
+          samePlant ? previous.usingPersistedCache : cached != null,
       isAlertMutationRunning: previous.isAlertMutationRunning,
       isValidationMutationRunning: previous.isValidationMutationRunning,
     );
 
+    final fallback = state;
     final stopwatch = Stopwatch()..start();
 
     final forecastsRequest = _capture<List<HydroDispatchDayForecast>>(
@@ -191,17 +216,11 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
     final ruleResult = await ruleRequest;
     final validationResult = await validationRequest;
 
-    final forecasts = forecastsResult.value ??
-        (samePlant
-            ? previous.forecasts
-            : const <HydroDispatchDayForecast>[]);
-    final ai = aiResult.value ??
-        (samePlant ? previous.aiContext : const <HydroDispatchAiContext>[]);
-    final rule = ruleResult.failed
-        ? (samePlant ? previous.alertRule : null)
-        : ruleResult.value;
+    final forecasts = forecastsResult.value ?? fallback.forecasts;
+    final ai = aiResult.value ?? fallback.aiContext;
+    final rule = ruleResult.failed ? fallback.alertRule : ruleResult.value;
     final activeValidation = validationResult.failed
-        ? (samePlant ? previous.activeValidation : null)
+        ? fallback.activeValidation
         : validationResult.value;
 
     final failures = <Object>[
@@ -211,6 +230,9 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
       ?validationResult.error,
     ];
     final usable = forecasts.isNotEmpty || ai.isNotEmpty;
+    final usingPersistedCache =
+        fallback.usingPersistedCache &&
+        (forecastsResult.failed || aiResult.failed);
     final nextStatus = failures.isEmpty
         ? (usable
               ? HydroDispatchMobileStatus.ready
@@ -232,9 +254,20 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
           : null,
       lastError: failures.isEmpty ? null : failures.first.toString(),
       refreshedAt: DateTime.now(),
+      usingPersistedCache: usingPersistedCache,
       isAlertMutationRunning: state.isAlertMutationRunning,
       isValidationMutationRunning: state.isValidationMutationRunning,
     );
+
+    if (!forecastsResult.failed && !aiResult.failed && usable) {
+      unawaited(
+        _cache.save(
+          plantId: plantId,
+          forecasts: forecasts,
+          aiContext: ai,
+        ),
+      );
+    }
 
     DiagnosticsService.instance.record(
       category: DiagnosticCategory.ai,
@@ -248,6 +281,8 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
         'alert_enabled': rule?.enabled == true,
         'field_validation_active': activeValidation != null,
         'partial_failures': failures.length,
+        'persisted_cache_restored': cached != null,
+        'persisted_cache_in_use': usingPersistedCache,
       },
     );
 
@@ -260,6 +295,7 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
           'plant_id': plantId,
           'failure_count': failures.length,
           'usable_data_preserved': usable,
+          'persisted_cache_in_use': usingPersistedCache,
         },
       );
     }
