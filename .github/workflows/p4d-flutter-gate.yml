@@ -15,7 +15,7 @@ permissions:
 jobs:
   hydro-mobile-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -31,11 +31,26 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
+      - name: Format P4D integration
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib/features/hydro_dispatch
+          lib/services/hydro_dispatch_geofence_service.dart
+          lib/services/hydro_dispatch_service.dart
+          lib/features/figma_complete/presentation/figma_destination_router.dart
+          lib/screens/main_navigation.dart
+          lib/services/saved_items_service.dart
+          test/hydro_dispatch_mobile_contract_test.dart
+          test/hydro_dispatch_cache_test.dart
+
       - name: Analyze Hydro Dispatch integration
         run: flutter analyze lib/features/hydro_dispatch
 
-      - name: Analyze Hydro geofence service
-        run: flutter analyze lib/services/hydro_dispatch_geofence_service.dart
+      - name: Analyze Hydro services
+        run: >-
+          flutter analyze
+          lib/services/hydro_dispatch_geofence_service.dart
+          lib/services/hydro_dispatch_service.dart
 
       - name: Analyze destination bridge
         run: flutter analyze lib/features/figma_complete/presentation/figma_destination_router.dart
@@ -43,8 +58,14 @@ jobs:
       - name: Analyze notification deep-link bridge
         run: flutter analyze lib/screens/main_navigation.dart
 
+      - name: Analyze saved-item bridge
+        run: flutter analyze lib/services/saved_items_service.dart
+
       - name: Run Hydro Dispatch contract and cache tests
         run: >-
           flutter test
           test/hydro_dispatch_mobile_contract_test.dart
           test/hydro_dispatch_cache_test.dart
+
+      - name: Build Android debug APK
+        run: flutter build apk --debug --no-pub
