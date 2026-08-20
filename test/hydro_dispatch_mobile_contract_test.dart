@@ -124,5 +124,42 @@ void main() {
       expect(rule.notifyObservedActivity, isTrue);
       expect(rule.enabled, isTrue);
     });
+
+    test('active field validation parses the backend snapshot without GPS', () {
+      final session = HydroDispatchFieldValidationSession.fromJson(
+        <String, dynamic>{
+          'session_id': '33333333-3333-3333-3333-333333333333',
+          'plant_id': '11111111-1111-1111-1111-111111111111',
+          'plant_name': 'Frunzaru',
+          'started_at': '2026-08-20T16:00:00Z',
+          'predicted_window_start': '2026-08-20T15:15:00Z',
+          'predicted_window_end': '2026-08-20T20:45:00Z',
+          'predicted_window_probability': 0.66,
+          'predicted_peak_probability': 0.75,
+        },
+      );
+
+      expect(session.plantName, 'Frunzaru');
+      expect(session.predictedWindowProbability, closeTo(0.66, 0.000001));
+      expect(session.predictedPeakProbability, closeTo(0.75, 0.000001));
+    });
+
+    test('field validation result keeps eligibility reason explicit', () {
+      final result = HydroDispatchFieldValidationResult.fromJson(
+        <String, dynamic>{
+          'session_id': '33333333-3333-3333-3333-333333333333',
+          'outcome': 'no_turbining_observed',
+          'duration_minutes': 60.0,
+          'prediction_window_overlap_minutes': 50.0,
+          'calibration_eligible': true,
+          'calibration_reason': 'negative_field_presence',
+        },
+      );
+
+      expect(result.calibrationEligible, isTrue);
+      expect(result.calibrationReason, 'negative_field_presence');
+      expect(result.durationMinutes, 60);
+      expect(result.predictionWindowOverlapMinutes, 50);
+    });
   });
 }
