@@ -343,7 +343,7 @@ class _HydroDispatchRouteBridgeState
       _locationMutationRunning = false;
     }
 
-    if (!mounted || geofence == null) return;
+    if (!mounted) return;
     if (!geofence.eligible) {
       _armedObservationPlantId = null;
       _showGeofenceBlocked(geofence);
