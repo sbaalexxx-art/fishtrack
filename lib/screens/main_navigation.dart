@@ -59,6 +59,9 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
   bool _fullMapInitialized = false;
   bool _shellNavigationVisible = true;
   bool _contentCanPop = false;
+  bool _hydroMapRedirectRunning = false;
+  String? _lastHydroMapRedirectPlantId;
+  ProviderSubscription<SelectedContext?>? _hydroSelectionSubscription;
 
   @override
   void initState() {
@@ -66,6 +69,10 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
     WidgetsBinding.instance.addObserver(this);
     AppNavigator.attachMainTabRouteSelector(_selectPage);
     AppNavigator.attachShellNavigator(_contentNavigatorKey);
+    _hydroSelectionSubscription = ref.listenManual<SelectedContext?>(
+      selectedContextProvider,
+      (_, next) => _handleHydroMapCheSelection(next),
+    );
     _shellNavigatorObserver = _ShellNavigatorObserver(
       onRouteChanged: _handleShellRouteChanged,
     );
@@ -112,6 +119,44 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
         ref
             .read(appRuntimeProvider.notifier)
             .start(languageCode: _runtimeLanguageCode),
+      );
+    });
+  }
+
+  void _handleHydroMapCheSelection(SelectedContext? selected) {
+    if (!mounted ||
+        _selectedIndex != 1 ||
+        _contentCanPop ||
+        _hydroMapRedirectRunning ||
+        ref.read(fluviAccessTierProvider) != FluviAccessTier.premium) {
+      return;
+    }
+
+    final plantId = selected?.hydropowerPlantId?.trim();
+    if (plantId == null || plantId.isEmpty) return;
+    if (_lastHydroMapRedirectPlantId == plantId) return;
+
+    _lastHydroMapRedirectPlantId = plantId;
+    _hydroMapRedirectRunning = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _selectedIndex != 1 || _contentCanPop) {
+        _hydroMapRedirectRunning = false;
+        _lastHydroMapRedirectPlantId = null;
+        return;
+      }
+
+      final label = selected?.locationName ?? selected?.primaryLabel;
+      unawaited(
+        AppNavigator.open<void>(
+          context,
+          AppDestination.hydropower,
+          arguments: label,
+          selectMainTab: _selectPage,
+        ).whenComplete(() {
+          if (!mounted) return;
+          _hydroMapRedirectRunning = false;
+          _lastHydroMapRedirectPlantId = null;
+        }),
       );
     });
   }
@@ -200,6 +245,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
     WidgetsBinding.instance.removeObserver(this);
     AppNavigator.detachMainTabSelector();
     AppNavigator.detachShellNavigator(_contentNavigatorKey);
+    _hydroSelectionSubscription?.close();
     _fullMapActive.dispose();
     _mapFocusController.dispose();
     unawaited(_pushOpenSubscription?.cancel());
