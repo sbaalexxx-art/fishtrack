@@ -9,6 +9,7 @@ import '../../../core/navigation/app_destination.dart';
 import '../../../core/navigation/app_navigator.dart';
 import '../../../core/navigation/map_entry.dart';
 import '../../../services/community_service.dart';
+import '../../../services/hydro_dispatch_geofence_service.dart';
 import '../../../services/hydro_dispatch_service.dart';
 import '../../../services/location_service.dart';
 import '../application/hydro_dispatch_controller.dart';
@@ -20,18 +21,21 @@ import 'hydro_dispatch_functional_dock.dart';
 /// The approved hydropower page remains the visual base. This bridge owns the
 /// production utility wiring so the later pass can remain UI/UX polish only.
 /// Community evidence is OBSERVED evidence, never official operator truth.
+/// Field confirmation is additionally guarded by the canonical CHE geofence.
 class HydroDispatchRouteBridge extends ConsumerStatefulWidget {
   const HydroDispatchRouteBridge({
     super.key,
     required this.child,
     this.communityService = const CommunityService(),
     this.hydroDispatchService = const HydroDispatchService(),
+    this.geofenceService = const HydroDispatchGeofenceService(),
     this.locationService = const LocationService(),
   });
 
   final Widget child;
   final CommunityService communityService;
   final HydroDispatchService hydroDispatchService;
+  final HydroDispatchGeofenceService geofenceService;
   final LocationService locationService;
 
   @override
@@ -43,6 +47,7 @@ class _HydroDispatchRouteBridgeState
     extends ConsumerState<HydroDispatchRouteBridge> {
   String? _boundPlantId;
   String? _boundPlantName;
+  String? _armedObservationPlantId;
   StreamSubscription<CommunityReportEvent>? _reportSubscription;
   final Set<String> _handledReportIds = <String>{};
   bool _handlingReport = false;
@@ -62,6 +67,7 @@ class _HydroDispatchRouteBridgeState
     _boundPlantName = selected?.locationName ?? selected?.primaryLabel;
     if (normalized == _boundPlantId) return;
     _boundPlantId = normalized;
+    _armedObservationPlantId = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _boundPlantId != normalized) return;
       ref.read(hydroDispatchMobileProvider.notifier).refresh(normalized);
@@ -75,12 +81,16 @@ class _HydroDispatchRouteBridgeState
     final plantId = _boundPlantId;
     if (!mounted ||
         plantId == null ||
+        _armedObservationPlantId != plantId ||
         event.type != CommunityReportEventType.created ||
         _handlingReport ||
         _handledReportIds.contains(event.reportId)) {
       return;
     }
 
+    // Consume the one-shot Hydro observation arm immediately. A later general
+    // report must never inherit Hydro context from a previously selected CHE.
+    _armedObservationPlantId = null;
     _handledReportIds.add(event.reportId);
     _handlingReport = true;
     try {
@@ -144,13 +154,30 @@ class _HydroDispatchRouteBridgeState
     }
   }
 
+  Future<HydroDispatchFieldGeofence> _checkFieldGeofence({
+    required String plantId,
+    required double latitude,
+    required double longitude,
+  }) => widget.geofenceService.check(
+    plantId: plantId,
+    latitude: latitude,
+    longitude: longitude,
+  );
+
   Future<HydroDispatchFieldValidationResult?>
   _finishPositiveValidationIfPossible() async {
     if (_locationMutationRunning) return null;
+    final active = ref.read(hydroDispatchMobileProvider).activeValidation;
+    if (active == null) return null;
     _locationMutationRunning = true;
     try {
       final position = await widget.locationService.determinePosition();
-      if (!mounted) return null;
+      final geofence = await _checkFieldGeofence(
+        plantId: active.plantId,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      if (!geofence.eligible || !mounted) return null;
       return ref
           .read(hydroDispatchMobileProvider.notifier)
           .finishFieldValidation(
@@ -196,11 +223,21 @@ class _HydroDispatchRouteBridgeState
   }
 
   Future<void> _startFieldValidation() async {
-    if (_locationMutationRunning) return;
+    final plantId = _boundPlantId;
+    if (_locationMutationRunning || plantId == null) return;
     _locationMutationRunning = true;
     try {
       final position = await widget.locationService.determinePosition();
+      final geofence = await _checkFieldGeofence(
+        plantId: plantId,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
       if (!mounted) return;
+      if (!geofence.eligible) {
+        _showGeofenceBlocked(geofence);
+        return;
+      }
       final result = await ref
           .read(hydroDispatchMobileProvider.notifier)
           .startFieldValidation(
@@ -217,11 +254,13 @@ class _HydroDispatchRouteBridgeState
         SnackBar(
           content: Text(
             _isRomanian
-                ? 'Validarea de teren a început cu locația GPS reală.'
-                : 'Field validation started using the real GPS location.',
+                ? 'Validarea de teren a început la CHE-ul GPS verificat.'
+                : 'Field validation started at the GPS-verified plant.',
           ),
         ),
       );
+    } on HydroDispatchGeofenceException catch (error) {
+      if (mounted) _showError(error.message);
     } on Exception catch (error) {
       if (mounted) _showError(error.toString());
     } finally {
@@ -231,10 +270,21 @@ class _HydroDispatchRouteBridgeState
 
   Future<void> _finishFieldValidation(String outcome) async {
     if (_locationMutationRunning) return;
+    final active = ref.read(hydroDispatchMobileProvider).activeValidation;
+    if (active == null) return;
     _locationMutationRunning = true;
     try {
       final position = await widget.locationService.determinePosition();
+      final geofence = await _checkFieldGeofence(
+        plantId: active.plantId,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
       if (!mounted) return;
+      if (!geofence.eligible) {
+        _showGeofenceBlocked(geofence);
+        return;
+      }
       final result = await ref
           .read(hydroDispatchMobileProvider.notifier)
           .finishFieldValidation(
@@ -261,6 +311,8 @@ class _HydroDispatchRouteBridgeState
           ),
         ),
       );
+    } on HydroDispatchGeofenceException catch (error) {
+      if (mounted) _showError(error.message);
     } on Exception catch (error) {
       if (mounted) _showError(error.toString());
     } finally {
@@ -268,8 +320,46 @@ class _HydroDispatchRouteBridgeState
     }
   }
 
-  void _openObservationReport() {
-    AppNavigator.open<void>(context, AppDestination.addReport);
+  Future<void> _openObservationReport() async {
+    final plantId = _boundPlantId;
+    if (_locationMutationRunning || plantId == null) return;
+
+    HydroDispatchFieldGeofence? geofence;
+    _locationMutationRunning = true;
+    try {
+      final position = await widget.locationService.determinePosition();
+      geofence = await _checkFieldGeofence(
+        plantId: plantId,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+    } on HydroDispatchGeofenceException catch (error) {
+      if (mounted) _showError(error.message);
+      return;
+    } on Exception catch (error) {
+      if (mounted) _showError(error.toString());
+      return;
+    } finally {
+      _locationMutationRunning = false;
+    }
+
+    if (!mounted || geofence == null) return;
+    if (!geofence.eligible) {
+      _armedObservationPlantId = null;
+      _showGeofenceBlocked(geofence);
+      await AppNavigator.open<void>(context, AppDestination.addReport);
+      return;
+    }
+
+    _armedObservationPlantId = plantId;
+    try {
+      await AppNavigator.open<void>(context, AppDestination.addReport);
+    } finally {
+      // If no report was created, disarm when the report route closes.
+      if (_armedObservationPlantId == plantId) {
+        _armedObservationPlantId = null;
+      }
+    }
   }
 
   void _openPremium() {
@@ -299,6 +389,21 @@ class _HydroDispatchRouteBridgeState
     );
   }
 
+  void _showGeofenceBlocked(HydroDispatchFieldGeofence geofence) {
+    final message = switch (geofence.reason) {
+      'nearest_plant_mismatch' => _isRomanian
+          ? 'Confirmarea pentru ${geofence.plantName} este blocată aici. GPS-ul te plasează mai aproape de ${geofence.nearestPlantName}. Raportul general rămâne disponibil.'
+          : 'Confirmation for ${geofence.plantName} is blocked here. GPS places you closer to ${geofence.nearestPlantName}. A general report is still available.',
+      'ambiguous_between_plants' => _isRomanian
+          ? 'Locația este între două CHE și nu este suficient de clară pentru benchmark. Apropie-te de CHE-ul observat; raportul general rămâne disponibil.'
+          : 'Your location is ambiguous between two plants. Move closer to the observed plant for benchmark confirmation; a general report is still available.',
+      _ => _isRomanian
+          ? 'Confirmarea Hydro este disponibilă numai în apropierea CHE-ului selectat și cu GPS verificat. Raportul general rămâne disponibil.'
+          : 'Hydro confirmation is available only near the selected GPS-verified plant. A general report is still available.',
+    };
+    _showError(message);
+  }
+
   Future<String?> _chooseObservedEvent(String plantName) {
     return showModalBottomSheet<String>(
       context: context,
@@ -316,8 +421,8 @@ class _HydroDispatchRouteBridgeState
             ),
             subtitle: Text(
               _isRomanian
-                  ? 'Opțional. Raportul este deja publicat. Observația comunitară nu este confirmare oficială a operatorului.'
-                  : 'Optional. The report is already published. Community observation is not official operator confirmation.',
+                  ? 'Opțional. GPS-ul a verificat CHE-ul selectat. Observația comunitară nu este confirmare oficială a operatorului.'
+                  : 'Optional. GPS verified the selected plant. Community observation is not official operator confirmation.',
             ),
           ),
           _eventTile(
@@ -431,7 +536,9 @@ class _HydroDispatchRouteBridgeState
               .read(hydroDispatchMobileProvider.notifier)
               .refresh(plantId, force: true),
           onToggleAlert: _toggleAlert,
-          onOpenObservationReport: _openObservationReport,
+          onOpenObservationReport: () {
+            unawaited(_openObservationReport());
+          },
           onStartValidation: _startFieldValidation,
           onFinishNoTurbining: () =>
               _finishFieldValidation('no_turbining_observed'),
