@@ -1,6 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
+import 'package:fishtrack/features/hydro_dispatch/presentation/hydro_dispatch_presentation.dart';
 import 'package:fishtrack/services/hydro_dispatch_service.dart';
 import 'package:fishtrack/services/saved_items_service.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Hydro Dispatch P4 mobile contract', () {
@@ -39,7 +40,38 @@ void main() {
       expect(row.localRainSignal, 'dry');
     });
 
-    test('tomorrow not-yet-published never looks available', () {
+    test('presentation uses Romania time even for UTC forecast timestamps', () {
+      final row = HydroDispatchDayForecast.fromJson(<String, dynamic>{
+        'node_order': 13,
+        'plant_id': '11111111-1111-1111-1111-111111111111',
+        'plant_name': 'Frunzaru',
+        'delivery_date': '2026-08-20',
+        'day_offset': 0,
+        'availability_status': 'AVAILABLE',
+        'window_start': '2026-08-20T15:15:00Z',
+        'window_end': '2026-08-20T20:45:00Z',
+        'window_probability': 0.6645,
+        'peak_probability': 0.7487,
+        'confidence': 'low',
+        'evidence_class': 'ESTIMATED',
+        'system_signal_status': 'fresh',
+        'hydro_trend': 'falling',
+        'corroboration_status': 'partial',
+        'local_hydrology_status': 'available',
+        'local_rain_signal': 'dry',
+        'local_target_count': 5,
+      });
+
+      final presentation = HydroDispatchPresentation.day(
+        row,
+        isRomanian: true,
+      );
+      expect(presentation.probabilityLabel, '66.5%');
+      expect(presentation.windowLabel, '18:15–23:45');
+      expect(presentation.evidenceLabel, 'ESTIMATED');
+    });
+
+    test('tomorrow not-yet-published never looks available or zero percent', () {
       final row = HydroDispatchDayForecast.fromJson(<String, dynamic>{
         'node_order': 13,
         'plant_id': '11111111-1111-1111-1111-111111111111',
@@ -61,6 +93,14 @@ void main() {
       expect(row.isAvailable, isFalse);
       expect(row.windowProbability, isNull);
       expect(row.peakProbability, isNull);
+
+      final presentation = HydroDispatchPresentation.day(
+        row,
+        isRomanian: true,
+      );
+      expect(presentation.available, isFalse);
+      expect(presentation.probabilityLabel, '—');
+      expect(presentation.statusLabel, 'Încă nepublicat');
     });
 
     test('AI context keeps observed and estimated evidence distinct', () {
@@ -71,14 +111,14 @@ void main() {
         'availability_status': 'AVAILABLE',
         'probability': 0.66,
         'peak_probability': 0.75,
-        'probability_band': 'possible',
+        'probability_band': 'moderate',
         'confidence': 'low',
         'evidence_class': 'ESTIMATED',
         'system_signal_status': 'fresh',
         'hydro_trend': 'falling',
         'local_hydrology_status': 'available',
         'local_rain_signal': 'dry',
-        'observed_state': 'active',
+        'observed_state': 'OBSERVED_ACTIVE',
         'observed_confidence': 0.9,
         'observed_freshness_status': 'fresh',
         'calibration_status': 'uncalibrated',
@@ -87,9 +127,23 @@ void main() {
       });
 
       expect(context.evidenceClass, 'ESTIMATED');
-      expect(context.observedState, 'active');
+      expect(context.observedState, 'OBSERVED_ACTIVE');
       expect(context.observedConfidence, closeTo(0.9, 0.000001));
       expect(context.calibrationSampleCount, 0);
+      expect(
+        HydroDispatchPresentation.observedLabel(
+          context,
+          isRomanian: true,
+        ),
+        'UZINARE OBSERVATĂ ÎN TEREN',
+      );
+      final explanation = HydroDispatchPresentation.aiExplanation(
+        context,
+        isRomanian: true,
+      );
+      expect(explanation, contains('Probabilitate 66.0%'));
+      expect(explanation, contains('nu reprezintă confirmare oficială'));
+      expect(explanation, isNot(contains('MW')));
     });
 
     test('recovered hydropower alias maps to canonical saved-item type', () {
