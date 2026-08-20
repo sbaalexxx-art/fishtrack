@@ -38,10 +38,14 @@ jobs:
           lib/services/hydro_dispatch_geofence_service.dart
           lib/services/hydro_dispatch_service.dart
           lib/features/figma_complete/presentation/figma_destination_router.dart
+          lib/core/navigation/app_navigator.dart
+          lib/core/navigation/hydro_dispatch_navigation_intent.dart
+          lib/core/context/selected_context.dart
           lib/screens/main_navigation.dart
           lib/services/saved_items_service.dart
           test/hydro_dispatch_mobile_contract_test.dart
           test/hydro_dispatch_cache_test.dart
+          test/hydro_dispatch_navigation_intent_test.dart
 
       - name: Analyze Hydro Dispatch integration
         run: flutter analyze lib/features/hydro_dispatch
@@ -55,6 +59,13 @@ jobs:
       - name: Analyze destination bridge
         run: flutter analyze lib/features/figma_complete/presentation/figma_destination_router.dart
 
+      - name: Analyze Hydro navigation bridge
+        run: >-
+          flutter analyze
+          lib/core/navigation/app_navigator.dart
+          lib/core/navigation/hydro_dispatch_navigation_intent.dart
+          lib/core/context/selected_context.dart
+
       - name: Analyze notification deep-link bridge
         run: flutter analyze lib/screens/main_navigation.dart
 
@@ -66,6 +77,7 @@ jobs:
           flutter test
           test/hydro_dispatch_mobile_contract_test.dart
           test/hydro_dispatch_cache_test.dart
+          test/hydro_dispatch_navigation_intent_test.dart
 
       - name: Verify Mapbox build credential
         env:

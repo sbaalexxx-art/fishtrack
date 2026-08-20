@@ -9,6 +9,7 @@ import '../../services/diagnostics_service.dart';
 import '../../models/station.dart';
 import '../../models/water_asset.dart';
 import '../../services/water_service.dart';
+import '../navigation/hydro_dispatch_navigation_intent.dart';
 import 'current_location.dart';
 import 'environmental_context.dart';
 
@@ -169,6 +170,11 @@ class SelectedContextController extends Notifier<SelectedContext?> {
     final selectedAt = DateTime.now();
     final next = selection.copyWith(selectedAt: selectedAt);
     state = next;
+
+    HydroDispatchNavigationIntent.notifySelection(
+      plantId: next.hydropowerPlantId,
+      plantName: next.locationName ?? next.primaryLabel,
+    );
 
     final countryCode = next.countryCode?.trim().toUpperCase();
     if (countryCode == null || countryCode.isEmpty) return;
