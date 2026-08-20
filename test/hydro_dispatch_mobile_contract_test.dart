@@ -1,4 +1,5 @@
 import 'package:fishtrack/features/hydro_dispatch/presentation/hydro_dispatch_presentation.dart';
+import 'package:fishtrack/services/hydro_dispatch_geofence_service.dart';
 import 'package:fishtrack/services/hydro_dispatch_service.dart';
 import 'package:fishtrack/services/saved_items_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -214,6 +215,54 @@ void main() {
       expect(result.calibrationReason, 'negative_field_presence');
       expect(result.durationMinutes, 60);
       expect(result.predictionWindowOverlapMinutes, 50);
+    });
+
+    test('field geofence keeps nearest CHE identity explicit', () {
+      final geofence = HydroDispatchFieldGeofence.fromJson(<String, dynamic>{
+        'eligible': false,
+        'reason': 'nearest_plant_mismatch',
+        'plant_id': 'draganesti',
+        'plant_name': 'Drăgănești',
+        'target_distance_km': 18.2,
+        'confirmation_radius_km': 5.0,
+        'ambiguity_margin_km': 0.75,
+        'nearest_plant_id': 'izbiceni',
+        'nearest_plant_name': 'Izbiceni',
+        'nearest_distance_km': 0.8,
+        'second_nearest_plant_id': 'rusanesti',
+        'second_nearest_plant_name': 'Rusănești',
+        'second_nearest_distance_km': 12.0,
+        'nearest_gap_km': 11.2,
+      });
+
+      expect(geofence.eligible, isFalse);
+      expect(geofence.isNearestPlant, isFalse);
+      expect(geofence.nearestPlantName, 'Izbiceni');
+      expect(geofence.reason, 'nearest_plant_mismatch');
+    });
+
+    test('field geofence rejects an ambiguous point between two CHE', () {
+      final geofence = HydroDispatchFieldGeofence.fromJson(<String, dynamic>{
+        'eligible': false,
+        'reason': 'ambiguous_between_plants',
+        'plant_id': 'ramnicu-valcea',
+        'plant_name': 'Râmnicu Vâlcea',
+        'target_distance_km': 2.795,
+        'confirmation_radius_km': 5.0,
+        'ambiguity_margin_km': 0.75,
+        'nearest_plant_id': 'ramnicu-valcea',
+        'nearest_plant_name': 'Râmnicu Vâlcea',
+        'nearest_distance_km': 2.795,
+        'second_nearest_plant_id': 'raureni',
+        'second_nearest_plant_name': 'Râureni',
+        'second_nearest_distance_km': 2.795,
+        'nearest_gap_km': 0.0,
+      });
+
+      expect(geofence.eligible, isFalse);
+      expect(geofence.isNearestPlant, isTrue);
+      expect(geofence.isAmbiguous, isTrue);
+      expect(geofence.nearestGapKm, 0.0);
     });
   });
 }
