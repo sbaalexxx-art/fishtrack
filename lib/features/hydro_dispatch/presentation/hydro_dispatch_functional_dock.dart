@@ -124,7 +124,7 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: _DayCard(data: today)),
                 const SizedBox(width: 10),
