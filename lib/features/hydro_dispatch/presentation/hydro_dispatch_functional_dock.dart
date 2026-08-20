@@ -57,10 +57,7 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
         primary: _cyan,
         onPrimary: const Color(0xFF021513),
       ),
-      textTheme: base.textTheme.apply(
-        bodyColor: _white,
-        displayColor: _white,
-      ),
+      textTheme: base.textTheme.apply(bodyColor: _white, displayColor: _white),
     );
   }
 
@@ -301,7 +298,9 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
                 const SizedBox(height: 14),
                 _StatusPanel(
                   icon: Icons.auto_awesome_rounded,
-                  title: isRomanian ? 'Explicație Fluvi AI' : 'Fluvi AI explanation',
+                  title: isRomanian
+                      ? 'Explicație Fluvi AI'
+                      : 'Fluvi AI explanation',
                   message: HydroDispatchPresentation.aiExplanation(
                     aiToday,
                     isRomanian: isRomanian,
@@ -460,7 +459,9 @@ class _DayCard extends StatelessWidget {
           Text(
             data.available
                 ? data.windowLabel
-                : (isRomanian ? 'Predicție indisponibilă' : 'Forecast unavailable'),
+                : (isRomanian
+                      ? 'Predicție indisponibilă'
+                      : 'Forecast unavailable'),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -593,11 +594,7 @@ class _StatusPanel extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(
-              icon,
-              size: 19,
-              color: HydroDispatchFunctionalDock._cyan,
-            ),
+            Icon(icon, size: 19, color: HydroDispatchFunctionalDock._cyan),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
