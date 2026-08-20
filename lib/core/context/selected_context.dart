@@ -210,7 +210,9 @@ class SelectedContextController extends Notifier<SelectedContext?> {
 
   Future<void> _resolveHydroDispatchPlant(SelectedContext selection) async {
     final label =
-        (selection.locationName ?? selection.waterName ?? selection.primaryLabel)
+        (selection.locationName ??
+                selection.waterName ??
+                selection.primaryLabel)
             ?.trim();
     if (label == null || label.isEmpty) return;
 
