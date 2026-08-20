@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   hydro-mobile-contract:
@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref_name || github.event.pull_request.head.sha }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -31,7 +33,44 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Format P4D integration
+      - name: Canonicalize P4D formatting on branch push
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          dart format \
+            lib/features/hydro_dispatch \
+            lib/services/hydro_dispatch_geofence_service.dart \
+            lib/services/hydro_dispatch_service.dart \
+            lib/features/figma_complete/presentation/figma_destination_router.dart \
+            lib/screens/main_navigation.dart \
+            lib/services/saved_items_service.dart \
+            test/hydro_dispatch_mobile_contract_test.dart \
+            test/hydro_dispatch_cache_test.dart
+          if ! git diff --quiet -- \
+            lib/features/hydro_dispatch \
+            lib/services/hydro_dispatch_geofence_service.dart \
+            lib/services/hydro_dispatch_service.dart \
+            lib/features/figma_complete/presentation/figma_destination_router.dart \
+            lib/screens/main_navigation.dart \
+            lib/services/saved_items_service.dart \
+            test/hydro_dispatch_mobile_contract_test.dart \
+            test/hydro_dispatch_cache_test.dart; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add \
+              lib/features/hydro_dispatch \
+              lib/services/hydro_dispatch_geofence_service.dart \
+              lib/services/hydro_dispatch_service.dart \
+              lib/features/figma_complete/presentation/figma_destination_router.dart \
+              lib/screens/main_navigation.dart \
+              lib/services/saved_items_service.dart \
+              test/hydro_dispatch_mobile_contract_test.dart \
+              test/hydro_dispatch_cache_test.dart
+            git commit -m "Format P4D integration"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+
+      - name: Verify P4D formatting
         run: >-
           dart format --output=none --set-exit-if-changed
           lib/features/hydro_dispatch
