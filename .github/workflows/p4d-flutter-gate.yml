@@ -31,6 +31,9 @@ jobs:
       - name: Analyze Hydro Dispatch integration
         run: flutter analyze lib/features/hydro_dispatch
 
+      - name: Analyze Hydro geofence service
+        run: flutter analyze lib/services/hydro_dispatch_geofence_service.dart
+
       - name: Analyze destination bridge
         run: flutter analyze lib/features/figma_complete/presentation/figma_destination_router.dart
 
