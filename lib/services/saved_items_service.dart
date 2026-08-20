@@ -14,18 +14,27 @@ class SavedItemsService {
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
   bool get isAuthenticated => _supabase.auth.currentUser != null;
 
+  /// `hydropower` was used by the recovered Flutter UI before the backend
+  /// contract was finalized. Keep it as a client compatibility alias while
+  /// persisting only the canonical database type.
+  static String canonicalItemType(String type) {
+    final normalized = type.trim();
+    return normalized == 'hydropower' ? 'hydropower_plant' : normalized;
+  }
+
   Future<List<SavedItem>> getItems({String? type}) => _guard(() async {
     final user = _requireUser();
+    final canonicalType = type == null ? null : canonicalItemType(type);
     var query = _supabase
         .from('saved_items')
         .select(
           'id,item_type,reference_id,title,subtitle,latitude,longitude,metadata,created_at',
         )
         .eq('user_id', user.id);
-    final response = type == null || type.trim().isEmpty
+    final response = canonicalType == null || canonicalType.isEmpty
         ? await query.order('created_at', ascending: false)
         : await query
-              .eq('item_type', type.trim())
+              .eq('item_type', canonicalType)
               .order('created_at', ascending: false);
     return response
         .whereType<Map>()
@@ -41,7 +50,7 @@ class SavedItemsService {
             .from('saved_items')
             .select('id')
             .eq('user_id', user.id)
-            .eq('item_type', type)
+            .eq('item_type', canonicalItemType(type))
             .eq('reference_id', referenceId)
             .limit(1);
         return rows.isNotEmpty;
@@ -59,7 +68,7 @@ class SavedItemsService {
     final user = _requireUser();
     await _supabase.from('saved_items').upsert({
       'user_id': user.id,
-      'item_type': type,
+      'item_type': canonicalItemType(type),
       'reference_id': referenceId,
       'title': title.trim(),
       'subtitle': subtitle?.trim().isEmpty == true ? null : subtitle?.trim(),
@@ -78,7 +87,7 @@ class SavedItemsService {
             .from('saved_items')
             .delete()
             .eq('user_id', user.id)
-            .eq('item_type', type)
+            .eq('item_type', canonicalItemType(type))
             .eq('reference_id', referenceId);
         revision.value++;
       });
