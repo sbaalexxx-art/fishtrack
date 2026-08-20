@@ -193,8 +193,9 @@ class HydroDispatchCache {
         'local_rain_signal': row.localRainSignal,
         'observed_state': row.observedState,
         'observed_started_at': row.observedStartedAt?.toUtc().toIso8601String(),
-        'observed_last_confirmed_at':
-            row.observedLastConfirmedAt?.toUtc().toIso8601String(),
+        'observed_last_confirmed_at': row.observedLastConfirmedAt
+            ?.toUtc()
+            .toIso8601String(),
         'observed_ended_at': row.observedEndedAt?.toUtc().toIso8601String(),
         'observed_confidence': row.observedConfidence,
         'observed_freshness_status': row.observedFreshnessStatus,

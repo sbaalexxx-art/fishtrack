@@ -384,22 +384,25 @@ class _HydroDispatchRouteBridgeState
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _showGeofenceBlocked(HydroDispatchFieldGeofence geofence) {
     final message = switch (geofence.reason) {
-      'nearest_plant_mismatch' => _isRomanian
-          ? 'Confirmarea pentru ${geofence.plantName} este blocată aici. GPS-ul te plasează mai aproape de ${geofence.nearestPlantName}. Raportul general rămâne disponibil.'
-          : 'Confirmation for ${geofence.plantName} is blocked here. GPS places you closer to ${geofence.nearestPlantName}. A general report is still available.',
-      'ambiguous_between_plants' => _isRomanian
-          ? 'Locația este între două CHE și nu este suficient de clară pentru benchmark. Apropie-te de CHE-ul observat; raportul general rămâne disponibil.'
-          : 'Your location is ambiguous between two plants. Move closer to the observed plant for benchmark confirmation; a general report is still available.',
-      _ => _isRomanian
-          ? 'Confirmarea Hydro este disponibilă numai în apropierea CHE-ului selectat și cu GPS verificat. Raportul general rămâne disponibil.'
-          : 'Hydro confirmation is available only near the selected GPS-verified plant. A general report is still available.',
+      'nearest_plant_mismatch' =>
+        _isRomanian
+            ? 'Confirmarea pentru ${geofence.plantName} este blocată aici. GPS-ul te plasează mai aproape de ${geofence.nearestPlantName}. Raportul general rămâne disponibil.'
+            : 'Confirmation for ${geofence.plantName} is blocked here. GPS places you closer to ${geofence.nearestPlantName}. A general report is still available.',
+      'ambiguous_between_plants' =>
+        _isRomanian
+            ? 'Locația este între două CHE și nu este suficient de clară pentru benchmark. Apropie-te de CHE-ul observat; raportul general rămâne disponibil.'
+            : 'Your location is ambiguous between two plants. Move closer to the observed plant for benchmark confirmation; a general report is still available.',
+      _ =>
+        _isRomanian
+            ? 'Confirmarea Hydro este disponibilă numai în apropierea CHE-ului selectat și cu GPS verificat. Raportul general rămâne disponibil.'
+            : 'Hydro confirmation is available only near the selected GPS-verified plant. A general report is still available.',
     };
     _showError(message);
   }
@@ -435,7 +438,9 @@ class _HydroDispatchRouteBridgeState
             sheetContext,
             value: 'turbining_active',
             icon: Icons.bolt_rounded,
-            label: _isRomanian ? 'Uzinare activă acum' : 'Generation active now',
+            label: _isRomanian
+                ? 'Uzinare activă acum'
+                : 'Generation active now',
           ),
           _eventTile(
             sheetContext,

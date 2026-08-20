@@ -144,7 +144,9 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
         );
         if (!mounted) return;
         if (state != null) {
-          ref.read(selectedContextProvider.notifier).select(
+          ref
+              .read(selectedContextProvider.notifier)
+              .select(
                 SelectedContext(
                   countryCode: state.countryCode,
                   locationName: state.name,

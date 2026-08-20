@@ -95,9 +95,8 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
                         'Hydro Dispatch · $plantName',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -168,9 +167,7 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
                   label: Text(
                     isPremium
                         ? state.alertEnabled
-                              ? (isRomanian
-                                    ? 'Alertă activă'
-                                    : 'Alert enabled')
+                              ? (isRomanian ? 'Alertă activă' : 'Alert enabled')
                               : (isRomanian
                                     ? 'Activează alerta'
                                     : 'Enable alert')
@@ -182,9 +179,7 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
                 FilledButton.tonalIcon(
                   onPressed: mutationBusy ? null : onOpenObservationReport,
                   icon: const Icon(Icons.add_location_alt_rounded),
-                  label: Text(
-                    isRomanian ? 'Raport din teren' : 'Field report',
-                  ),
+                  label: Text(isRomanian ? 'Raport din teren' : 'Field report'),
                 ),
               ],
             ),
@@ -239,9 +234,9 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
               isRomanian
                   ? 'Probabilitățile sunt estimări. OBSERVED înseamnă observație comunitară în teren, nu confirmare oficială Hidroelectrica/operator.'
                   : 'Probabilities are estimates. OBSERVED means community field evidence, not official Hidroelectrica/operator confirmation.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],
         ),
@@ -275,9 +270,9 @@ class _DayCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             data.probabilityLabel,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 2),
           Text(
@@ -291,9 +286,9 @@ class _DayCard extends StatelessWidget {
             data.available ? data.windowLabel : data.statusLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 3),
           Text(
@@ -342,9 +337,9 @@ class _PremiumLockCard extends StatelessWidget {
               title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 3),
             Text(
@@ -463,19 +458,16 @@ class _StatusPanel extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 7),
           Text(message, style: Theme.of(context).textTheme.bodySmall),
-          if (action != null) ...[
-            const SizedBox(height: 10),
-            action!,
-          ],
+          if (action != null) ...[const SizedBox(height: 10), action!],
         ],
       ),
     );

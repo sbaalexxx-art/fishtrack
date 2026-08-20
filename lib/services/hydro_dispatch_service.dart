@@ -32,7 +32,9 @@ class HydroDispatchDayForecast {
         nodeOrder: _int(json['node_order']) ?? 0,
         plantId: json['plant_id']?.toString() ?? '',
         plantName: json['plant_name']?.toString() ?? '',
-        deliveryDate: DateTime.tryParse(json['delivery_date']?.toString() ?? ''),
+        deliveryDate: DateTime.tryParse(
+          json['delivery_date']?.toString() ?? '',
+        ),
         dayOffset: _int(json['day_offset']) ?? 0,
         availabilityStatus:
             json['availability_status']?.toString() ?? 'UNAVAILABLE',
@@ -135,8 +137,7 @@ class HydroDispatchAiContext {
         localRainSignal: json['local_rain_signal']?.toString() ?? 'unknown',
         observedState: json['observed_state']?.toString() ?? 'unknown',
         observedStartedAt: _dateTime(json['observed_started_at']),
-        observedLastConfirmedAt:
-            _dateTime(json['observed_last_confirmed_at']),
+        observedLastConfirmedAt: _dateTime(json['observed_last_confirmed_at']),
         observedEndedAt: _dateTime(json['observed_ended_at']),
         observedConfidence: _double(json['observed_confidence']),
         observedFreshnessStatus:
@@ -231,7 +232,8 @@ class HydroDispatchFieldValidationSession {
     sessionId: json['session_id']?.toString() ?? '',
     plantId: json['plant_id']?.toString() ?? '',
     plantName: json['plant_name']?.toString() ?? '',
-    startedAt: _dateTime(json['started_at']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+    startedAt:
+        _dateTime(json['started_at']) ?? DateTime.fromMillisecondsSinceEpoch(0),
     predictedWindowStart: _dateTime(json['predicted_window_start']),
     predictedWindowEnd: _dateTime(json['predicted_window_end']),
     predictedWindowProbability: _double(json['predicted_window_probability']),
@@ -288,14 +290,21 @@ class HydroDispatchService {
 
   Future<List<HydroDispatchDayForecast>> getTodayTomorrow(String plantId) =>
       _guard(() async {
-        final response = await _supabase.rpc('get_hydro_dispatch_olt_today_tomorrow_v3');
+        final response = await _supabase.rpc(
+          'get_hydro_dispatch_olt_today_tomorrow_v3',
+        );
         if (response is! List) return const <HydroDispatchDayForecast>[];
-        final rows = response
-            .whereType<Map>()
-            .map((row) => HydroDispatchDayForecast.fromJson(Map<String, dynamic>.from(row)))
-            .where((row) => row.plantId == plantId)
-            .toList(growable: false)
-          ..sort((a, b) => a.dayOffset.compareTo(b.dayOffset));
+        final rows =
+            response
+                .whereType<Map>()
+                .map(
+                  (row) => HydroDispatchDayForecast.fromJson(
+                    Map<String, dynamic>.from(row),
+                  ),
+                )
+                .where((row) => row.plantId == plantId)
+                .toList(growable: false)
+              ..sort((a, b) => a.dayOffset.compareTo(b.dayOffset));
         return rows;
       });
 
@@ -306,28 +315,34 @@ class HydroDispatchService {
           params: <String, Object?>{'p_plant_id': plantId},
         );
         if (response is! List) return const <HydroDispatchAiContext>[];
-        final rows = response
-            .whereType<Map>()
-            .map((row) => HydroDispatchAiContext.fromJson(Map<String, dynamic>.from(row)))
-            .toList(growable: false)
-          ..sort((a, b) => a.dayOffset.compareTo(b.dayOffset));
+        final rows =
+            response
+                .whereType<Map>()
+                .map(
+                  (row) => HydroDispatchAiContext.fromJson(
+                    Map<String, dynamic>.from(row),
+                  ),
+                )
+                .toList(growable: false)
+              ..sort((a, b) => a.dayOffset.compareTo(b.dayOffset));
         return rows;
       });
 
-  Future<HydroDispatchAlertRule?> getAlertRule(String plantId) =>
-      _guard(() async {
-        final response = await _supabase
-            .from('hydro_dispatch_alert_rules')
-            .select(
-              'id,plant_id,probability_threshold,min_probability_delta,window_lead_minutes,cooldown_minutes,notify_probability,notify_window_approaching,notify_observed_activity,enabled',
-            )
-            .eq('plant_id', plantId)
-            .limit(1);
-        if (response.isEmpty) return null;
-        return HydroDispatchAlertRule.fromJson(
-          Map<String, dynamic>.from(response.first),
-        );
-      });
+  Future<HydroDispatchAlertRule?> getAlertRule(
+    String plantId,
+  ) => _guard(() async {
+    final response = await _supabase
+        .from('hydro_dispatch_alert_rules')
+        .select(
+          'id,plant_id,probability_threshold,min_probability_delta,window_lead_minutes,cooldown_minutes,notify_probability,notify_window_approaching,notify_observed_activity,enabled',
+        )
+        .eq('plant_id', plantId)
+        .limit(1);
+    if (response.isEmpty) return null;
+    return HydroDispatchAlertRule.fromJson(
+      Map<String, dynamic>.from(response.first),
+    );
+  });
 
   Future<HydroDispatchAlertRule> enableDefaultAlert(String plantId) =>
       upsertAlertRule(plantId: plantId);
@@ -360,24 +375,24 @@ class HydroDispatchService {
       },
     );
     if (response is! Map) {
-      throw const HydroDispatchException('Hydro Dispatch alert could not be saved.');
+      throw const HydroDispatchException(
+        'Hydro Dispatch alert could not be saved.',
+      );
     }
     return HydroDispatchAlertRule.fromJson(Map<String, dynamic>.from(response));
   });
 
-  Future<bool> deleteAlertRule(
-    String plantId, {
-    bool removeFavorite = false,
-  }) => _guard(() async {
-    final response = await _supabase.rpc(
-      'delete_hydro_dispatch_alert_rule_v1',
-      params: <String, Object?>{
-        'p_plant_id': plantId,
-        'p_remove_favorite': removeFavorite,
-      },
-    );
-    return response == true;
-  });
+  Future<bool> deleteAlertRule(String plantId, {bool removeFavorite = false}) =>
+      _guard(() async {
+        final response = await _supabase.rpc(
+          'delete_hydro_dispatch_alert_rule_v1',
+          params: <String, Object?>{
+            'p_plant_id': plantId,
+            'p_remove_favorite': removeFavorite,
+          },
+        );
+        return response == true;
+      });
 
   Future<String> startFieldValidation({
     required String plantId,
@@ -394,23 +409,25 @@ class HydroDispatchService {
     );
     final id = response?.toString() ?? '';
     if (id.isEmpty) {
-      throw const HydroDispatchException('Field validation could not be started.');
+      throw const HydroDispatchException(
+        'Field validation could not be started.',
+      );
     }
     return id;
   });
 
   Future<HydroDispatchFieldValidationSession?> getActiveFieldValidation() =>
       _guard(() async {
-    final response = await _supabase.rpc(
-      'get_my_active_hydro_dispatch_field_validation_v1',
-    );
-    if (response is! List || response.isEmpty || response.first is! Map) {
-      return null;
-    }
-    return HydroDispatchFieldValidationSession.fromJson(
-      Map<String, dynamic>.from(response.first as Map),
-    );
-  });
+        final response = await _supabase.rpc(
+          'get_my_active_hydro_dispatch_field_validation_v1',
+        );
+        if (response is! List || response.isEmpty || response.first is! Map) {
+          return null;
+        }
+        return HydroDispatchFieldValidationSession.fromJson(
+          Map<String, dynamic>.from(response.first as Map),
+        );
+      });
 
   Future<HydroDispatchFieldValidationResult> finishFieldValidation({
     required String sessionId,
@@ -428,7 +445,9 @@ class HydroDispatchService {
       },
     );
     if (response is! Map) {
-      throw const HydroDispatchException('Field validation could not be finished.');
+      throw const HydroDispatchException(
+        'Field validation could not be finished.',
+      );
     }
     return HydroDispatchFieldValidationResult.fromJson(
       Map<String, dynamic>.from(response),
@@ -472,7 +491,9 @@ class HydroDispatchService {
     } on SocketException {
       throw const HydroDispatchException('No internet connection.');
     } on TimeoutException {
-      throw const HydroDispatchException('Hydro Dispatch request timed out. Please retry.');
+      throw const HydroDispatchException(
+        'Hydro Dispatch request timed out. Please retry.',
+      );
     } on PostgrestException catch (error) {
       throw HydroDispatchException(
         error.message.trim().isEmpty

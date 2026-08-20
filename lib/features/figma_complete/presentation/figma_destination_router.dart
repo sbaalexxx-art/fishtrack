@@ -55,9 +55,7 @@ abstract final class FigmaDestinationRouter {
       label: arguments is String ? arguments : null,
     ),
     AppDestination.hydropower => HydroDispatchRouteBridge(
-      child: FigmaHydropowerPage(
-        label: arguments is String ? arguments : null,
-      ),
+      child: FigmaHydropowerPage(label: arguments is String ? arguments : null),
     ),
     AppDestination.weather => FigmaWeatherHubPage(
       initialStation: arguments is Station ? arguments : null,

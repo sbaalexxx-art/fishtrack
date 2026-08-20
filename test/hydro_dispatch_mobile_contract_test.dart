@@ -63,46 +63,46 @@ void main() {
         'local_target_count': 5,
       });
 
-      final presentation = HydroDispatchPresentation.day(
-        row,
-        isRomanian: true,
-      );
+      final presentation = HydroDispatchPresentation.day(row, isRomanian: true);
       expect(presentation.probabilityLabel, '66.5%');
       expect(presentation.windowLabel, '18:15–23:45');
       expect(presentation.evidenceLabel, 'ESTIMATED');
     });
 
-    test('tomorrow not-yet-published never looks available or zero percent', () {
-      final row = HydroDispatchDayForecast.fromJson(<String, dynamic>{
-        'node_order': 13,
-        'plant_id': '11111111-1111-1111-1111-111111111111',
-        'plant_name': 'Frunzaru',
-        'delivery_date': '2026-08-21',
-        'day_offset': 1,
-        'availability_status': 'NOT_YET_PUBLISHED',
-        'confidence': 'unknown',
-        'evidence_class': 'UNKNOWN',
-        'system_signal_status': 'not_applied_future_day',
-        'hydro_trend': 'not_applied_future_day',
-        'corroboration_status': 'not_applied_future_day',
-        'local_hydrology_status': 'not_applied_future_day',
-        'local_rain_signal': 'not_applied_future_day',
-        'local_target_count': 0,
-      });
+    test(
+      'tomorrow not-yet-published never looks available or zero percent',
+      () {
+        final row = HydroDispatchDayForecast.fromJson(<String, dynamic>{
+          'node_order': 13,
+          'plant_id': '11111111-1111-1111-1111-111111111111',
+          'plant_name': 'Frunzaru',
+          'delivery_date': '2026-08-21',
+          'day_offset': 1,
+          'availability_status': 'NOT_YET_PUBLISHED',
+          'confidence': 'unknown',
+          'evidence_class': 'UNKNOWN',
+          'system_signal_status': 'not_applied_future_day',
+          'hydro_trend': 'not_applied_future_day',
+          'corroboration_status': 'not_applied_future_day',
+          'local_hydrology_status': 'not_applied_future_day',
+          'local_rain_signal': 'not_applied_future_day',
+          'local_target_count': 0,
+        });
 
-      expect(row.isTomorrow, isTrue);
-      expect(row.isAvailable, isFalse);
-      expect(row.windowProbability, isNull);
-      expect(row.peakProbability, isNull);
+        expect(row.isTomorrow, isTrue);
+        expect(row.isAvailable, isFalse);
+        expect(row.windowProbability, isNull);
+        expect(row.peakProbability, isNull);
 
-      final presentation = HydroDispatchPresentation.day(
-        row,
-        isRomanian: true,
-      );
-      expect(presentation.available, isFalse);
-      expect(presentation.probabilityLabel, '—');
-      expect(presentation.statusLabel, 'Încă nepublicat');
-    });
+        final presentation = HydroDispatchPresentation.day(
+          row,
+          isRomanian: true,
+        );
+        expect(presentation.available, isFalse);
+        expect(presentation.probabilityLabel, '—');
+        expect(presentation.statusLabel, 'Încă nepublicat');
+      },
+    );
 
     test('AI context keeps observed and estimated evidence distinct', () {
       final context = HydroDispatchAiContext.fromJson(<String, dynamic>{
@@ -132,10 +132,7 @@ void main() {
       expect(context.observedConfidence, closeTo(0.9, 0.000001));
       expect(context.calibrationSampleCount, 0);
       expect(
-        HydroDispatchPresentation.observedLabel(
-          context,
-          isRomanian: true,
-        ),
+        HydroDispatchPresentation.observedLabel(context, isRomanian: true),
         'UZINARE OBSERVATĂ ÎN TEREN',
       );
       final explanation = HydroDispatchPresentation.aiExplanation(
@@ -181,18 +178,17 @@ void main() {
     });
 
     test('active field validation parses the backend snapshot without GPS', () {
-      final session = HydroDispatchFieldValidationSession.fromJson(
-        <String, dynamic>{
-          'session_id': '33333333-3333-3333-3333-333333333333',
-          'plant_id': '11111111-1111-1111-1111-111111111111',
-          'plant_name': 'Frunzaru',
-          'started_at': '2026-08-20T16:00:00Z',
-          'predicted_window_start': '2026-08-20T15:15:00Z',
-          'predicted_window_end': '2026-08-20T20:45:00Z',
-          'predicted_window_probability': 0.66,
-          'predicted_peak_probability': 0.75,
-        },
-      );
+      final session =
+          HydroDispatchFieldValidationSession.fromJson(<String, dynamic>{
+            'session_id': '33333333-3333-3333-3333-333333333333',
+            'plant_id': '11111111-1111-1111-1111-111111111111',
+            'plant_name': 'Frunzaru',
+            'started_at': '2026-08-20T16:00:00Z',
+            'predicted_window_start': '2026-08-20T15:15:00Z',
+            'predicted_window_end': '2026-08-20T20:45:00Z',
+            'predicted_window_probability': 0.66,
+            'predicted_peak_probability': 0.75,
+          });
 
       expect(session.plantName, 'Frunzaru');
       expect(session.predictedWindowProbability, closeTo(0.66, 0.000001));
@@ -200,16 +196,15 @@ void main() {
     });
 
     test('field validation result keeps eligibility reason explicit', () {
-      final result = HydroDispatchFieldValidationResult.fromJson(
-        <String, dynamic>{
-          'session_id': '33333333-3333-3333-3333-333333333333',
-          'outcome': 'no_turbining_observed',
-          'duration_minutes': 60.0,
-          'prediction_window_overlap_minutes': 50.0,
-          'calibration_eligible': true,
-          'calibration_reason': 'negative_field_presence',
-        },
-      );
+      final result =
+          HydroDispatchFieldValidationResult.fromJson(<String, dynamic>{
+            'session_id': '33333333-3333-3333-3333-333333333333',
+            'outcome': 'no_turbining_observed',
+            'duration_minutes': 60.0,
+            'prediction_window_overlap_minutes': 50.0,
+            'calibration_eligible': true,
+            'calibration_reason': 'negative_field_presence',
+          });
 
       expect(result.calibrationEligible, isTrue);
       expect(result.calibrationReason, 'negative_field_presence');

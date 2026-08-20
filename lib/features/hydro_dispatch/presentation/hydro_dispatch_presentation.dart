@@ -41,7 +41,9 @@ abstract final class HydroDispatchPresentation {
         probabilityLabel: '—',
         windowLabel: '—',
         evidenceLabel: 'UNKNOWN',
-        confidenceLabel: isRomanian ? 'încredere necunoscută' : 'unknown confidence',
+        confidenceLabel: isRomanian
+            ? 'încredere necunoscută'
+            : 'unknown confidence',
         available: false,
       );
     }
@@ -63,9 +65,12 @@ abstract final class HydroDispatchPresentation {
 
     return HydroDispatchDayPresentation(
       dayLabel: dayLabel,
-      statusLabel: isRomanian ? 'Probabilitate uzinare' : 'Generation probability',
+      statusLabel: isRomanian
+          ? 'Probabilitate uzinare'
+          : 'Generation probability',
       probabilityLabel: _percent(forecast.windowProbability),
-      windowLabel: '${_romaniaTime(forecast.windowStart)}–${_romaniaTime(forecast.windowEnd)}',
+      windowLabel:
+          '${_romaniaTime(forecast.windowStart)}–${_romaniaTime(forecast.windowEnd)}',
       evidenceLabel: forecast.evidenceClass,
       confidenceLabel: _confidence(forecast.confidence, isRomanian),
       available: true,
@@ -148,15 +153,16 @@ abstract final class HydroDispatchPresentation {
     HydroDispatchAiContext? context, {
     required bool isRomanian,
   }) => switch (context?.observedState) {
-    'OBSERVED_ACTIVE' => isRomanian
-        ? 'UZINARE OBSERVATĂ ÎN TEREN'
-        : 'GENERATION OBSERVED IN THE FIELD',
-    'OBSERVED_RECENT' => isRomanian
-        ? 'OBSERVAȚIE RECENTĂ ÎN TEREN'
-        : 'RECENT FIELD OBSERVATION',
-    'OBSERVED_ENDED' => isRomanian
-        ? 'OPRIRE OBSERVATĂ ÎN TEREN'
-        : 'GENERATION END OBSERVED IN FIELD',
+    'OBSERVED_ACTIVE' =>
+      isRomanian
+          ? 'UZINARE OBSERVATĂ ÎN TEREN'
+          : 'GENERATION OBSERVED IN THE FIELD',
+    'OBSERVED_RECENT' =>
+      isRomanian ? 'OBSERVAȚIE RECENTĂ ÎN TEREN' : 'RECENT FIELD OBSERVATION',
+    'OBSERVED_ENDED' =>
+      isRomanian
+          ? 'OPRIRE OBSERVATĂ ÎN TEREN'
+          : 'GENERATION END OBSERVED IN FIELD',
     _ => isRomanian ? 'FĂRĂ OBSERVAȚIE RECENTĂ' : 'NO RECENT FIELD OBSERVATION',
   };
 
@@ -174,7 +180,8 @@ abstract final class HydroDispatchPresentation {
     return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
-  static String _confidence(String value, bool ro) => switch (value.toLowerCase()) {
+  static String _confidence(String value, bool ro) => switch (value
+      .toLowerCase()) {
     'high' => ro ? 'încredere ridicată' : 'high confidence',
     'medium' || 'moderate' => ro ? 'încredere moderată' : 'moderate confidence',
     'low' => ro ? 'încredere redusă' : 'low confidence',
@@ -189,20 +196,22 @@ abstract final class HydroDispatchPresentation {
     _ => ro ? 'necunoscută' : 'unknown',
   };
 
-  static String _systemSignal(String value, bool ro) => switch (value.toLowerCase()) {
-    'fresh' => ro ? 'actual' : 'fresh',
-    'stale' => ro ? 'vechi' : 'stale',
-    'unavailable' => ro ? 'indisponibil' : 'unavailable',
-    _ => value.replaceAll('_', ' '),
-  };
+  static String _systemSignal(String value, bool ro) =>
+      switch (value.toLowerCase()) {
+        'fresh' => ro ? 'actual' : 'fresh',
+        'stale' => ro ? 'vechi' : 'stale',
+        'unavailable' => ro ? 'indisponibil' : 'unavailable',
+        _ => value.replaceAll('_', ' '),
+      };
 
-  static String _hydroTrend(String value, bool ro) => switch (value.toLowerCase()) {
-    'rising' => ro ? 'în creștere' : 'rising',
-    'falling' => ro ? 'în scădere' : 'falling',
-    'stable' => ro ? 'stabilă' : 'stable',
-    'unavailable' => ro ? 'indisponibilă' : 'unavailable',
-    _ => value.replaceAll('_', ' '),
-  };
+  static String _hydroTrend(String value, bool ro) =>
+      switch (value.toLowerCase()) {
+        'rising' => ro ? 'în creștere' : 'rising',
+        'falling' => ro ? 'în scădere' : 'falling',
+        'stable' => ro ? 'stabilă' : 'stable',
+        'unavailable' => ro ? 'indisponibilă' : 'unavailable',
+        _ => value.replaceAll('_', ' '),
+      };
 
   static String _rain(String value, bool ro) => switch (value.toLowerCase()) {
     'dry' => ro ? 'scăzut/uscat' : 'low/dry',

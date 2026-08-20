@@ -21,23 +21,24 @@ class HydroDispatchFieldGeofence {
     this.secondNearestDistanceKm,
   });
 
-  factory HydroDispatchFieldGeofence.fromJson(Map<String, dynamic> json) =>
-      HydroDispatchFieldGeofence(
-        eligible: json['eligible'] == true,
-        reason: json['reason']?.toString() ?? 'unknown',
-        plantId: json['plant_id']?.toString() ?? '',
-        plantName: json['plant_name']?.toString() ?? '',
-        targetDistanceKm: _double(json['target_distance_km']) ?? double.infinity,
-        confirmationRadiusKm: _double(json['confirmation_radius_km']) ?? 5.0,
-        ambiguityMarginKm: _double(json['ambiguity_margin_km']) ?? .75,
-        nearestPlantId: json['nearest_plant_id']?.toString() ?? '',
-        nearestPlantName: json['nearest_plant_name']?.toString() ?? '',
-        nearestDistanceKm: _double(json['nearest_distance_km']) ?? double.infinity,
-        secondNearestPlantId: _text(json['second_nearest_plant_id']),
-        secondNearestPlantName: _text(json['second_nearest_plant_name']),
-        secondNearestDistanceKm: _double(json['second_nearest_distance_km']),
-        nearestGapKm: _double(json['nearest_gap_km']) ?? double.infinity,
-      );
+  factory HydroDispatchFieldGeofence.fromJson(
+    Map<String, dynamic> json,
+  ) => HydroDispatchFieldGeofence(
+    eligible: json['eligible'] == true,
+    reason: json['reason']?.toString() ?? 'unknown',
+    plantId: json['plant_id']?.toString() ?? '',
+    plantName: json['plant_name']?.toString() ?? '',
+    targetDistanceKm: _double(json['target_distance_km']) ?? double.infinity,
+    confirmationRadiusKm: _double(json['confirmation_radius_km']) ?? 5.0,
+    ambiguityMarginKm: _double(json['ambiguity_margin_km']) ?? .75,
+    nearestPlantId: json['nearest_plant_id']?.toString() ?? '',
+    nearestPlantName: json['nearest_plant_name']?.toString() ?? '',
+    nearestDistanceKm: _double(json['nearest_distance_km']) ?? double.infinity,
+    secondNearestPlantId: _text(json['second_nearest_plant_id']),
+    secondNearestPlantName: _text(json['second_nearest_plant_name']),
+    secondNearestDistanceKm: _double(json['second_nearest_distance_km']),
+    nearestGapKm: _double(json['nearest_gap_km']) ?? double.infinity,
+  );
 
   final bool eligible;
   final String reason;
@@ -59,7 +60,8 @@ class HydroDispatchFieldGeofence {
 }
 
 class HydroDispatchGeofenceService {
-  const HydroDispatchGeofenceService({SupabaseClient? client}) : _client = client;
+  const HydroDispatchGeofenceService({SupabaseClient? client})
+    : _client = client;
 
   final SupabaseClient? _client;
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;

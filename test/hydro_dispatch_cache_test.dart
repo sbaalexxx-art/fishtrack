@@ -125,7 +125,9 @@ void main() {
         .map((row) => Map<String, dynamic>.from(row as Map))
         .toList();
     final ro = timezone.getLocation('Europe/Bucharest');
-    final yesterday = timezone.TZDateTime.now(ro).subtract(const Duration(days: 1));
+    final yesterday = timezone.TZDateTime.now(
+      ro,
+    ).subtract(const Duration(days: 1));
     rows.first['delivery_date'] =
         '${yesterday.year.toString().padLeft(4, '0')}-'
         '${yesterday.month.toString().padLeft(2, '0')}-'

@@ -189,8 +189,9 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
           ? previous.lastCompletedValidation
           : null,
       refreshedAt: samePlant ? previous.refreshedAt : cached?.savedAt,
-      usingPersistedCache:
-          samePlant ? previous.usingPersistedCache : cached != null,
+      usingPersistedCache: samePlant
+          ? previous.usingPersistedCache
+          : cached != null,
       isAlertMutationRunning: previous.isAlertMutationRunning,
       isValidationMutationRunning: previous.isValidationMutationRunning,
     );
@@ -261,11 +262,7 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
 
     if (!forecastsResult.failed && !aiResult.failed && usable) {
       unawaited(
-        _cache.save(
-          plantId: plantId,
-          forecasts: forecasts,
-          aiContext: ai,
-        ),
+        _cache.save(plantId: plantId, forecasts: forecasts, aiContext: ai),
       );
     }
 
@@ -307,16 +304,10 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
     if (plantId == null || plantId.isEmpty || state.isAlertMutationRunning) {
       return state.alertRule;
     }
-    state = state.copyWith(
-      isAlertMutationRunning: true,
-      clearLastError: true,
-    );
+    state = state.copyWith(isAlertMutationRunning: true, clearLastError: true);
     try {
       final rule = await _service.enableDefaultAlert(plantId);
-      state = state.copyWith(
-        alertRule: rule,
-        isAlertMutationRunning: false,
-      );
+      state = state.copyWith(alertRule: rule, isAlertMutationRunning: false);
       return rule;
     } on Object catch (error, stackTrace) {
       state = state.copyWith(
@@ -339,10 +330,7 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
     if (plantId == null || plantId.isEmpty || state.isAlertMutationRunning) {
       return false;
     }
-    state = state.copyWith(
-      isAlertMutationRunning: true,
-      clearLastError: true,
-    );
+    state = state.copyWith(isAlertMutationRunning: true, clearLastError: true);
     try {
       final deleted = await _service.deleteAlertRule(
         plantId,
