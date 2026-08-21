@@ -37,22 +37,25 @@ void main() {
       expect(pin.statePayload['dispatch_available'], isTrue);
     });
 
-    test('unverified hydropower-use site cannot masquerade as a hydro plant pin', () {
-      final site = HydroCanonicalMapSite.fromJson(<String, dynamic>{
-        'site_key': 'baraj:dam-2',
-        'pin_eligible': true,
-        'display_name': 'Unverified site',
-        'latitude': 45.0,
-        'longitude': 25.0,
-        'anchor_type': 'dam_anchor',
-        'hydropower_verified': false,
-        'dispatch_available': false,
-        'dam_id': 'dam-2',
-        'reservoir_id': 'reservoir-2',
-      });
+    test(
+      'unverified hydropower-use site cannot masquerade as a hydro plant pin',
+      () {
+        final site = HydroCanonicalMapSite.fromJson(<String, dynamic>{
+          'site_key': 'baraj:dam-2',
+          'pin_eligible': true,
+          'display_name': 'Unverified site',
+          'latitude': 45.0,
+          'longitude': 25.0,
+          'anchor_type': 'dam_anchor',
+          'hydropower_verified': false,
+          'dispatch_available': false,
+          'dam_id': 'dam-2',
+          'reservoir_id': 'reservoir-2',
+        });
 
-      expect(site.isVerifiedPin, isFalse);
-    });
+        expect(site.isVerifiedPin, isFalse);
+      },
+    );
 
     test('dispatch snapshot keeps forecast separate from observed truth', () {
       final snapshot = HydroMapDispatchSnapshot.fromJson(<String, dynamic>{
