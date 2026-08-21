@@ -15,8 +15,7 @@ class HydroDispatchOltCatalogException implements Exception {
 }
 
 class HydroDispatchOltCatalogService {
-  const HydroDispatchOltCatalogService({SupabaseClient? client})
-      : _client = client;
+  const HydroDispatchOltCatalogService({SupabaseClient? client}) : _client = client;
 
   final SupabaseClient? _client;
 
