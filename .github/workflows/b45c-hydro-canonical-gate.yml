@@ -62,7 +62,7 @@ jobs:
           grep -F "_stationAnnotationOptions(" lib/screens/map_page.dart
           grep -F "'type': 'water_station'" lib/screens/map_page.dart
 
-      - name: Verify protected push and Ask Fluvi runtime unchanged from B45C
+      - name: Verify protected push and Ask Fluvi core unchanged from B45C
         shell: bash
         run: |
           set -euo pipefail
@@ -79,24 +79,57 @@ jobs:
           grep -F "final _answerService = const FluviDeterministicAnswerService();" lib/features/figma_complete/presentation/figma_environment_pages.dart
           grep -F "_answerService.answer(" lib/features/figma_complete/presentation/figma_environment_pages.dart
 
-      - name: Format check canonical files
+      - name: Verify Hydro mobile dispatch runtime wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "hydroDispatch('Hydro Dispatch')" lib/services/notification_preferences_service.dart
+          grep -F "hydroDispatchForecast('hydro_dispatch_forecast')" lib/services/notification_service.dart
+          grep -F "hydroDispatchWindowApproaching('hydro_dispatch_window_approaching')" lib/services/notification_service.dart
+          grep -F "hydroDispatchObserved('hydro_dispatch_observed')" lib/services/notification_service.dart
+          grep -F "NotificationCategory.hydroDispatch" lib/services/notification_service.dart
+          grep -F "notification.entityType == 'hydropower_plant'" lib/features/figma_complete/presentation/figma_account_pages.dart
+          grep -F "source: 'notification-hydro-dispatch'" lib/features/figma_complete/presentation/figma_account_pages.dart
+          grep -F "_previewHydropowerPin != null" lib/screens/map_page.dart
+          grep -F "_hydroDispatchAlertService.enableDefaultAlerts" lib/screens/map_page.dart
+          grep -F "'upsert_hydro_dispatch_alert_rule_v1'" lib/services/hydro_dispatch_alert_service.dart
+          grep -F "'p_probability_threshold': 0.70" lib/services/hydro_dispatch_alert_service.dart
+          grep -F "'p_notify_probability': true" lib/services/hydro_dispatch_alert_service.dart
+          grep -F "'p_notify_window_approaching': true" lib/services/hydro_dispatch_alert_service.dart
+          grep -F "'p_notify_observed_activity': true" lib/services/hydro_dispatch_alert_service.dart
+
+      - name: Format check canonical and mobile runtime files
         run: >-
           dart format --output=none --set-exit-if-changed
           lib/screens/map_page.dart
           lib/widgets/fluviai/hydro_intelligence_panel.dart
           lib/services/hydro_map_canonical_service.dart
           lib/services/hydro_map_dispatch_presentation.dart
+          lib/services/hydro_dispatch_alert_service.dart
+          lib/services/notification_preferences_service.dart
+          lib/screens/notification_preferences_page.dart
+          lib/services/notification_service.dart
+          lib/features/figma_complete/presentation/figma_account_pages.dart
           test/hydro_map_canonical_service_test.dart
           test/hydro_map_dispatch_presentation_test.dart
           test/b45c_hydro_map_regression_test.dart
+          test/b45c_hydro_mobile_runtime_regression_test.dart
 
-      - name: Analyze Hydro map integration
+      - name: Analyze Hydro map and mobile runtime integration
         run: >-
           flutter analyze
           lib/screens/map_page.dart
           lib/widgets/fluviai/hydro_intelligence_panel.dart
           lib/services/hydro_map_canonical_service.dart
           lib/services/hydro_map_dispatch_presentation.dart
+          lib/services/hydro_dispatch_alert_service.dart
+          lib/services/notification_preferences_service.dart
+          lib/screens/notification_preferences_page.dart
+          lib/services/notification_service.dart
+          lib/features/figma_complete/presentation/figma_account_pages.dart
+
+      - name: Hydro mobile runtime regression
+        run: flutter test test/b45c_hydro_mobile_runtime_regression_test.dart
 
       - name: Hydro canonical service contract
         run: flutter test test/hydro_map_canonical_service_test.dart
