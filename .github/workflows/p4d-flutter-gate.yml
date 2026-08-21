@@ -1,9 +1,6 @@
 name: P4D Flutter Gate
 
 on:
-  push:
-    branches:
-      - feature/hydro-dispatch-olt-p4d-recovery
   pull_request:
     branches:
       - recovery/figma-production-integration
@@ -19,17 +16,11 @@ jobs:
 
     steps:
       - name: Checkout feature branch
-        if: github.event_name == 'push'
         uses: actions/checkout@v6
         with:
           ref: feature/hydro-dispatch-olt-p4d-recovery
 
-      - name: Checkout pull request
-        if: github.event_name != 'push'
-        uses: actions/checkout@v6
-
       - name: Apply one-shot Hydro Map probability patch
-        if: github.event_name == 'push'
         run: python3 tool/ci/apply_hydro_map_probability_patch.py
 
       - name: Set up Flutter
@@ -43,7 +34,6 @@ jobs:
         run: flutter pub get
 
       - name: Format patched Hydro Map surface
-        if: github.event_name == 'push'
         run: >-
           dart format
           lib/screens/map_page.dart
@@ -53,7 +43,6 @@ jobs:
           test/hydro_dispatch_mobile_contract_test.dart
 
       - name: Verify clean patch diff
-        if: github.event_name == 'push'
         run: git diff --check
 
       - name: Verify P4D formatting
@@ -136,7 +125,6 @@ jobs:
           --dart-define=MAPBOX_ACCESS_TOKEN="$MAPBOX_ACCESS_TOKEN"
 
       - name: Commit validated Hydro Map probability wiring
-        if: github.event_name == 'push'
         run: |
           if git diff --quiet; then
             echo "Hydro Map probability wiring already present; nothing to commit."
