@@ -32,7 +32,8 @@ class SavedItem {
     metadata: json['metadata'] is Map
         ? Map<String, Object?>.from(json['metadata'] as Map)
         : const <String, Object?>{},
-    createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+    createdAt:
+        DateTime.tryParse(json['created_at']?.toString() ?? '') ??
         DateTime.fromMillisecondsSinceEpoch(0),
   );
 }

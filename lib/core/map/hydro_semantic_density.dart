@@ -16,8 +16,10 @@ class HydroDensityCandidate {
 }
 
 double? hydroDensityCellSize(double zoom) {
-  if (zoom < 7.2) return double.infinity;
-  if (zoom < 8.2) return .55;
+  if (zoom < 5.4) return double.infinity;
+  if (zoom < 6.4) return 1.25;
+  if (zoom < 7.4) return .92;
+  if (zoom < 8.2) return .56;
   if (zoom < 9.2) return .28;
   if (zoom < 10.2) return .12;
   if (zoom < 10.8) return .055;

@@ -463,6 +463,53 @@ class _WaterSegmentBar extends StatelessWidget {
   }
 }
 
+enum _WaterHubCategory { automatic, danube, rivers, hydropower, favorites }
+
+class _WaterContextBar extends StatelessWidget {
+  const _WaterContextBar({required this.selected, required this.onSelected});
+
+  final _WaterHubCategory selected;
+  final ValueChanged<_WaterHubCategory> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    const entries = <(_WaterHubCategory, String)>[
+      (_WaterHubCategory.automatic, 'Automat'),
+      (_WaterHubCategory.danube, 'Dunăre'),
+      (_WaterHubCategory.rivers, 'Râuri'),
+      (_WaterHubCategory.hydropower, 'Baraje hidro'),
+      (_WaterHubCategory.favorites, 'Favorite'),
+    ];
+    return _ReviewPanel(
+      height: 48,
+      padding: const EdgeInsets.all(4),
+      radius: 14,
+      background: const Color(0xFF0B1820),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const ClampingScrollPhysics(),
+        child: Row(
+          children: [
+            for (final entry in entries)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: SizedBox(
+                  width: entry.$1 == _WaterHubCategory.hydropower ? 112 : 82,
+                  child: _SegmentLabel(
+                    entry.$2,
+                    selected: selected == entry.$1,
+                    onTap: () => onSelected(entry.$1),
+                    semanticLabel: 'Water ${entry.$2}',
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SegmentLabel extends StatelessWidget {
   const _SegmentLabel(
     this.label, {
@@ -519,34 +566,13 @@ List<List<WaterLevel>> officialWaterChartSegments(List<WaterLevel> history) {
     ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   if (points.isEmpty) return const <List<WaterLevel>>[];
 
-  var typicalGap = const Duration(hours: 24);
-  if (points.length >= 3) {
-    final gaps = <Duration>[];
-    for (var index = 1; index < points.length; index++) {
-      gaps.add(
-        points[index].timestamp.difference(points[index - 1].timestamp).abs(),
-      );
-    }
-    gaps.sort((a, b) => a.compareTo(b));
-    typicalGap = gaps[gaps.length ~/ 2];
-    if (typicalGap < const Duration(minutes: 30)) {
-      typicalGap = const Duration(minutes: 30);
-    }
-  }
-  final breakAfter = Duration(
-    milliseconds: (typicalGap.inMilliseconds * 2.5).round(),
-  );
-  final segments = <List<WaterLevel>>[
-    <WaterLevel>[points.first],
-  ];
-  for (var index = 1; index < points.length; index++) {
-    final gap = points[index].timestamp
-        .difference(points[index - 1].timestamp)
-        .abs();
-    if (gap > breakAfter) segments.add(<WaterLevel>[]);
-    segments.last.add(points[index]);
-  }
-  return segments;
+  // Product chart contract: render one continuous observational spline across
+  // the real measurements returned for the entitlement window. No synthetic
+  // WaterLevel samples are inserted here; timestamps, statistics and tooltips
+  // remain tied exclusively to measured observations. Temporal gaps continue
+  // to be visible through the real x-axis spacing rather than by fabricating
+  // intermediate daily points.
+  return <List<WaterLevel>>[List<WaterLevel>.unmodifiable(points)];
 }
 
 class _OfficialWaterChart extends StatelessWidget {
@@ -572,7 +598,8 @@ class _OfficialWaterChart extends StatelessWidget {
     final padding = range.abs() < .01 ? 1.0 : range * .18;
     final firstTime = points.first.timestamp.millisecondsSinceEpoch.toDouble();
     final lastTime = points.last.timestamp.millisecondsSinceEpoch.toDouble();
-    const color = Color(0xFF38BDF8);
+    final chartTrend = waterTrendFromRealDelta(realWaterSeriesDelta(points));
+    final color = _trendColor(chartTrend);
 
     WaterLevel readingForX(double x) => points.reduce((nearest, candidate) {
       final nearestDistance = (nearest.timestamp.millisecondsSinceEpoch - x)
@@ -643,7 +670,7 @@ class _OfficialWaterChart extends StatelessWidget {
                     )
                     .toList(growable: false),
                 isCurved: segment.length >= 3,
-                curveSmoothness: .4,
+                curveSmoothness: .18,
                 preventCurveOverShooting: true,
                 color: color,
                 barWidth: segment.length >= 2 ? 2.8 : 0,
@@ -982,7 +1009,11 @@ class FigmaWaterHubPage extends StatefulWidget {
 
 class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
   final WaterService _waterService = WaterService();
+  final WaterAssetService _waterAssetService = const WaterAssetService();
+  _WaterHubCategory _category = _WaterHubCategory.automatic;
   Station? _selectedStation;
+  WaterHubRiverGroup? _selectedRiver;
+  WaterHydropowerComplex? _selectedHydropower;
 
   Station? get _activeStation => _selectedStation ?? widget.initialStation;
 
@@ -1125,7 +1156,263 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
       Navigator.of(context).pop(selected);
       return;
     }
-    setState(() => _selectedStation = selected);
+    setState(() {
+      _category = _WaterHubCategory.danube;
+      _selectedStation = selected;
+      _selectedRiver = null;
+      _selectedHydropower = null;
+    });
+  }
+
+  Future<void> _selectCategory(_WaterHubCategory category) async {
+    if (category == _WaterHubCategory.automatic) {
+      await _waterService.setAutomatic();
+      if (!mounted) return;
+      setState(() {
+        _category = category;
+        _selectedStation = null;
+        _selectedRiver = null;
+        _selectedHydropower = null;
+      });
+      return;
+    }
+    if (category == _WaterHubCategory.danube) {
+      if (mounted) setState(() => _category = category);
+      await _openStationSelector();
+      return;
+    }
+    if (category == _WaterHubCategory.rivers) {
+      await _openRiverSelector();
+      return;
+    }
+    if (category == _WaterHubCategory.hydropower) {
+      await _openHydropowerSelector();
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _category = category);
+    await AppNavigator.open<void>(context, AppDestination.favorites);
+  }
+
+  Future<void> _openRiverSelector() async {
+    final selected = await showModalBottomSheet<WaterHubRiverGroup>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: FigmaFluviTokens.surface,
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: .82,
+        child: FutureBuilder<List<WaterHubRiverGroup>>(
+          future: _waterAssetService.getHubRivers(),
+          builder: (context, state) {
+            final rows = state.data ?? const <WaterHubRiverGroup>[];
+            if (state.connectionState == ConnectionState.waiting &&
+                rows.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Râuri',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: rows.length,
+                    separatorBuilder: (_, _) => const FigmaDivider(),
+                    itemBuilder: (_, index) {
+                      final river = rows[index];
+                      return ListTile(
+                        leading: const Icon(
+                          Icons.water_rounded,
+                          color: FigmaFluviTokens.cyan,
+                        ),
+                        title: Text(river.displayName),
+                        subtitle: Text(
+                          '${river.damCount} baraje · ${river.reservoirCount} acumulări',
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => Navigator.pop(sheetContext, river),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    final ref = WaterRiverRef(
+      key: selected.riverKeys.first,
+      name: selected.displayName,
+      countryCode: 'RO',
+      damCount: selected.damCount,
+      reservoirCount: selected.reservoirCount,
+      basinNames: const <String>[],
+      counties: const <String>[],
+      waterBodyId: selected.waterBodyIds.first,
+      canonicalWaterBody: true,
+    );
+    ProviderScope.containerOf(context)
+        .read(selectedContextProvider.notifier)
+        .select(SelectedContext.fromRiver(ref));
+    setState(() {
+      _category = _WaterHubCategory.rivers;
+      _selectedRiver = selected;
+      _selectedHydropower = null;
+    });
+  }
+
+  Future<void> _openHydropowerSelector() async {
+    final selected = await showModalBottomSheet<WaterHydropowerComplex>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: FigmaFluviTokens.surface,
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: .86,
+        child: FutureBuilder<List<WaterHydropowerComplex>>(
+          future: _waterAssetService.getHubHydropowerComplexes(),
+          builder: (context, state) {
+            final rows = state.data ?? const <WaterHydropowerComplex>[];
+            if (state.connectionState == ConnectionState.waiting &&
+                rows.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Baraje hidro',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: rows.length,
+                    separatorBuilder: (_, _) => const FigmaDivider(),
+                    itemBuilder: (_, index) {
+                      final item = rows[index];
+                      final contextLine = [item.riverName, item.county]
+                          .whereType<String>()
+                          .where((e) => e.trim().isNotEmpty)
+                          .join(' · ');
+                      return ListTile(
+                        leading: const Icon(
+                          Icons.account_balance_rounded,
+                          color: FigmaFluviTokens.cyan,
+                        ),
+                        title: Text(item.displayName),
+                        subtitle: Text(
+                          contextLine.isEmpty
+                              ? 'Complex hidroenergetic'
+                              : contextLine,
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => Navigator.pop(sheetContext, item),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    ProviderScope.containerOf(context)
+        .read(selectedContextProvider.notifier)
+        .select(SelectedContext.fromHydropowerComplex(selected));
+    setState(() {
+      _category = _WaterHubCategory.hydropower;
+      _selectedHydropower = selected;
+      _selectedRiver = null;
+    });
+  }
+
+  Widget _canonicalContextPanel() {
+    final river = _selectedRiver;
+    final hydro = _selectedHydropower;
+    if (river == null && hydro == null) return const SizedBox.shrink();
+    final title = river?.displayName ?? hydro!.displayName;
+    final subtitle = river != null
+        ? '${river.damCount} baraje · ${river.reservoirCount} acumulări canonice'
+        : [
+            hydro!.riverName,
+            hydro.reservoirName,
+            hydro.plantName,
+          ].whereType<String>().where((e) => e.trim().isNotEmpty).join(' · ');
+    final status = river != null
+        ? 'Context canonic Water'
+        : hydro!.hasOperationalData
+        ? 'Date operaționale disponibile'
+        : 'Date operaționale indisponibile';
+    return _ReviewPanel(
+      height: 154,
+      radius: 20,
+      background: const Color(0xFF0C1D25),
+      accent: FigmaFluviTokens.cyan,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _MonoLabel(
+            'CONTEXT WATER SELECTAT',
+            color: FigmaFluviTokens.cyan,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: FigmaFluviTokens.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            status,
+            style: const TextStyle(
+              fontFamily: 'IBM Plex Mono',
+              color: FigmaFluviTokens.textSecondary,
+              fontSize: 9,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openHistory(List<WaterLevel> history) {
@@ -1148,7 +1435,10 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
     return FigmaCanonicalScaffold(
       key: const ValueKey('figma-water-hub'),
       title: 'Inteligență Hidrologică',
-      subtitle: _officialContext(null, _activeStation),
+      subtitle:
+          _selectedRiver?.displayName ??
+          _selectedHydropower?.displayName ??
+          _officialContext(null, _activeStation),
       subtitleColor: const Color(0xFF38BDF8),
       action: FigmaRoundButton(
         key: const ValueKey('water-create-alert'),
@@ -1174,6 +1464,19 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
           final trend = officialObservation.trend;
           final trendColor = _trendColor(trend);
           final history = water?.history ?? const <WaterLevel>[];
+          final accessTier = ProviderScope.containerOf(
+            context,
+            listen: false,
+          ).read(fluviAccessTierProvider);
+          final historyRange = accessTier == FluviAccessTier.premium
+              ? WaterHistoryRange.thirtyDays
+              : WaterHistoryRange.sevenDays;
+          final visibleHistory = realWaterHistoryForRange(
+            history,
+            historyRange,
+            stationId: station?.id,
+          );
+          final historyDays = historyRange.duration.inDays;
           final source = _sourceLabel(water?.sourceName ?? reading?.sourceName);
           final freshness = _relativeAge(water?.dataAge);
           final freshnessState = resolveWaterFreshnessDisplayState(water);
@@ -1184,6 +1487,105 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
           final currentStatusColor = _waterFreshnessDisplayColor(
             freshnessState,
           );
+          if (_selectedRiver != null || _selectedHydropower != null) {
+            return RefreshIndicator(
+              onRefresh: () async {
+                if (_selectedRiver != null) {
+                  await _waterAssetService.getHubRivers();
+                } else {
+                  await _waterAssetService.getHubHydropowerComplexes();
+                }
+              },
+              child: ListView(
+                key: const ValueKey('figma-water-canonical-context-scroll'),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+                children: [
+                  _WaterContextBar(
+                    selected: _category,
+                    onSelected: _selectCategory,
+                  ),
+                  const SizedBox(height: 10),
+                  _WaterSegmentBar(
+                    onStations: _openStationSelector,
+                    onAlerts: () =>
+                        AppNavigator.open<void>(context, AppDestination.alerts),
+                  ),
+                  const SizedBox(height: 14),
+                  _canonicalContextPanel(),
+                  const SizedBox(height: 14),
+                  _ReviewPanel(
+                    height: 118,
+                    radius: 18,
+                    background: const Color(0xFF0A171D),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _MonoLabel(
+                          'ADEVĂR OPERAȚIONAL',
+                          color: FigmaFluviTokens.cyan,
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Valorile hidrologice apar numai când există o sursă reală asociată acestui context.',
+                          style: TextStyle(
+                            color: FigmaFluviTokens.textSecondary,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                        Spacer(),
+                        Text(
+                          'Fără telemetrie validă: UNKNOWN — nu estimăm și nu reutilizăm datele altei stații.',
+                          style: TextStyle(
+                            fontFamily: 'IBM Plex Mono',
+                            color: FigmaFluviTokens.textMuted,
+                            fontSize: 8.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => AppNavigator.open<void>(
+                            context,
+                            AppDestination.contextualMap,
+                          ),
+                          icon: const Icon(Icons.map_outlined),
+                          label: const Text('Hartă'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => AppNavigator.open<void>(
+                            context,
+                            AppDestination.addReport,
+                          ),
+                          icon: const Icon(Icons.add_comment_outlined),
+                          label: const Text('Raport'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => AppNavigator.open<void>(
+                            context,
+                            AppDestination.community,
+                          ),
+                          icon: const Icon(Icons.groups_outlined),
+                          label: const Text('Puls'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }
           return RefreshIndicator(
             onRefresh: () async => refresh(),
             child: ListView(
@@ -1278,11 +1680,20 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
+                _WaterContextBar(
+                  selected: _category,
+                  onSelected: _selectCategory,
+                ),
+                const SizedBox(height: 10),
                 _WaterSegmentBar(
                   onStations: _openStationSelector,
                   onAlerts: () =>
                       AppNavigator.open<void>(context, AppDestination.alerts),
                 ),
+                if (_selectedRiver != null || _selectedHydropower != null) ...[
+                  const SizedBox(height: 14),
+                  _canonicalContextPanel(),
+                ],
                 const SizedBox(height: 14),
                 Semantics(
                   button: true,
@@ -1306,12 +1717,12 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
                                 'DOAR OBSERVAȚII OFICIALE',
                                 color: Color(0xFF38BDF8),
                               ),
-                              _MonoLabel('${history.length} observații'),
+                              _MonoLabel('${visibleHistory.length} observații'),
                             ],
                           ),
                           const SizedBox(height: 10),
-                          const Text(
-                            'Tendință nivel · 30 zile',
+                          Text(
+                            'Tendință nivel · $historyDays zile',
                             style: TextStyle(
                               color: FigmaFluviTokens.white,
                               fontSize: 18,
@@ -1320,8 +1731,8 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
                           ),
                           const SizedBox(height: 12),
                           Expanded(
-                            child: history.length >= 2
-                                ? _OfficialWaterChart(history: history)
+                            child: visibleHistory.length >= 2
+                                ? _OfficialWaterChart(history: visibleHistory)
                                 : const FigmaTruthfulEmpty(
                                     icon: Icons.show_chart_rounded,
                                     title: 'Istoric insuficient',
@@ -1330,15 +1741,15 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
                                   ),
                           ),
                           const SizedBox(height: 8),
-                          const Wrap(
+                          Wrap(
                             alignment: WrapAlignment.spaceBetween,
                             runAlignment: WrapAlignment.center,
                             spacing: 16,
                             runSpacing: 4,
                             children: [
-                              _MonoLabel('−30 Z'),
-                              _MonoLabel('−15 Z'),
-                              _MonoLabel('ACUM'),
+                              _MonoLabel('−$historyDays Z'),
+                              _MonoLabel('−${(historyDays / 2).round()} Z'),
+                              const _MonoLabel('ACUM'),
                             ],
                           ),
                           const SizedBox(height: 8),
@@ -1499,7 +1910,7 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
   }
 }
 
-class WaterHistorySheet extends StatefulWidget {
+class WaterHistorySheet extends StatelessWidget {
   const WaterHistorySheet({
     super.key,
     required this.history,
@@ -1510,24 +1921,12 @@ class WaterHistorySheet extends StatefulWidget {
   final FluviAccessTier accessTier;
 
   @override
-  State<WaterHistorySheet> createState() => _WaterHistorySheetState();
-}
-
-class _WaterHistorySheetState extends State<WaterHistorySheet> {
-  WaterHistoryRange _range = WaterHistoryRange.hours24;
-
-  bool get _canUseThirtyDays => widget.accessTier == FluviAccessTier.premium;
-
-  void _select(WaterHistoryRange range) {
-    if (range == WaterHistoryRange.days30 && !_canUseThirtyDays) return;
-    setState(() {
-      _range = range;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final filtered = realWaterHistoryForRange(widget.history, _range);
+    final range = accessTier == FluviAccessTier.premium
+        ? WaterHistoryRange.thirtyDays
+        : WaterHistoryRange.sevenDays;
+    final filtered = realWaterHistoryForRange(history, range);
+    final days = range.duration.inDays;
     return SingleChildScrollView(
       key: const ValueKey('water-history-scroll'),
       child: Padding(
@@ -1557,44 +1956,35 @@ class _WaterHistorySheetState extends State<WaterHistorySheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              '24h și 3 zile în Free · 30 zile în Pro',
+              accessTier == FluviAccessTier.premium
+                  ? 'Istoric Pro · ultimele 30 zile'
+                  : 'Istoric Free · ultimele 7 zile',
               style: figmaBody(size: 11),
             ),
             const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            Row(
               children: [
-                FigmaPill(
-                  key: const ValueKey('water-history-range-24h'),
-                  label: '24h',
-                  active: _range == WaterHistoryRange.hours24,
-                  onTap: () => _select(WaterHistoryRange.hours24),
+                _TinyStatusPill(
+                  label: '$days ZILE',
+                  color: accessTier == FluviAccessTier.premium
+                      ? FigmaFluviTokens.amber
+                      : const Color(0xFF38BDF8),
+                  width: 86,
                 ),
-                FigmaPill(
-                  key: const ValueKey('water-history-range-3d'),
-                  label: '3 zile',
-                  active: _range == WaterHistoryRange.days3,
-                  onTap: () => _select(WaterHistoryRange.days3),
-                ),
-                FigmaPill(
-                  key: const ValueKey('water-history-range-30d'),
-                  label: '30 zile · PRO',
-                  active: _range == WaterHistoryRange.days30,
-                  color: FigmaFluviTokens.amber,
-                  onTap: _canUseThirtyDays
-                      ? () => _select(WaterHistoryRange.days30)
-                      : null,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${filtered.length} observații reale',
+                    key: const ValueKey('water-history-observation-count'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: figmaBody(size: 10),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              '${filtered.length} observații reale',
-              key: const ValueKey('water-history-observation-count'),
-              style: figmaBody(size: 10),
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             SizedBox(
               height: 180,
               child: filtered.length >= 2
@@ -1604,6 +1994,15 @@ class _WaterHistorySheetState extends State<WaterHistorySheet> {
                       title: 'Istoric insuficient',
                       message: 'Sunt necesare cel puțin două observații reale.',
                     ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Perioadele fără date nu sunt estimate. Graficul folosește numai observații oficiale reale.',
+              style: TextStyle(
+                fontFamily: 'IBM Plex Mono',
+                color: FigmaFluviTokens.textSecondary,
+                fontSize: 8,
+              ),
             ),
           ],
         ),
@@ -3261,18 +3660,25 @@ class _FigmaReservoirPageState extends ConsumerState<FigmaReservoirPage> {
             );
           }
           final data = snapshot.data!;
+          final hasCurrentData = _hasCurrentWaterData(data);
           return ListView(
             children: [
               _assetIdentity(data.detail),
               const SizedBox(height: 12),
-              _waterState(data.state),
-              const SizedBox(height: 12),
-              _operationalData(data.detail),
-              const SizedBox(height: 12),
+              if (hasCurrentData) ...[
+                _waterState(data.state),
+                const SizedBox(height: 12),
+                _operationalData(data.detail),
+                const SizedBox(height: 12),
+              ],
               _catalogData(data.detail),
               if (data.detail.linkedAssets.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 _linkedAssets(data.detail),
+              ],
+              if (!hasCurrentData) ...[
+                const SizedBox(height: 12),
+                _currentDataUnavailable(),
               ],
               const SizedBox(height: 14),
               _actions(data.detail.ref),
@@ -3280,6 +3686,59 @@ class _FigmaReservoirPageState extends ConsumerState<FigmaReservoirPage> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  bool _hasCurrentWaterData(_WaterAssetPageData data) {
+    final source = data.state.source;
+    return data.detail.metrics.isNotEmpty ||
+        source == 'official' ||
+        source == 'official_plus_community' ||
+        source == 'community_observed' ||
+        data.state.communityEvidenceCount > 0;
+  }
+
+  Widget _currentDataUnavailable() {
+    return FigmaSurface(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: FigmaFluviTokens.textMuted.withValues(alpha: .08),
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(
+                color: FigmaFluviTokens.textMuted.withValues(alpha: .26),
+              ),
+            ),
+            child: const Icon(
+              Icons.query_stats_rounded,
+              color: FigmaFluviTokens.textSecondary,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const FigmaSectionLabel('Date curente'),
+                const SizedBox(height: 4),
+                Text(
+                  'Momentan indisponibile. Datele descriptive ANAR rămân disponibile mai sus; FluviAI nu inventează valori curente.',
+                  style: figmaBody(
+                    color: FigmaFluviTokens.textSecondary,
+                    size: 9,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3453,11 +3912,34 @@ class _FigmaReservoirPageState extends ConsumerState<FigmaReservoirPage> {
 
   Widget _operationalData(WaterAssetDetail detail) {
     if (detail.metrics.isEmpty) {
-      return const FigmaTruthfulEmpty(
-        icon: Icons.query_stats_rounded,
-        title: 'Date operaționale indisponibile',
-        message:
-            'Nu există încă o sursă operațională conectată pentru nivel curent, grad de umplere, afluent sau evacuare. FluviAI nu estimează valori numerice oficiale.',
+      return FigmaSurface(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.query_stats_rounded,
+              color: FigmaFluviTokens.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const FigmaSectionLabel('Date operaționale'),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Momentan nu sunt publicate valori numerice curente pentru această entitate.',
+                    style: figmaBody(
+                      color: FigmaFluviTokens.textSecondary,
+                      size: 9,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       );
     }
     return FigmaSurface(

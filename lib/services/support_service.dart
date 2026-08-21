@@ -45,7 +45,9 @@ class SupportService {
       throw const SupportException('Subiectul este prea scurt.');
     }
     if (cleanMessage.length < 10) {
-      throw const SupportException('Descrie problema în cel puțin 10 caractere.');
+      throw const SupportException(
+        'Descrie problema în cel puțin 10 caractere.',
+      );
     }
 
     try {
@@ -62,7 +64,9 @@ class SupportService {
           .timeout(const Duration(seconds: 20));
       final id = row['id']?.toString();
       if (id == null || id.isEmpty) {
-        throw const SupportException('Solicitarea nu a primit un identificator valid.');
+        throw const SupportException(
+          'Solicitarea nu a primit un identificator valid.',
+        );
       }
       return id;
     } on SocketException {
@@ -85,16 +89,22 @@ class SupportService {
           .order('created_at', ascending: false)
           .limit(50)
           .timeout(const Duration(seconds: 15));
-      return rows.map((row) {
-        return SupportTicket(
-          id: row['id'].toString(),
-          category: row['category']?.toString() ?? 'support',
-          subject: row['subject']?.toString() ?? '',
-          message: row['message']?.toString() ?? '',
-          status: row['status']?.toString() ?? 'open',
-          createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '')?.toLocal() ?? DateTime.now(),
-        );
-      }).toList(growable: false);
+      return rows
+          .map((row) {
+            return SupportTicket(
+              id: row['id'].toString(),
+              category: row['category']?.toString() ?? 'support',
+              subject: row['subject']?.toString() ?? '',
+              message: row['message']?.toString() ?? '',
+              status: row['status']?.toString() ?? 'open',
+              createdAt:
+                  DateTime.tryParse(
+                    row['created_at']?.toString() ?? '',
+                  )?.toLocal() ??
+                  DateTime.now(),
+            );
+          })
+          .toList(growable: false);
     } on Exception {
       throw const SupportException('Solicitările nu au putut fi încărcate.');
     }

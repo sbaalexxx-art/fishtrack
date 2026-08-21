@@ -49,10 +49,7 @@ void main() {
     expect(migrationSql, hasLength(3));
     for (final migration in migrationSql) {
       expect(migration.trimLeft().toLowerCase(), contains('begin;'));
-      expect(
-        migration.trimRight().toLowerCase().endsWith('commit;'),
-        isTrue,
-      );
+      expect(migration.trimRight().toLowerCase().endsWith('commit;'), isTrue);
     }
   });
   test('embeds only the three eligible canonical source sets', () {

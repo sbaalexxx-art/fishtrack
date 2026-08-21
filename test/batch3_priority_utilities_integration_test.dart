@@ -10,6 +10,7 @@ import 'package:fishtrack/l10n/app_localizations.dart';
 import 'package:fishtrack/models/station.dart';
 import 'package:fishtrack/models/water_level.dart';
 import 'package:fishtrack/models/weather.dart';
+import 'package:fishtrack/screens/weather_page.dart';
 import 'package:fishtrack/services/community_service.dart';
 import 'package:fishtrack/services/fishing_score_service.dart';
 import 'package:fishtrack/services/water_service.dart';
@@ -29,39 +30,40 @@ void main() {
 
   tearDown(AppNavigator.resetForTesting);
 
-  test('priority destination router carries station and runtime source', () {
-    final station = _station();
-    final source = _FakeDataSource(_snapshot());
+  test(
+    'priority router keeps Water and Fluvi context while Weather stays GPS-owned',
+    () {
+      final station = _station();
+      final source = _FakeDataSource(_snapshot());
 
-    final water =
-        FigmaDestinationRouter.page(
-              AppDestination.water,
-              arguments: station,
-              dataSource: source,
-            )
-            as FigmaWaterHubPage;
-    final weather =
-        FigmaDestinationRouter.page(
-              AppDestination.weather,
-              arguments: station,
-              dataSource: source,
-            )
-            as FigmaWeatherHubPage;
-    final fluvi =
-        FigmaDestinationRouter.page(
-              AppDestination.fluvi,
-              arguments: station,
-              dataSource: source,
-            )
-            as FigmaFluviHubPage;
+      final water =
+          FigmaDestinationRouter.page(
+                AppDestination.water,
+                arguments: station,
+                dataSource: source,
+              )
+              as FigmaWaterHubPage;
+      final weather = FigmaDestinationRouter.page(
+        AppDestination.weather,
+        arguments: station,
+        dataSource: source,
+      );
+      final fluvi =
+          FigmaDestinationRouter.page(
+                AppDestination.fluvi,
+                arguments: station,
+                dataSource: source,
+              )
+              as FigmaFluviHubPage;
 
-    expect(water.initialStation?.id, station.id);
-    expect(weather.initialStation?.id, station.id);
-    expect(fluvi.initialStation?.id, station.id);
-    expect(identical(water.dataSource, source), isTrue);
-    expect(identical(weather.dataSource, source), isTrue);
-    expect(identical(fluvi.dataSource, source), isTrue);
-  });
+      expect(water.initialStation?.id, station.id);
+      expect(weather, isA<WeatherPage>());
+      expect((weather as WeatherPage).initialWeather, isNull);
+      expect(fluvi.initialStation?.id, station.id);
+      expect(identical(water.dataSource, source), isTrue);
+      expect(identical(fluvi.dataSource, source), isTrue);
+    },
+  );
 
   testWidgets('canonical Home keeps Weather and Fluvi on current location', (
     tester,
@@ -88,21 +90,31 @@ void main() {
     await tester.ensureVisible(weatherCard);
     await tester.pump();
     await tester.tap(weatherCard);
-    await tester.pumpAndSettle();
+    // Home passes its already-loaded Weather snapshot into canonical Weather.
+    // The Hub must render that snapshot without waiting for a second GPS/API
+    // round-trip. Later refreshes remain GPS-first inside WeatherPage.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     final weatherRoute = find.byKey(
       AppNavigator.destinationKey(AppDestination.weather),
     );
     expect(weatherRoute, findsOneWidget);
     final weatherFinder = find.descendant(
       of: weatherRoute,
-      matching: find.byType(FigmaWeatherHubPage),
+      matching: find.byType(WeatherPage),
     );
-    final weather = tester.widget<FigmaWeatherHubPage>(weatherFinder);
-    expect(weather.initialStation, isNull);
-    expect(identical(weather.dataSource, source), isTrue);
+    expect(weatherFinder, findsOneWidget);
+    final weatherPage = tester.widget<WeatherPage>(weatherFinder);
+    expect(identical(weatherPage.initialWeather, snapshot.weather), isTrue);
+    expect(
+      find.descendant(of: weatherRoute, matching: find.text('18°')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
 
     Navigator.of(tester.element(weatherRoute)).pop();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     final scoreCard = find.byKey(const ValueKey('commercial-score-card'));
     await tester.ensureVisible(scoreCard);
     await tester.pump();
@@ -121,67 +133,91 @@ void main() {
     expect(identical(fluvi.dataSource, source), isTrue);
   });
 
-  testWidgets('Utilities Hub carries selected station context into Weather', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(390, 844);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'Utilities Hub opens GPS-owned Weather without station substitution',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final source = _FakeDataSource(_snapshot());
-    await tester.pumpWidget(
-      _app(
-        FluviAIUtilitiesHubPage(onSelectMainTab: (_) {}, dataSource: source),
-      ),
-    );
-    await tester.pump();
-    final context = tester.element(find.byType(FluviAIUtilitiesHubPage));
-    final container = ProviderScope.containerOf(context, listen: false);
-    container
-        .read(selectedContextProvider.notifier)
-        .select(
-          const SelectedContext(
-            countryCode: 'RO',
-            stationId: 'batch3-station',
-            stationName: 'Baziaș',
-            waterId: 'danube-bazias',
-            waterName: 'Dunărea',
-            riverName: 'Dunărea',
-            latitude: 44.8167,
-            longitude: 21.3944,
-            source: 'AFDJ',
-          ),
-        );
-    await tester.pump();
+      final source = _FakeDataSource(_snapshot());
+      await tester.pumpWidget(
+        _app(
+          FluviAIUtilitiesHubPage(onSelectMainTab: (_) {}, dataSource: source),
+        ),
+      );
+      await tester.pump();
+      final context = tester.element(find.byType(FluviAIUtilitiesHubPage));
+      final container = ProviderScope.containerOf(context, listen: false);
+      container
+          .read(selectedContextProvider.notifier)
+          .select(
+            const SelectedContext(
+              countryCode: 'RO',
+              stationId: 'batch3-station',
+              stationName: 'Baziaș',
+              waterId: 'danube-bazias',
+              waterName: 'Dunărea',
+              riverName: 'Dunărea',
+              latitude: 44.8167,
+              longitude: 21.3944,
+              source: 'AFDJ',
+            ),
+          );
+      await tester.pump();
 
-    await tester.enterText(
-      find.byKey(const ValueKey('utilities-search-field')),
-      'Vreme pentru pescuit',
-    );
-    await tester.pump();
-    final weatherUtility = find.byKey(
-      const ValueKey('utility-search-weather.forecast'),
-    );
-    await tester.ensureVisible(weatherUtility);
-    await tester.pump();
-    await tester.tap(weatherUtility);
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('utilities-search-field')),
+        'Vreme pentru pescuit',
+      );
+      await tester.pump();
+      final weatherUtility = find.byKey(
+        const ValueKey('utility-search-weather.forecast'),
+      );
+      await tester.ensureVisible(weatherUtility);
+      await tester.pump();
+      await tester.tap(weatherUtility);
+      // Selected water/station context is intentionally separate from the
+      // physical location used by canonical Weather.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
-    final weatherRoute = find.byKey(
-      AppNavigator.destinationKey(AppDestination.weather),
-    );
-    expect(weatherRoute, findsOneWidget);
-    final weatherFinder = find.descendant(
-      of: weatherRoute,
-      matching: find.byType(FigmaWeatherHubPage),
-    );
-    final weather = tester.widget<FigmaWeatherHubPage>(weatherFinder);
-    expect(weather.initialStation?.id, 'batch3-station');
-    expect(weather.initialStation?.hasWaterLevel, isFalse);
-    expect(weather.initialStation?.waterLevelSource, 'AFDJ');
-    expect(identical(weather.dataSource, source), isTrue);
-  });
+      final weatherRoute = find.byKey(
+        AppNavigator.destinationKey(AppDestination.weather),
+      );
+      expect(weatherRoute, findsOneWidget);
+      final weatherFinder = find.descendant(
+        of: weatherRoute,
+        matching: find.byType(WeatherPage),
+      );
+      expect(weatherFinder, findsOneWidget);
+      expect(tester.widget<WeatherPage>(weatherFinder).initialWeather, isNull);
+    },
+  );
+
+  testWidgets(
+    'canonical WeatherPage stays flex-safe at 390px and 200 percent text',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      final snapshot = _snapshot();
+      await tester.pumpWidget(
+        _app(WeatherPage(initialWeather: snapshot.weather)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.byType(WeatherPage), findsOneWidget);
+      expect(find.text('18°'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'Water, Weather and Fluvi expose the connected priority actions',

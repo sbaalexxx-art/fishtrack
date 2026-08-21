@@ -73,9 +73,11 @@ class DiagnosticsService {
   SharedPreferences? _preferences;
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
-  List<DiagnosticEvent> get events => List<DiagnosticEvent>.unmodifiable(_events);
+  List<DiagnosticEvent> get events =>
+      List<DiagnosticEvent>.unmodifiable(_events);
 
-  List<String> get persistedErrors => List<String>.unmodifiable(_persistedErrors);
+  List<String> get persistedErrors =>
+      List<String>.unmodifiable(_persistedErrors);
 
   List<DiagnosticEvent> get recentErrors => _events
       .where((event) => event.level == DiagnosticLevel.error)
@@ -92,7 +94,9 @@ class DiagnosticsService {
     _preferences = preferences;
     _persistedErrors
       ..clear()
-      ..addAll(preferences.getStringList(_persistedErrorKey) ?? const <String>[]);
+      ..addAll(
+        preferences.getStringList(_persistedErrorKey) ?? const <String>[],
+      );
     for (final event in _events.where((event) => event.isError)) {
       _appendPersistedError(event.toLine());
     }
@@ -217,7 +221,9 @@ class DiagnosticsService {
     );
   }
 
-  String exportText({Map<String, Object?> snapshot = const <String, Object?>{}}) {
+  String exportText({
+    Map<String, Object?> snapshot = const <String, Object?>{},
+  }) {
     final buffer = StringBuffer()
       ..writeln('FluviAI PO Diagnostics')
       ..writeln('generated_at=${DateTime.now().toIso8601String()}')
@@ -243,7 +249,10 @@ class DiagnosticsService {
     if (_persistedErrors.isNotEmpty && _persistedErrors.last == line) return;
     _persistedErrors.add(_sanitize(line));
     if (_persistedErrors.length > _maxPersistedErrors) {
-      _persistedErrors.removeRange(0, _persistedErrors.length - _maxPersistedErrors);
+      _persistedErrors.removeRange(
+        0,
+        _persistedErrors.length - _maxPersistedErrors,
+      );
     }
   }
 

@@ -18,6 +18,7 @@ import '../../../services/fishing_score_service.dart';
 import '../../../services/location_service.dart';
 import '../../../services/water_service.dart';
 import '../../../services/weather_service.dart';
+import '../../../widgets/weather/weather_visuals.dart';
 import '../../../widgets/home_premium/home_map.dart';
 import '../../../widgets/home_premium/side_menu.dart';
 import '../../../widgets/fluviai/draggable_ask_fluvi.dart';
@@ -261,7 +262,10 @@ class _CommercialHomePageState extends ConsumerState<CommercialHomePage> {
                   ? _openDeveloperMode
                   : null,
               onOpenWater: () => _openWater(snapshot),
-              onOpenWeather: () => _openDestination(AppDestination.weather),
+              onOpenWeather: () => _openDestination(
+                AppDestination.weather,
+                arguments: snapshot?.weather,
+              ),
               onOpenScore: () => _openDestination(AppDestination.fluvi),
               onOpenCommunity: () => _openDestination(AppDestination.community),
               onOpenReport: _openReport,
@@ -318,16 +322,19 @@ class _BentoHomeSurface extends StatelessWidget {
   String copy({required String ro, required String en}) => isRomanian ? ro : en;
 
   String get waterLabel {
-    final selectedWater = selected?.waterName?.trim();
-    if (selectedWater != null && selectedWater.isNotEmpty) {
-      return selectedWater;
+    final stationName = snapshot?.station?.name.trim();
+    if (stationName != null && stationName.isNotEmpty) return stationName;
+
+    final selectedStation = selected?.stationName?.trim();
+    if (selectedStation != null && selectedStation.isNotEmpty) {
+      return selectedStation;
     }
+
+    final selectedWater = selected?.waterName?.trim();
+    if (selectedWater != null && selectedWater.isNotEmpty) return selectedWater;
 
     final river = snapshot?.station?.river.trim();
     if (river != null && river.isNotEmpty) return river;
-
-    final stationName = snapshot?.station?.name.trim();
-    if (stationName != null && stationName.isNotEmpty) return stationName;
 
     return copy(ro: 'Alege o apă', en: 'Choose water');
   }
@@ -362,7 +369,7 @@ class _BentoHomeSurface extends StatelessWidget {
           final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
           final adaptiveTextScale = textScale.clamp(1.0, 2.0).toDouble();
           final scaleDelta = adaptiveTextScale - 1;
-          final headerHeight = 44 + scaleDelta * 34;
+          final headerHeight = 40 + scaleDelta * 26;
           // At accessible text sizes the compact Weather card needs more
           // vertical room. QA at 360px / 1.3x measured a 32px intrinsic
           // overflow with the previous +70 slope. Keep the exact 132px
@@ -382,7 +389,7 @@ class _BentoHomeSurface extends StatelessWidget {
               physics: const AlwaysScrollableScrollPhysics(
                 parent: ClampingScrollPhysics(),
               ),
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Center(
                 child: SizedBox(
                   width: contentWidth,
@@ -392,12 +399,11 @@ class _BentoHomeSurface extends StatelessWidget {
                       _BentoHeader(
                         height: headerHeight,
                         placeLabel: placeLabel,
-                        waterLabel: waterLabel,
                         isRomanian: isRomanian,
                         onNotifications: onNotifications,
                         onDeveloperMode: onDeveloperMode,
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 1),
                       SizedBox(
                         height: mapHeight,
                         child: _BentoMapCard(
@@ -428,7 +434,7 @@ class _BentoHomeSurface extends StatelessWidget {
                                 onTap: onOpenWater,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             Expanded(
                               flex: 120,
                               child: _BentoWeatherCard(
@@ -444,7 +450,7 @@ class _BentoHomeSurface extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 3),
                       SizedBox(
                         height: decisionRowHeight,
                         child: Row(
@@ -483,7 +489,7 @@ class _BentoHomeSurface extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       SizedBox(
                         height: reportHeight,
                         child: _BentoReportCard(
@@ -518,7 +524,6 @@ class _BentoHeader extends StatelessWidget {
   const _BentoHeader({
     required this.height,
     required this.placeLabel,
-    required this.waterLabel,
     required this.isRomanian,
     required this.onNotifications,
     required this.onDeveloperMode,
@@ -526,84 +531,113 @@ class _BentoHeader extends StatelessWidget {
 
   final double height;
   final String placeLabel;
-  final String waterLabel;
   final bool isRomanian;
   final VoidCallback onNotifications;
   final VoidCallback? onDeveloperMode;
 
   @override
   Widget build(BuildContext context) {
+    final colors = FluviAIThemeColors.of(context);
+
     return SizedBox(
       height: height,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Expanded(
-            child: Semantics(
-              label: isRomanian
-                  ? 'Contextul locației curente'
-                  : 'Current location context',
-              child: Material(
-                color: FluviAIThemeColors.of(context).surfaceStrong,
-                borderRadius: BorderRadius.circular(14),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onLongPress: onDeveloperMode,
-                  child: Container(
-                    key: const ValueKey('commercial-home-context-header'),
-                    constraints: BoxConstraints(
-                      minHeight: 44,
-                      maxHeight: height,
-                    ),
-                    padding: const EdgeInsets.fromLTRB(11, 5, 10, 4),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: FluviAIThemeColors.of(context).borderSoft,
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 245),
+                child: Semantics(
+                  label: isRomanian
+                      ? 'Locatia fizica actuala'
+                      : 'Current physical location',
+                  button: onDeveloperMode != null,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      key: const ValueKey('commercial-home-context-header'),
+                      onLongPress: onDeveloperMode,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        height: 32,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceStrong.withValues(alpha: .72),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: colors.borderSoft.withValues(alpha: .72),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.location_on_rounded,
+                              size: 14,
+                              color: FluviAICommercialTokens.brandFocus,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                placeLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily:
+                                      FluviAICommercialTokens.primaryFontFamily,
+                                  color: colors.textPrimary,
+                                  fontSize: 12.5,
+                                  height: 16 / 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          placeLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily:
-                                FluviAICommercialTokens.primaryFontFamily,
-                            color: FluviAIThemeColors.of(context).textPrimary,
-                            fontSize: 15,
-                            height: 18 / 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          waterLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily:
-                                FluviAICommercialTokens.primaryFontFamily,
-                            color: FluviAIThemeColors.of(context).textSecondary,
-                            fontSize: 10,
-                            height: 12 / 10,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          _BentoIconButton(
-            key: const ValueKey('canonical-home-alerts'),
-            icon: Icons.notifications_none_rounded,
-            tooltip: isRomanian ? 'Notificări' : 'Notifications',
-            onTap: onNotifications,
+          const SizedBox(width: 10),
+          Semantics(
+            label: isRomanian ? 'Notificari' : 'Notifications',
+            button: true,
+            child: SizedBox(
+              key: const ValueKey('canonical-home-alerts'),
+              width: 40,
+              height: 40,
+              child: Center(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onNotifications,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: colors.surfaceStrong.withValues(alpha: .72),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: colors.borderSoft.withValues(alpha: .72),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.notifications_none_rounded,
+                        size: 15,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -841,9 +875,46 @@ class _BentoWaterCard extends StatelessWidget {
       child: loading
           ? const _BentoSkeleton(lines: [94, 70, 134, 150])
           : Padding(
-              padding: const EdgeInsets.fromLTRB(13, 12, 11, 10),
+              padding: const EdgeInsets.fromLTRB(13, 8, 11, 7),
               child: Stack(
                 children: [
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              _BentoColors.waterBlue.withValues(alpha: .16),
+                              FluviAIThemeColors.of(
+                                context,
+                              ).surfaceRaised.withValues(alpha: .05),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: -38,
+                    right: -28,
+                    width: 116,
+                    height: 116,
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              _BentoColors.waterBlue.withValues(alpha: .15),
+                              _BentoColors.waterBlue.withValues(alpha: 0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                   Positioned.fill(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -852,13 +923,14 @@ class _BentoWaterCard extends StatelessWidget {
                           children: [
                             const Icon(
                               Icons.water_drop_outlined,
-                              size: 18,
+                              size: 15,
                               color: _BentoColors.waterBlue,
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                '${isRomanian ? 'APĂ' : 'WATER'} · ${waterLabel.toUpperCase()}',
+                                waterLabel,
+                                key: const ValueKey('home-water-station-name'),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -867,15 +939,31 @@ class _BentoWaterCard extends StatelessWidget {
                                   color: FluviAIThemeColors.of(
                                     context,
                                   ).textSecondary,
-                                  fontSize: 9,
-                                  height: 10.8 / 9,
-                                  fontWeight: FontWeight.w500,
+                                  fontSize: 12.5,
+                                  height: 15 / 12.5,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 2),
+                        Text(
+                          [snapshot?.station?.river.trim(), source]
+                              .whereType<String>()
+                              .where((value) => value.isNotEmpty)
+                              .join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: FluviAICommercialTokens.monoFontFamily,
+                            color: FluviAIThemeColors.of(context).textMuted,
+                            fontSize: 8.5,
+                            height: 10.2 / 8.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
@@ -891,8 +979,8 @@ class _BentoWaterCard extends StatelessWidget {
                                     color: FluviAIThemeColors.of(
                                       context,
                                     ).textPrimary,
-                                    fontSize: 34,
-                                    height: 40.8 / 34,
+                                    fontSize: 29,
+                                    height: 31 / 29,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -901,7 +989,7 @@ class _BentoWaterCard extends StatelessWidget {
                             if (reading != null) ...[
                               const SizedBox(width: 6),
                               Padding(
-                                padding: const EdgeInsets.only(bottom: 7),
+                                padding: const EdgeInsets.only(bottom: 4),
                                 child: Text(
                                   unit,
                                   style: TextStyle(
@@ -910,8 +998,8 @@ class _BentoWaterCard extends StatelessWidget {
                                     color: FluviAIThemeColors.of(
                                       context,
                                     ).textSecondary,
-                                    fontSize: 15,
-                                    height: 18 / 15,
+                                    fontSize: 13,
+                                    height: 15.6 / 13,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -927,8 +1015,8 @@ class _BentoWaterCard extends StatelessWidget {
                             fontFamily:
                                 FluviAICommercialTokens.primaryFontFamily,
                             color: trendColor,
-                            fontSize: 12,
-                            height: 14.4 / 12,
+                            fontSize: 10.5,
+                            height: 12.6 / 10.5,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -943,8 +1031,8 @@ class _BentoWaterCard extends StatelessWidget {
                               color: FluviAIThemeColors.of(
                                 context,
                               ).textSecondary,
-                              fontSize: 9.5,
-                              height: 11.4 / 9.5,
+                              fontSize: 8.5,
+                              height: 10.2 / 8.5,
                               fontWeight: FontWeight.w400,
                             ),
                           ),
@@ -957,8 +1045,8 @@ class _BentoWaterCard extends StatelessWidget {
                             fontFamily:
                                 FluviAICommercialTokens.primaryFontFamily,
                             color: FluviAIThemeColors.of(context).textMuted,
-                            fontSize: 10,
-                            height: 12 / 10,
+                            fontSize: 8.5,
+                            height: 10.2 / 8.5,
                             fontWeight: FontWeight.w400,
                           ),
                         ),
@@ -997,6 +1085,33 @@ class _BentoWeatherCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final data = weather?.data;
+    final theme = Theme.of(context);
+    final kind = weatherVisualKind(data?.condition ?? '');
+    final daylight = data == null ? true : weatherIsDaylight(data);
+    final accent = data == null
+        ? FluviAIThemeColors.of(context).textSecondary
+        : weatherVisualAccent(
+            kind,
+            isDaylight: daylight,
+            brightness: theme.brightness,
+          );
+    final gradient = data == null
+        ? <Color>[
+            FluviAIThemeColors.of(context).surface,
+            FluviAIThemeColors.of(context).surface,
+          ]
+        : weatherAtmosphereGradient(
+            kind,
+            isDaylight: daylight,
+            brightness: theme.brightness,
+          );
+
+    final onAtmosphere =
+        data != null && (theme.brightness == Brightness.dark || !daylight)
+        ? Colors.white
+        : FluviAIThemeColors.of(context).textPrimary;
+    final secondary = onAtmosphere.withValues(alpha: .70);
+
     return _BentoCardTap(
       key: const ValueKey('commercial-weather-card'),
       onTap: onTap,
@@ -1004,83 +1119,170 @@ class _BentoWeatherCard extends StatelessWidget {
       color: FluviAIThemeColors.of(context).surface,
       child: loading
           ? const _BentoSkeleton(lines: [64, 54, 86, 76])
-          : Padding(
-              padding: const EdgeInsets.fromLTRB(13, 12, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: gradient,
+                ),
+              ),
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.cloud_outlined,
-                        size: 21,
-                        color: FluviAIThemeColors.of(context).textSecondary,
+                  if (data != null)
+                    Positioned.fill(
+                      child: WeatherAtmosphereBackdrop(
+                        kind: kind,
+                        isDaylight: daylight,
+                        foreground: onAtmosphere,
+                        compact: true,
                       ),
-                      const SizedBox(width: 7),
-                      Flexible(
-                        child: Text(
-                          isRomanian ? 'VREME' : 'WEATHER',
-                          maxLines: 1,
-                          overflow: TextOverflow.fade,
-                          softWrap: false,
-                          style: TextStyle(
-                            fontFamily: FluviAICommercialTokens.monoFontFamily,
-                            color: FluviAIThemeColors.of(context).textSecondary,
-                            fontSize: 9,
-                            height: 10.8 / 9,
-                            fontWeight: FontWeight.w500,
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(13, 11, 10, 9),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 240),
+                              child: Icon(
+                                data == null
+                                    ? Icons.cloud_outlined
+                                    : weatherVisualIcon(
+                                        kind,
+                                        isDaylight: daylight,
+                                      ),
+                                key: ValueKey<String>('${kind.name}-$daylight'),
+                                size: 19,
+                                color: accent,
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            Flexible(
+                              child: Text(
+                                isRomanian ? 'VREME' : 'WEATHER',
+                                maxLines: 1,
+                                overflow: TextOverflow.fade,
+                                softWrap: false,
+                                style: TextStyle(
+                                  fontFamily:
+                                      FluviAICommercialTokens.monoFontFamily,
+                                  color: secondary,
+                                  fontSize: 9,
+                                  height: 10.8 / 9,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              data == null
+                                  ? '—'
+                                  : '${data.temperature.round()}°',
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontFamily:
+                                    FluviAICommercialTokens.primaryFontFamily,
+                                color: onAtmosphere,
+                                fontSize: 31,
+                                height: 37.2 / 31,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        data == null ? '—' : '${data.temperature.round()}°',
-                        maxLines: 1,
-                        style: TextStyle(
-                          fontFamily: FluviAICommercialTokens.primaryFontFamily,
-                          color: FluviAIThemeColors.of(context).textPrimary,
-                          fontSize: 31,
-                          height: 37.2 / 31,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    data == null
-                        ? '—'
-                        : '${_localizedWindDirection(data.windDirectionLabel, isRomanian: isRomanian)} ${data.windSpeed.round()} km/h',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: FluviAICommercialTokens.primaryFontFamily,
-                      color: _BentoColors.warning,
-                      fontSize: 11,
-                      height: 13.2 / 11,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    data == null
-                        ? (isRomanian ? 'Ploaie —' : 'Rain —')
-                        : '${isRomanian ? 'Ploaie' : 'Rain'} ${data.precipitationProbability.round()}%',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: FluviAICommercialTokens.primaryFontFamily,
-                      color: FluviAIThemeColors.of(context).textMuted,
-                      fontSize: 10,
-                      height: 12 / 10,
-                      fontWeight: FontWeight.w400,
+                        if (data != null)
+                          Text(
+                            weatherConditionLabel(
+                              data.condition,
+                              isRomanian: isRomanian,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily:
+                                  FluviAICommercialTokens.primaryFontFamily,
+                              color: onAtmosphere,
+                              fontSize: 10.5,
+                              height: 12.6 / 10.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                        else
+                          Text(
+                            isRomanian
+                                ? 'Date indisponibile'
+                                : 'Data unavailable',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily:
+                                  FluviAICommercialTokens.primaryFontFamily,
+                              color: secondary,
+                              fontSize: 10,
+                            ),
+                          ),
+                        const Spacer(),
+                        if (data != null)
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.air_rounded,
+                                size: 12,
+                                color: secondary,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    '${_localizedWindDirection(data.windDirectionLabel, isRomanian: isRomanian)} '
+                                    '${data.windSpeed.round()} km/h',
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    style: TextStyle(
+                                      fontFamily: FluviAICommercialTokens
+                                          .primaryFontFamily,
+                                      color: secondary,
+                                      fontSize: 9.5,
+                                      height: 11.4 / 9.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              Icon(
+                                Icons.water_drop_outlined,
+                                size: 12,
+                                color: secondary,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                '${data.precipitationProbability.round()}%',
+                                style: TextStyle(
+                                  fontFamily:
+                                      FluviAICommercialTokens.primaryFontFamily,
+                                  color: secondary,
+                                  fontSize: 9.5,
+                                  height: 11.4 / 9.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
                   ),
                 ],
@@ -1506,48 +1708,6 @@ class _BentoReportCard extends StatelessWidget {
                 ],
               ),
             ),
-    );
-  }
-}
-
-class _BentoIconButton extends StatelessWidget {
-  const _BentoIconButton({
-    super.key,
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: FluviAIThemeColors.of(context).surface,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: FluviAIThemeColors.of(context).border),
-            ),
-            child: Icon(
-              icon,
-              size: 20,
-              color: FluviAIThemeColors.of(context).textPrimary,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

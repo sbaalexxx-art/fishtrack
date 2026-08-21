@@ -161,7 +161,10 @@ void main() {
   );
 
   test('Mapbox styles are independent from global brightness', () {
-    expect(MapThemeStyle.satellite, mapbox.MapboxStyles.STANDARD_SATELLITE);
+    expect(
+      MapThemeStyle.satellite,
+      'mapbox://styles/mapbox/satellite-streets-v12',
+    );
     expect(MapThemeStyle.standard, mapbox.MapboxStyles.STANDARD);
     expect(MapThemeStyle.outdoors, mapbox.MapboxStyles.OUTDOORS);
     expect(MapThemeStyle.streets, mapbox.MapboxStyles.MAPBOX_STREETS);

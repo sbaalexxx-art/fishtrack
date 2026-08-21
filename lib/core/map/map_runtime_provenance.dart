@@ -34,6 +34,8 @@ void logMapRuntime(
     final detail = values.entries
         .map((entry) => '${entry.key}=${entry.value ?? 'absent'}')
         .join(' ');
-    debugPrint('[FluviAI.MapRuntime] $event${detail.isEmpty ? '' : ' $detail'}');
+    debugPrint(
+      '[FluviAI.MapRuntime] $event${detail.isEmpty ? '' : ' $detail'}',
+    );
   }
 }

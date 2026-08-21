@@ -102,7 +102,7 @@ void main() {
     });
   });
 
-  test('official Water chart preserves real gaps as separate segments', () {
+  test('official Water chart keeps real observations in one visual series', () {
     final base = DateTime.utc(2026, 8, 8, 12);
     final segments = officialWaterChartSegments([
       _reading(base.subtract(const Duration(hours: 50)), 100),
@@ -110,7 +110,7 @@ void main() {
       _reading(base.subtract(const Duration(hours: 2)), 110),
       _reading(base.subtract(const Duration(hours: 1)), 111),
     ]);
-    expect(segments.map((segment) => segment.length), [2, 2]);
+    expect(segments.map((segment) => segment.length), [4]);
   });
 
   testWidgets('Water Details renders curved real series and touch metadata', (
@@ -148,10 +148,10 @@ void main() {
     expect(chart.data.titlesData.show, isFalse);
     expect(chart.data.gridData.show, isFalse);
     expect(chart.data.lineTouchData.enabled, isTrue);
-    expect(chart.data.lineBarsData, hasLength(2));
+    expect(chart.data.lineBarsData, hasLength(1));
     expect(
       chart.data.lineBarsData.every(
-        (bar) => bar.isCurved && bar.curveSmoothness == .4,
+        (bar) => bar.isCurved && bar.curveSmoothness == .18,
       ),
       isTrue,
     );

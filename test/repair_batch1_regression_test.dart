@@ -18,20 +18,16 @@ void main() {
 
   test('Water history ranges filter real timestamped observations', () {
     expect(
-      realWaterHistoryForRange(history(), WaterHistoryRange.hours24).length,
-      2,
-    );
-    expect(
-      realWaterHistoryForRange(history(), WaterHistoryRange.days3).length,
+      realWaterHistoryForRange(history(), WaterHistoryRange.sevenDays).length,
       3,
     );
     expect(
-      realWaterHistoryForRange(history(), WaterHistoryRange.days30).length,
+      realWaterHistoryForRange(history(), WaterHistoryRange.thirtyDays).length,
       4,
     );
   });
 
-  testWidgets('Free Water history changes 24h/3d and locks 30d', (
+  testWidgets('Free Water history is fixed to the real 7-day window', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -40,18 +36,15 @@ void main() {
       ),
     );
 
-    expect(find.text('2 observații reale'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('water-history-range-3d')));
-    await tester.pump();
+    expect(find.text('Istoric Free · ultimele 7 zile'), findsOneWidget);
     expect(find.text('3 observații reale'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('water-history-range-30d')));
-    await tester.pump();
-    expect(find.text('3 observații reale'), findsOneWidget);
+    expect(find.byKey(const ValueKey('water-history-range-24h')), findsNothing);
+    expect(find.byKey(const ValueKey('water-history-range-3d')), findsNothing);
+    expect(find.byKey(const ValueKey('water-history-range-30d')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Pro Water history exposes the real 30-day range', (
+  testWidgets('Pro Water history is fixed to the real 30-day window', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -63,9 +56,11 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const ValueKey('water-history-range-30d')));
-    await tester.pump();
+    expect(find.text('Istoric Pro · ultimele 30 zile'), findsOneWidget);
     expect(find.text('4 observații reale'), findsOneWidget);
+    expect(find.byKey(const ValueKey('water-history-range-24h')), findsNothing);
+    expect(find.byKey(const ValueKey('water-history-range-3d')), findsNothing);
+    expect(find.byKey(const ValueKey('water-history-range-30d')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

@@ -2102,8 +2102,7 @@ class WaterService {
         status: WaterUiStatus.insufficientHistory,
         safeDiagnosticMessage: null,
         deltaCm: hasReportedDelta ? reportedDeltaCm24h : null,
-        comparisonDuration:
-            hasReportedDelta ? const Duration(hours: 24) : null,
+        comparisonDuration: hasReportedDelta ? const Duration(hours: 24) : null,
         trend: reportedTrend,
       ),
       now,
@@ -2142,7 +2141,8 @@ class WaterService {
         candidateReading.hasKnownTrend != currentReading.hasKnownTrend ||
         candidateReading.reportedDeltaCm24h !=
             currentReading.reportedDeltaCm24h ||
-        candidateReading.waterTemperatureC != currentReading.waterTemperatureC ||
+        candidateReading.waterTemperatureC !=
+            currentReading.waterTemperatureC ||
         candidateReading.forecast.length != currentReading.forecast.length ||
         candidate.history.length != current.history.length ||
         candidate.safeDiagnosticMessage != current.safeDiagnosticMessage;

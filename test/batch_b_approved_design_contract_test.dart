@@ -42,7 +42,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Inteligență Hidrologică'), findsOneWidget);
-      expect(find.text('Tendință nivel · 30 zile'), findsOneWidget);
+      expect(find.text('Tendință nivel · 7 zile'), findsOneWidget);
       expect(
         find.text('Perioadele fără date nu sunt estimate.'),
         findsOneWidget,

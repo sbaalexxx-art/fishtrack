@@ -38,7 +38,8 @@ class CatchRepository {
     double? speciesConfidence,
     String? speciesModelVersion,
     bool speciesUserConfirmed = true,
-    List<Map<String, Object?>> speciesCandidates = const <Map<String, Object?>>[],
+    List<Map<String, Object?>> speciesCandidates =
+        const <Map<String, Object?>>[],
   }) async {
     final submitStopwatch = Stopwatch()..start();
     DiagnosticsService.instance.record(
@@ -173,10 +174,7 @@ class CatchRepository {
       final response = await _supabase
           .rpc(
             'get_public_catches_for_station_v2',
-            params: <String, Object?>{
-              'p_station_id': stationId,
-              'p_limit': 20,
-            },
+            params: <String, Object?>{'p_station_id': stationId, 'p_limit': 20},
           )
           .timeout(const Duration(seconds: 12));
 
@@ -222,7 +220,9 @@ class CatchRepository {
     try {
       final response = await _supabase
           .from('catches')
-          .select('id, station_id, species, species_scientific, species_source, species_confidence, species_model_version, species_user_confirmed, weight, length, timestamp')
+          .select(
+            'id, station_id, species, species_scientific, species_source, species_confidence, species_model_version, species_user_confirmed, weight, length, timestamp',
+          )
           .eq('user_id', userId)
           .order('timestamp', ascending: false)
           .limit(100)

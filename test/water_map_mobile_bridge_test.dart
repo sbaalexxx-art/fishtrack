@@ -24,9 +24,7 @@ void main() {
         'priority': 93,
         'has_operational_data': false,
         'community_report_count': 0,
-        'state_payload': <String, Object?>{
-          'operator_name': 'Operator test',
-        },
+        'state_payload': <String, Object?>{'operator_name': 'Operator test'},
       });
 
       expect(pin.isHydropower, isTrue);
@@ -77,66 +75,72 @@ void main() {
       expect(asset.hasOperationalData, isFalse);
     });
 
-    test('hydropower UNKNOWN state keeps all operational values unavailable', () {
-      final state = HydropowerPlantState.fromJson(<String, dynamic>{
-        'plant_id': 'plant-1',
-        'canonical_key': 'ro:hydro-plant:olt-test',
-        'name': 'CHE Test',
-        'operator_name': 'Hidroelectrica S.A.',
-        'water_body_id': 'water-1',
-        'dam_id': 'dam-1',
-        'reservoir_id': 'reservoir-1',
-        'latitude': 45.5,
-        'longitude': 24.5,
-        'operation_state': 'UNKNOWN',
-        'evidence_class': 'UNKNOWN',
-        'evidence_source': 'unavailable',
-        'evidence_metric': null,
-        'evidence_value': null,
-        'evidence_unit': null,
-        'evidence_observed_at': null,
-        'confidence': 0,
-        'freshness_status': 'unavailable',
-        'community_operation_signal': 'unknown',
-        'community_report_count': 0,
-      });
+    test(
+      'hydropower UNKNOWN state keeps all operational values unavailable',
+      () {
+        final state = HydropowerPlantState.fromJson(<String, dynamic>{
+          'plant_id': 'plant-1',
+          'canonical_key': 'ro:hydro-plant:olt-test',
+          'name': 'CHE Test',
+          'operator_name': 'Hidroelectrica S.A.',
+          'water_body_id': 'water-1',
+          'dam_id': 'dam-1',
+          'reservoir_id': 'reservoir-1',
+          'latitude': 45.5,
+          'longitude': 24.5,
+          'operation_state': 'UNKNOWN',
+          'evidence_class': 'UNKNOWN',
+          'evidence_source': 'unavailable',
+          'evidence_metric': null,
+          'evidence_value': null,
+          'evidence_unit': null,
+          'evidence_observed_at': null,
+          'confidence': 0,
+          'freshness_status': 'unavailable',
+          'community_operation_signal': 'unknown',
+          'community_report_count': 0,
+        });
 
-      expect(state.operationState, 'UNKNOWN');
-      expect(state.evidenceClass, 'UNKNOWN');
-      expect(state.evidenceMetric, isNull);
-      expect(state.evidenceValue, isNull);
-      expect(state.evidenceUnit, isNull);
-      expect(state.evidenceObservedAt, isNull);
-      expect(state.confidence, 0);
-    });
+        expect(state.operationState, 'UNKNOWN');
+        expect(state.evidenceClass, 'UNKNOWN');
+        expect(state.evidenceMetric, isNull);
+        expect(state.evidenceValue, isNull);
+        expect(state.evidenceUnit, isNull);
+        expect(state.evidenceObservedAt, isNull);
+        expect(state.confidence, 0);
+      },
+    );
 
-    test('SelectedContext carries hydropower identity without losing water context', () {
-      const selected = SelectedContext(
-        countryCode: 'RO',
-        locationName: 'CHE Test',
-        latitude: 45.5,
-        longitude: 24.5,
-        waterId: 'water-1',
-        waterName: 'Olt',
-        riverName: 'Olt',
-        hydropowerPlantId: 'plant-1',
-        source: 'unavailable',
-      );
+    test(
+      'SelectedContext carries hydropower identity without losing water context',
+      () {
+        const selected = SelectedContext(
+          countryCode: 'RO',
+          locationName: 'CHE Test',
+          latitude: 45.5,
+          longitude: 24.5,
+          waterId: 'water-1',
+          waterName: 'Olt',
+          riverName: 'Olt',
+          hydropowerPlantId: 'plant-1',
+          source: 'unavailable',
+        );
 
-      expect(selected.hasEntity, isTrue);
-      expect(selected.hydropowerPlantId, 'plant-1');
-      expect(selected.waterId, 'water-1');
+        expect(selected.hasEntity, isTrue);
+        expect(selected.hydropowerPlantId, 'plant-1');
+        expect(selected.waterId, 'water-1');
 
-      final refreshed = selected.copyWith(
-        damId: 'dam-1',
-        reservoirId: 'reservoir-1',
-        source: 'official_measured',
-      );
-      expect(refreshed.hydropowerPlantId, 'plant-1');
-      expect(refreshed.waterId, 'water-1');
-      expect(refreshed.damId, 'dam-1');
-      expect(refreshed.reservoirId, 'reservoir-1');
-      expect(refreshed.source, 'official_measured');
-    });
+        final refreshed = selected.copyWith(
+          damId: 'dam-1',
+          reservoirId: 'reservoir-1',
+          source: 'official_measured',
+        );
+        expect(refreshed.hydropowerPlantId, 'plant-1');
+        expect(refreshed.waterId, 'water-1');
+        expect(refreshed.damId, 'dam-1');
+        expect(refreshed.reservoirId, 'reservoir-1');
+        expect(refreshed.source, 'official_measured');
+      },
+    );
   });
 }

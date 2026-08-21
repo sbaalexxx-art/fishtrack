@@ -53,9 +53,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
   Future<_FavoritesData> _load() async {
     if (!_service.isAuthenticated) {
-      throw const FavoriteException(
-        'Please sign in to view your favourites.',
-      );
+      throw const FavoriteException('Please sign in to view your favourites.');
     }
 
     final results = await Future.wait<Object>([
@@ -143,7 +141,6 @@ class _FavoritesPageState extends State<FavoritesPage> {
     }
   }
 
-
   Future<void> _removeSavedItem(SavedItem item) async {
     final isRo = Localizations.localeOf(context).languageCode == 'ro';
     try {
@@ -155,14 +152,17 @@ class _FavoritesPageState extends State<FavoritesPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            isRo ? '${item.title} a fost eliminat.' : '${item.title} was removed.',
+            isRo
+                ? '${item.title} a fost eliminat.'
+                : '${item.title} was removed.',
           ),
         ),
       );
     } on SavedItemsException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -191,9 +191,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
   void _openStation(Station station) {
     try {
-      ProviderScope.containerOf(context, listen: false)
-          .read(selectedContextProvider.notifier)
-          .selectStation(station);
+      ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(selectedContextProvider.notifier).selectStation(station);
     } on StateError {
       // Widget tests and isolated previews may intentionally omit ProviderScope.
     }
@@ -259,7 +260,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
                   }
 
                   final data = snapshot.data ?? const _FavoritesData();
-                  final stations = _selectedCategory == _FavoriteCategory.all ||
+                  final stations =
+                      _selectedCategory == _FavoriteCategory.all ||
                           _selectedCategory == _FavoriteCategory.stations
                       ? data.stations
                       : const <Station>[];
@@ -271,16 +273,18 @@ class _FavoritesPageState extends State<FavoritesPage> {
                   };
                   final savedItems = wantedType == null
                       ? (_selectedCategory == _FavoriteCategory.all
-                          ? data.savedItems
-                          : const <SavedItem>[])
+                            ? data.savedItems
+                            : const <SavedItem>[])
                       : data.savedItems
-                          .where((item) => item.type == wantedType)
-                          .toList(growable: false);
+                            .where((item) => item.type == wantedType)
+                            .toList(growable: false);
 
                   if (stations.isEmpty && savedItems.isEmpty) {
                     return _FavoriteMessage(
                       icon: Icons.bookmark_border_rounded,
-                      title: isRo ? 'Nu ai elemente în această categorie' : 'No items in this category',
+                      title: isRo
+                          ? 'Nu ai elemente în această categorie'
+                          : 'No items in this category',
                       subtitle: isRo
                           ? 'Salvează locuri, stații, rapoarte sau capturi din fluxurile lor reale.'
                           : 'Save places, stations, reports or catches from their real flows.',
@@ -299,13 +303,18 @@ class _FavoritesPageState extends State<FavoritesPage> {
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
                       children: [
                         if (stations.isNotEmpty) ...[
-                          _FavoritesSectionHeader(count: stations.length, isRo: isRo),
+                          _FavoritesSectionHeader(
+                            count: stations.length,
+                            isRo: isRo,
+                          ),
                           const SizedBox(height: 10),
                           for (final station in stations)
                             _FavoriteStationCard(
                               station: station,
                               isRo: isRo,
-                              removing: _removingStationIds.contains(station.id),
+                              removing: _removingStationIds.contains(
+                                station.id,
+                              ),
                               onOpen: () => _openStation(station),
                               onRemove: () => _removeStation(station),
                             ),
@@ -313,7 +322,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         if (stations.isNotEmpty && savedItems.isNotEmpty)
                           const SizedBox(height: 18),
                         if (savedItems.isNotEmpty) ...[
-                          _SavedItemsSectionHeader(count: savedItems.length, isRo: isRo),
+                          _SavedItemsSectionHeader(
+                            count: savedItems.length,
+                            isRo: isRo,
+                          ),
                           const SizedBox(height: 10),
                           for (final item in savedItems)
                             _SavedItemCard(
@@ -359,10 +371,20 @@ class _SavedItemsSectionHeader extends StatelessWidget {
       Expanded(
         child: Text(
           isRo ? 'Elemente salvate' : 'Saved items',
-          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
-      Text('$count', style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w700)),
+      Text(
+        '$count',
+        style: const TextStyle(
+          color: Colors.white54,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     ],
   );
 }
@@ -393,7 +415,13 @@ class _SavedItemCard extends StatelessWidget {
     child: ListTile(
       onTap: onOpen,
       leading: Icon(_icon, color: const Color(0xFF12D8D6)),
-      title: Text(item.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+      title: Text(
+        item.title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
       subtitle: item.subtitle == null
           ? Text(
               item.latitude != null && item.longitude != null
@@ -401,7 +429,12 @@ class _SavedItemCard extends StatelessWidget {
                   : (isRo ? 'Salvat' : 'Saved'),
               style: const TextStyle(color: Colors.white54),
             )
-          : Text(item.subtitle!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54)),
+          : Text(
+              item.subtitle!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white54),
+            ),
       trailing: IconButton(
         tooltip: isRo ? 'Elimină' : 'Remove',
         onPressed: onRemove,

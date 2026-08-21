@@ -38,6 +38,13 @@ void main() {
       expect(HydroRoMapboxOverlay.riverMinimumZoom('Valea locală'), 8.2);
     });
 
+    test('national and regional density stay deliberately sparse', () {
+      expect(hydroDensityCellSize(5.8), 1.25);
+      expect(hydroDensityCellSize(6.8), .92);
+      expect(hydroDensityCellSize(7.8), .56);
+      expect(hydroDensityCellSize(10.9), isNull);
+    });
+
     test('style layer registry contains no duplicate ids', () {
       expect(
         HydroRoMapboxOverlay.layerIds.toSet().length,
@@ -100,6 +107,51 @@ void main() {
         candidates.map((candidate) => candidate.key).toSet(),
       );
     });
+
+    test(
+      'national density reveals a sparse priority network before regional zoom',
+      () {
+        const candidates = <HydroDensityCandidate>[
+          HydroDensityCandidate(
+            key: 'dam:west',
+            latitude: 45.0,
+            longitude: 22.0,
+            priority: 60,
+          ),
+          HydroDensityCandidate(
+            key: 'reservoir:center-high',
+            latitude: 45.1,
+            longitude: 24.1,
+            priority: 240,
+          ),
+          HydroDensityCandidate(
+            key: 'hydropower:center-low',
+            latitude: 45.2,
+            longitude: 24.2,
+            priority: 80,
+          ),
+          HydroDensityCandidate(
+            key: 'station:east',
+            latitude: 46.0,
+            longitude: 27.0,
+            priority: 120,
+          ),
+        ];
+
+        expect(
+          selectHydroDensityKeys(candidates: candidates, zoom: 5.8),
+          containsAll(<String>{
+            'dam:west',
+            'reservoir:center-high',
+            'station:east',
+          }),
+        );
+        expect(
+          selectHydroDensityKeys(candidates: candidates, zoom: 5.2),
+          isEmpty,
+        );
+      },
+    );
 
     test('selected and saved priorities survive the same density cell', () {
       const candidates = <HydroDensityCandidate>[
@@ -191,7 +243,35 @@ void main() {
       expect(overlay, contains("<Object>['!', _danubeFilter]"));
       expect(overlay, contains("sourceLayer: 'reservoirs'"));
       expect(overlay, contains('textSizeExpression'));
+      expect(overlay, contains('minZoom: 7.4'));
+      expect(overlay, contains('minZoom: 4.75'));
+      expect(overlay, contains('minZoom: 4.15'));
+      expect(overlay, contains('_nationalRiverLabelFilter'));
     });
+
+    test('satellite cartographic polish keeps Hydro above basemap clutter', () {
+      final mapPage = File('lib/screens/map_page.dart').readAsStringSync();
+
+      expect(mapPage, contains('_applySatelliteCartographicPolish'));
+      expect(mapPage, contains("'showPointOfInterestLabels': false"));
+      expect(mapPage, contains("'showTransitLabels': false"));
+      expect(mapPage, contains("'showPedestrianRoads': false"));
+      expect(mapPage, contains("'colorAdminBoundaries': '#77878E'"));
+      expect(mapPage, contains("'colorRoads': '#687A80'"));
+      expect(mapPage, contains("'basemap'"));
+    });
+
+    test(
+      'national annotations scale down while selected entities stay legible',
+      () {
+        final mapPage = File('lib/screens/map_page.dart').readAsStringSync();
+
+        expect(mapPage, contains("? 'national'"));
+        expect(mapPage, contains('math.max(.82, normalSize + .18)'));
+        expect(mapPage, contains("_cameraZoom < 6.4"));
+        expect(mapPage, contains("? .50"));
+      },
+    );
 
     test('Hydro utility reuses persistent Map and preserves physical GPS', () {
       final utilities = File(
@@ -217,7 +297,7 @@ void main() {
         );
         expect(mapPage, contains('viewport: _initialViewport'));
         expect(mapPage, contains('_tapHitsHydroAnnotation(gesture)'));
-        expect(mapPage, contains('_cameraZoom < 7.2'));
+        expect(mapPage, contains('_cameraZoom < 4.0'));
         expect(mapPage, contains('_visibleHydroDensityKeys'));
         expect(
           mapPage,
@@ -226,6 +306,24 @@ void main() {
       },
     );
 
+    test('Danube stations persist whenever the national Danube is visible', () {
+      final mapPage = File('lib/screens/map_page.dart').readAsStringSync();
+      final overlay = File(
+        'lib/core/map/hydro_ro_vector_overlay.dart',
+      ).readAsStringSync();
+
+      expect(
+        mapPage,
+        contains('Danube monitoring stations are canonical navigation anchors'),
+      );
+      expect(
+        mapPage,
+        contains('HydroRoMapboxOverlay.isDanubeName(station.river) ||'),
+      );
+      expect(mapPage, contains('if (_cameraZoom < 4.0)'));
+      expect(mapPage, contains('? .40'));
+      expect(overlay, contains("'dunare'"));
+    });
     test('station selection stream publishes context without reselecting', () {
       final home = File(
         'lib/features/commercial_home/presentation/commercial_home_page.dart',

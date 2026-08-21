@@ -13,11 +13,15 @@ class FishingJournalRepository {
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
   bool get isAuthenticated => _supabase.auth.currentUser != null;
 
-  Future<List<FishingSession>> getSessions({int limit = 50}) => _guard(() async {
+  Future<List<FishingSession>> getSessions({
+    int limit = 50,
+  }) => _guard(() async {
     final user = _requireUser();
     final rows = await _supabase
         .from('fishing_sessions')
-        .select('id,title,started_at,ended_at,notes,latitude,longitude,place_name,station_id,water_id,water_name,country_code,region')
+        .select(
+          'id,title,started_at,ended_at,notes,latitude,longitude,place_name,station_id,water_id,water_name,country_code,region',
+        )
         .eq('user_id', user.id)
         .order('started_at', ascending: false)
         .limit(limit < 1 ? 1 : (limit > 100 ? 100 : limit));
@@ -32,7 +36,9 @@ class FishingJournalRepository {
     final user = _requireUser();
     final rows = await _supabase
         .from('fishing_sessions')
-        .select('id,title,started_at,ended_at,notes,latitude,longitude,place_name,station_id,water_id,water_name,country_code,region')
+        .select(
+          'id,title,started_at,ended_at,notes,latitude,longitude,place_name,station_id,water_id,water_name,country_code,region',
+        )
         .eq('user_id', user.id)
         .isFilter('ended_at', null)
         .order('started_at', ascending: false)
@@ -49,7 +55,9 @@ class FishingJournalRepository {
     final user = _requireUser();
     final existing = await getOpenSession();
     if (existing != null) {
-      throw const FishingJournalException('Ai deja o partidă activă. Încheie-o înainte de a începe alta.');
+      throw const FishingJournalException(
+        'Ai deja o partidă activă. Încheie-o înainte de a începe alta.',
+      );
     }
     final row = await _supabase
         .from('fishing_sessions')
@@ -68,12 +76,17 @@ class FishingJournalRepository {
           'started_at': DateTime.now().toUtc().toIso8601String(),
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         })
-        .select('id,title,started_at,ended_at,notes,latitude,longitude,place_name,station_id,water_id,water_name,country_code,region')
+        .select(
+          'id,title,started_at,ended_at,notes,latitude,longitude,place_name,station_id,water_id,water_name,country_code,region',
+        )
         .single();
     return FishingSession.fromJson(Map<String, dynamic>.from(row));
   });
 
-  Future<FishingSession> endSession(String id, {String? notes}) => _guard(() async {
+  Future<FishingSession> endSession(
+    String id, {
+    String? notes,
+  }) => _guard(() async {
     final user = _requireUser();
     final payload = <String, Object?>{
       'ended_at': DateTime.now().toUtc().toIso8601String(),
@@ -86,10 +99,14 @@ class FishingJournalRepository {
         .eq('id', id)
         .eq('user_id', user.id)
         .isFilter('ended_at', null)
-        .select('id,title,started_at,ended_at,notes,latitude,longitude,place_name,station_id,water_id,water_name,country_code,region')
+        .select(
+          'id,title,started_at,ended_at,notes,latitude,longitude,place_name,station_id,water_id,water_name,country_code,region',
+        )
         .maybeSingle();
     if (row == null) {
-      throw const FishingJournalException('Partida nu mai este activă sau nu a putut fi găsită.');
+      throw const FishingJournalException(
+        'Partida nu mai este activă sau nu a putut fi găsită.',
+      );
     }
     return FishingSession.fromJson(Map<String, dynamic>.from(row));
   });
@@ -109,7 +126,9 @@ class FishingJournalRepository {
   User _requireUser() {
     final user = _supabase.auth.currentUser;
     if (user == null) {
-      throw const FishingJournalException('Autentificarea este necesară pentru jurnal.');
+      throw const FishingJournalException(
+        'Autentificarea este necesară pentru jurnal.',
+      );
     }
     return user;
   }
@@ -127,12 +146,16 @@ class FishingJournalRepository {
     } on SocketException {
       throw const FishingJournalException('Nu există conexiune la internet.');
     } on TimeoutException {
-      throw const FishingJournalException('Cererea a expirat. Încearcă din nou.');
+      throw const FishingJournalException(
+        'Cererea a expirat. Încearcă din nou.',
+      );
     } on PostgrestException catch (error) {
       if (error.code == '23505') {
         throw const FishingJournalException('Ai deja o partidă activă.');
       }
-      throw const FishingJournalException('Jurnalul nu este disponibil momentan.');
+      throw const FishingJournalException(
+        'Jurnalul nu este disponibil momentan.',
+      );
     }
   }
 }

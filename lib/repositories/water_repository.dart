@@ -851,7 +851,9 @@ class WaterRepository implements OfficialWaterDataSource {
         'reported_delta_cm_24h': candidate.reading.reportedDeltaCm24h,
         'water_temperature_c': candidate.reading.waterTemperatureC,
         'trend':
-            (candidate.reading.knownTrend ?? effectiveTrend ?? WaterTrend.stable)
+            (candidate.reading.knownTrend ??
+                    effectiveTrend ??
+                    WaterTrend.stable)
                 .name,
         'has_known_trend':
             candidate.reading.knownTrend != null || effectiveTrend != null,
@@ -925,9 +927,7 @@ class WaterRepository implements OfficialWaterDataSource {
       row['freshness_at']?.toString() ?? '',
     );
     final source = _mobileContractSource(row['source_key']);
-    final reportedDeltaCm24h = _contractDouble(
-      row['reported_delta_cm_24h'],
-    );
+    final reportedDeltaCm24h = _contractDouble(row['reported_delta_cm_24h']);
     final waterTemperatureC = _contractDouble(row['water_temperature_c']);
     final forecast = WaterForecastPoint.listFromJson(row['forecast']);
     final forecastUpdatedAt = DateTime.tryParse(

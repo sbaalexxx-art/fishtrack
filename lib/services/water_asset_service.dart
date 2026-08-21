@@ -12,6 +12,72 @@ class WaterAssetService {
   final SupabaseClient? _client;
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
+  static const Duration _mapPinsCacheTtl = Duration(minutes: 3);
+  static const int _mapPinsCacheMaxEntries = 32;
+
+  static final Map<
+    String,
+    ({DateTime createdAt, List<WaterMapPin> pins})
+  >
+  _mapPinsCache = <
+    String,
+    ({DateTime createdAt, List<WaterMapPin> pins})
+  >{};
+
+  static final Map<String, Future<List<WaterMapPin>>> _mapPinsInFlight =
+      <String, Future<List<WaterMapPin>>>{};
+
+  Future<List<WaterHubRiverGroup>> getHubRivers({String countryCode = 'RO'}) =>
+      _guardPublic(() async {
+        final response = await _supabase.rpc(
+          'get_water_hub_major_rivers_v1',
+          params: {'p_country_code': countryCode.trim().toUpperCase()},
+        );
+        if (response is! List) return const <WaterHubRiverGroup>[];
+        return response
+            .whereType<Map>()
+            .map(
+              (row) =>
+                  WaterHubRiverGroup.fromJson(Map<String, dynamic>.from(row)),
+            )
+            .where(
+              (group) =>
+                  group.groupKey.isNotEmpty &&
+                  group.displayName.isNotEmpty &&
+                  group.riverKeys.isNotEmpty &&
+                  group.waterBodyIds.isNotEmpty,
+            )
+            .toList(growable: false);
+      });
+
+  Future<List<WaterHydropowerComplex>> getHubHydropowerComplexes({
+    String countryCode = 'RO',
+    int limit = 150,
+  }) => _guardPublic(() async {
+    final response = await _supabase.rpc(
+      'get_water_hub_hydropower_complexes_v1',
+      params: {
+        'p_country_code': countryCode.trim().toUpperCase(),
+        'p_limit': limit.clamp(1, 250),
+      },
+    );
+    if (response is! List) return const <WaterHydropowerComplex>[];
+    return response
+        .whereType<Map>()
+        .map(
+          (row) =>
+              WaterHydropowerComplex.fromJson(Map<String, dynamic>.from(row)),
+        )
+        .where(
+          (complex) =>
+              complex.reservoirId.isNotEmpty &&
+              complex.reservoirName.isNotEmpty &&
+              complex.latitude.isFinite &&
+              complex.longitude.isFinite,
+        )
+        .toList(growable: false);
+  });
+
   Future<List<WaterAssetRef>> searchAssets(String query, {int limit = 50}) =>
       _guard(() async {
         final response = await _supabase.rpc(
@@ -231,29 +297,101 @@ class WaterAssetService {
     double radiusKm = 100,
     int limit = 750,
   }) => _guard(() async {
-    final response = await _supabase.rpc(
-      'get_water_map_pins_v2',
-      params: {
-        'p_latitude': latitude,
-        'p_longitude': longitude,
-        'p_radius_km': radiusKm,
-        'p_zoom': zoom,
-        'p_limit': limit,
-      },
+    final cacheKey = _mapPinsRequestKey(
+      latitude: latitude,
+      longitude: longitude,
+      zoom: zoom,
+      radiusKm: radiusKm,
+      limit: limit,
     );
-    if (response is! List) return const <WaterMapPin>[];
-    return response
-        .whereType<Map>()
-        .map((row) => WaterMapPin.fromJson(Map<String, dynamic>.from(row)))
-        .where(
-          (pin) =>
-              pin.entityId.isNotEmpty &&
-              pin.name.isNotEmpty &&
-              pin.latitude.isFinite &&
-              pin.longitude.isFinite,
-        )
-        .toList(growable: false);
+
+    final now = DateTime.now();
+    final cached = _mapPinsCache[cacheKey];
+    if (cached != null) {
+      if (now.difference(cached.createdAt) < _mapPinsCacheTtl) {
+        return cached.pins;
+      }
+      _mapPinsCache.remove(cacheKey);
+    }
+
+    final inFlight = _mapPinsInFlight[cacheKey];
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final request = (() async {
+      final response = await _supabase.rpc(
+        'get_water_map_pins_v3',
+        params: {
+          'p_latitude': latitude,
+          'p_longitude': longitude,
+          'p_radius_km': radiusKm,
+          'p_zoom': zoom,
+          'p_limit': limit,
+        },
+      );
+
+      if (response is! List) return const <WaterMapPin>[];
+
+      return response
+          .whereType<Map>()
+          .map((row) => WaterMapPin.fromJson(Map<String, dynamic>.from(row)))
+          .where(
+            (pin) =>
+                pin.entityId.isNotEmpty &&
+                pin.name.isNotEmpty &&
+                pin.latitude.isFinite &&
+                pin.longitude.isFinite,
+          )
+          .toList(growable: false);
+    })();
+
+    _mapPinsInFlight[cacheKey] = request;
+
+    try {
+      final pins = await request;
+      final completedAt = DateTime.now();
+      _mapPinsCache[cacheKey] = (createdAt: completedAt, pins: pins);
+      _pruneMapPinsCache(completedAt);
+      return pins;
+    } finally {
+      if (identical(_mapPinsInFlight[cacheKey], request)) {
+        _mapPinsInFlight.remove(cacheKey);
+      }
+    }
   });
+
+  String _mapPinsRequestKey({
+    required double latitude,
+    required double longitude,
+    required double zoom,
+    required double radiusKm,
+    required int limit,
+  }) {
+    final latitudeCell = (latitude * 100).round();
+    final longitudeCell = (longitude * 100).round();
+    final zoomCell = (zoom * 10).round();
+    final radiusCell = (radiusKm * 10).round();
+
+    return '${identityHashCode(_supabase)}:$latitudeCell:$longitudeCell:'
+        '$zoomCell:$radiusCell:$limit';
+  }
+
+  void _pruneMapPinsCache(DateTime now) {
+    _mapPinsCache.removeWhere(
+      (_, entry) => now.difference(entry.createdAt) >= _mapPinsCacheTtl,
+    );
+
+    if (_mapPinsCache.length <= _mapPinsCacheMaxEntries) return;
+
+    final entries = _mapPinsCache.entries.toList(growable: false)
+      ..sort((a, b) => a.value.createdAt.compareTo(b.value.createdAt));
+
+    final overflow = _mapPinsCache.length - _mapPinsCacheMaxEntries;
+    for (var index = 0; index < overflow; index++) {
+      _mapPinsCache.remove(entries[index].key);
+    }
+  }
 
   Future<List<HydropowerPlantState>> getHydropowerPlantStates({
     String? waterBodyId,
@@ -306,6 +444,22 @@ class WaterAssetService {
     }
     return WaterEntityState.fromJson(Map<String, dynamic>.from(response));
   });
+
+  Future<T> _guardPublic<T>(Future<T> Function() operation) async {
+    try {
+      return await operation().timeout(const Duration(seconds: 20));
+    } on WaterAssetException {
+      rethrow;
+    } on SocketException {
+      throw const WaterAssetException('Nu există conexiune la internet.');
+    } on TimeoutException {
+      throw const WaterAssetException('Cererea a expirat. Încearcă din nou.');
+    } on PostgrestException {
+      throw const WaterAssetException(
+        'Catalogul Water nu este disponibil momentan.',
+      );
+    }
+  }
 
   Future<T> _guard<T>(Future<T> Function() operation) async {
     try {

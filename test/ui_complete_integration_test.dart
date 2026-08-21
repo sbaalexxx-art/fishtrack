@@ -4,6 +4,7 @@ import 'package:fishtrack/features/commercial_home/data/commercial_home_data_sou
 import 'package:fishtrack/features/figma_complete/presentation/figma_destination_router.dart';
 import 'package:fishtrack/features/figma_complete/presentation/figma_environment_pages.dart';
 import 'package:fishtrack/models/station.dart';
+import 'package:fishtrack/screens/weather_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -100,39 +101,39 @@ void main() {
     }
   });
 
-  test('Water, Weather and Fluvi retain one injected runtime source', () {
-    final station = _station();
-    const source = _FailingDataSource();
+  test(
+    'Water and Fluvi keep injected runtime source while Weather is GPS-owned',
+    () {
+      final station = _station();
+      const source = _FailingDataSource();
 
-    final water =
-        FigmaDestinationRouter.page(
-              AppDestination.water,
-              arguments: station,
-              dataSource: source,
-            )
-            as FigmaWaterHubPage;
-    final weather =
-        FigmaDestinationRouter.page(
-              AppDestination.weather,
-              arguments: station,
-              dataSource: source,
-            )
-            as FigmaWeatherHubPage;
-    final fluvi =
-        FigmaDestinationRouter.page(
-              AppDestination.fluvi,
-              arguments: station,
-              dataSource: source,
-            )
-            as FigmaFluviHubPage;
+      final water =
+          FigmaDestinationRouter.page(
+                AppDestination.water,
+                arguments: station,
+                dataSource: source,
+              )
+              as FigmaWaterHubPage;
+      final weather = FigmaDestinationRouter.page(
+        AppDestination.weather,
+        arguments: station,
+        dataSource: source,
+      );
+      final fluvi =
+          FigmaDestinationRouter.page(
+                AppDestination.fluvi,
+                arguments: station,
+                dataSource: source,
+              )
+              as FigmaFluviHubPage;
 
-    expect(identical(water.dataSource, source), isTrue);
-    expect(identical(weather.dataSource, source), isTrue);
-    expect(identical(fluvi.dataSource, source), isTrue);
-    expect(water.initialStation?.id, station.id);
-    expect(weather.initialStation?.id, station.id);
-    expect(fluvi.initialStation?.id, station.id);
-  });
+      expect(identical(water.dataSource, source), isTrue);
+      expect(weather, isA<WeatherPage>());
+      expect(identical(fluvi.dataSource, source), isTrue);
+      expect(water.initialStation?.id, station.id);
+      expect(fluvi.initialStation?.id, station.id);
+    },
+  );
 }
 
 Object? _argumentsFor(AppDestination destination, Station station) =>

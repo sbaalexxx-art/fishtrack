@@ -8,6 +8,7 @@ import '../../services/diagnostics_service.dart';
 
 import '../../models/station.dart';
 import '../../models/water_asset.dart';
+import '../../models/water_river.dart';
 import '../../services/water_service.dart';
 import 'current_location.dart';
 import 'environmental_context.dart';
@@ -69,6 +70,32 @@ class SelectedContext {
     stationName: station.name,
     source: station.waterLevelSource,
     observedAt: station.hasWaterLevel ? station.lastUpdate : null,
+  );
+
+  factory SelectedContext.fromRiver(WaterRiverRef river) => SelectedContext(
+    countryCode: river.countryCode,
+    locationName: river.name,
+    waterId: river.waterBodyId,
+    waterName: river.name,
+    riverName: river.name,
+    riverKey: river.key,
+    source: river.provenanceSource,
+  );
+
+  factory SelectedContext.fromHydropowerComplex(
+    WaterHydropowerComplex complex,
+  ) => SelectedContext(
+    countryCode: 'RO',
+    locationName: complex.displayName,
+    latitude: complex.latitude,
+    longitude: complex.longitude,
+    waterId: complex.waterBodyId,
+    waterName: complex.riverName ?? complex.reservoirName,
+    riverName: complex.riverName,
+    damId: complex.damId,
+    reservoirId: complex.reservoirId,
+    hydropowerPlantId: complex.plantId,
+    source: complex.evidenceClass,
   );
 
   factory SelectedContext.fromHydropowerPin(WaterMapPin plant) =>

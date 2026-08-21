@@ -76,6 +76,8 @@ class HydroRoMapboxOverlay {
       'fluviai-hydro-ro-river-labels-major';
   static const String danubeLabelLayerId =
       'fluviai-hydro-ro-river-label-danube';
+  // Legacy public-vector dam layer ids are retained for safe style cleanup.
+  // RC2.2C-1D no longer renders/query-selects these generic diamond layers.
   static const String damLayerId = 'fluviai-hydro-ro-dams';
   static const String damSelectedLayerId = 'fluviai-hydro-ro-dam-selected';
 
@@ -128,9 +130,26 @@ class HydroRoMapboxOverlay {
     'crisul alb',
   ];
 
+  static const List<String> _nationalRiverLabelNames = <String>[
+    'mureș',
+    'mures',
+    'olt',
+    'siret',
+    'prut',
+    'someș',
+    'somes',
+    'jiu',
+    'argeș',
+    'arges',
+    'ialomița',
+    'ialomita',
+  ];
+
   static const List<String> _danubeNames = <String>[
     'dunărea',
     'dunarea',
+    'dunăre',
+    'dunare',
     'danube',
     'dunav',
   ];
@@ -175,6 +194,19 @@ class HydroRoMapboxOverlay {
     <Object>['literal', _majorRiverNames],
   ];
 
+  static List<Object> get _nationalRiverLabelFilter => <Object>[
+    'in',
+    <Object>[
+      'downcase',
+      <Object>[
+        'coalesce',
+        <Object>['get', 'display_name'],
+        '',
+      ],
+    ],
+    <Object>['literal', _nationalRiverLabelNames],
+  ];
+
   static List<Object> get _secondaryRiverFilter => <Object>[
     'all',
     <Object>['!', _majorRiverFilter],
@@ -205,10 +237,10 @@ class HydroRoMapboxOverlay {
         id: reservoirLayerId,
         sourceId: sourceId,
         sourceLayer: 'reservoirs',
-        minZoom: 5.4,
+        minZoom: 4.7,
         slot: 'middle',
-        fillColor: 0xFF0D7394,
-        fillOpacity: satelliteBasemap ? .50 : .38,
+        fillColor: 0xFF0B82A4,
+        fillOpacity: satelliteBasemap ? .62 : .46,
       ),
     );
     await _addIfMissing(
@@ -217,16 +249,18 @@ class HydroRoMapboxOverlay {
         id: reservoirOutlineLayerId,
         sourceId: sourceId,
         sourceLayer: 'reservoirs',
-        minZoom: 6.2,
+        minZoom: 5.0,
         slot: 'middle',
-        lineColor: satelliteBasemap ? 0xFF80E7EE : 0xFF08738F,
-        lineOpacity: satelliteBasemap ? .68 : .56,
+        lineColor: satelliteBasemap ? 0xFF8CF4F4 : 0xFF087F9B,
+        lineOpacity: satelliteBasemap ? .80 : .64,
         lineWidthExpression: const <Object>[
           'interpolate',
           <Object>['linear'],
           <Object>['zoom'],
-          5.4,
-          .55,
+          5.2,
+          .42,
+          7.5,
+          .72,
           9.0,
           1.05,
           13.0,
@@ -240,7 +274,7 @@ class HydroRoMapboxOverlay {
         id: reservoirSelectedLayerId,
         sourceId: sourceId,
         sourceLayer: 'reservoirs',
-        minZoom: 5.4,
+        minZoom: 4.7,
         slot: 'top',
         filter: _selectionFilter(
           selection?.type == HydroPublicFeatureType.reservoir
@@ -258,7 +292,7 @@ class HydroRoMapboxOverlay {
         id: reservoirSelectedOutlineLayerId,
         sourceId: sourceId,
         sourceLayer: 'reservoirs',
-        minZoom: 5.4,
+        minZoom: 4.7,
         slot: 'top',
         filter: _selectionFilter(
           selection?.type == HydroPublicFeatureType.reservoir
@@ -284,55 +318,10 @@ class HydroRoMapboxOverlay {
     await _addRiverLayers(style);
     await _addLabelLayers(style);
 
-    await _addIfMissing(
-      style,
-      mapbox.SymbolLayer(
-        id: damLayerId,
-        sourceId: sourceId,
-        sourceLayer: 'dams',
-        minZoom: 10.1,
-        slot: 'top',
-        textField: '◆',
-        symbolSortKey: 30,
-        textSizeExpression: const <Object>[
-          'interpolate',
-          <Object>['linear'],
-          <Object>['zoom'],
-          10.1,
-          11.0,
-          14.0,
-          15.0,
-          17.0,
-          18.0,
-        ],
-        textColor: 0xFFF2A25C,
-        textHaloColor: 0xFF10222B,
-        textHaloWidth: 1.25,
-        textAllowOverlap: false,
-        textIgnorePlacement: false,
-      ),
-    );
-    await _addIfMissing(
-      style,
-      mapbox.SymbolLayer(
-        id: damSelectedLayerId,
-        sourceId: sourceId,
-        sourceLayer: 'dams',
-        minZoom: 8.0,
-        slot: 'top',
-        filter: _selectionFilter(
-          selection?.type == HydroPublicFeatureType.dam
-              ? selection?.displayName
-              : null,
-        ),
-        textField: '◆',
-        textSize: 24,
-        textColor: 0xFFFF9B54,
-        textHaloColor: 0xFFFFFFFF,
-        textHaloWidth: 2.0,
-        textAllowOverlap: true,
-      ),
-    );
+    // Dam geometry remains available in the public Hydro source, but dam
+    // symbols are rendered only from canonical runtime WaterAsset annotations.
+    // This prevents duplicate generic orange diamonds over reservoir polygons
+    // and keeps dam taps tied to canonical Supabase identity.
 
     await applyConfiguration(
       mapboxMap,
@@ -349,19 +338,21 @@ class HydroRoMapboxOverlay {
         id: riverCasingLayerId,
         sourceId: sourceId,
         sourceLayer: 'rivers',
-        minZoom: 7.8,
+        minZoom: 7.4,
         slot: 'middle',
         filter: _secondaryRiverFilter,
         lineColor: 0xFF06141D,
-        lineOpacity: .54,
+        lineOpacity: .34,
         lineCap: mapbox.LineCap.ROUND,
         lineJoin: mapbox.LineJoin.ROUND,
         lineWidthExpression: const <Object>[
           'interpolate',
           <Object>['linear'],
           <Object>['zoom'],
+          7.4,
+          .42,
           7.8,
-          1.15,
+          1.10,
           12.0,
           2.25,
           16.0,
@@ -375,19 +366,21 @@ class HydroRoMapboxOverlay {
         id: riverLayerId,
         sourceId: sourceId,
         sourceLayer: 'rivers',
-        minZoom: 7.8,
+        minZoom: 7.4,
         slot: 'middle',
         filter: _secondaryRiverFilter,
         lineColor: 0xFF68BED2,
-        lineOpacity: .52,
+        lineOpacity: .28,
         lineCap: mapbox.LineCap.ROUND,
         lineJoin: mapbox.LineJoin.ROUND,
         lineWidthExpression: const <Object>[
           'interpolate',
           <Object>['linear'],
           <Object>['zoom'],
+          7.4,
+          .18,
           7.8,
-          .48,
+          .50,
           12.0,
           1.0,
           16.0,
@@ -401,10 +394,10 @@ class HydroRoMapboxOverlay {
         id: majorRiverCasingLayerId,
         sourceId: sourceId,
         sourceLayer: 'rivers',
-        minZoom: 5.6,
+        minZoom: 4.75,
         slot: 'middle',
         filter: _majorRiverFilter,
-        lineColor: 0xFF071821,
+        lineColor: 0xFF061820,
         lineOpacity: .84,
         lineCap: mapbox.LineCap.ROUND,
         lineJoin: mapbox.LineJoin.ROUND,
@@ -412,8 +405,10 @@ class HydroRoMapboxOverlay {
           'interpolate',
           <Object>['linear'],
           <Object>['zoom'],
-          5.6,
-          2.55,
+          4.75,
+          2.35,
+          6.2,
+          2.75,
           9.0,
           3.6,
           13.0,
@@ -429,10 +424,10 @@ class HydroRoMapboxOverlay {
         id: majorRiverLayerId,
         sourceId: sourceId,
         sourceLayer: 'rivers',
-        minZoom: 5.6,
+        minZoom: 4.75,
         slot: 'middle',
         filter: _majorRiverFilter,
-        lineColor: 0xFF32B9DE,
+        lineColor: 0xFF35C7EA,
         lineOpacity: .92,
         lineCap: mapbox.LineCap.ROUND,
         lineJoin: mapbox.LineJoin.ROUND,
@@ -440,8 +435,10 @@ class HydroRoMapboxOverlay {
           'interpolate',
           <Object>['linear'],
           <Object>['zoom'],
-          5.6,
-          1.4,
+          4.75,
+          1.28,
+          6.2,
+          1.55,
           9.0,
           2.1,
           13.0,
@@ -457,7 +454,7 @@ class HydroRoMapboxOverlay {
         id: danubeCasingLayerId,
         sourceId: sourceId,
         sourceLayer: 'rivers',
-        minZoom: 4.4,
+        minZoom: 4.0,
         slot: 'middle',
         filter: _danubeFilter,
         lineColor: 0xFF031018,
@@ -468,8 +465,10 @@ class HydroRoMapboxOverlay {
           'interpolate',
           <Object>['linear'],
           <Object>['zoom'],
-          4.8,
-          4.4,
+          4.0,
+          4.35,
+          5.6,
+          5.05,
           8.0,
           7.1,
           12.0,
@@ -485,7 +484,7 @@ class HydroRoMapboxOverlay {
         id: danubeLayerId,
         sourceId: sourceId,
         sourceLayer: 'rivers',
-        minZoom: 4.4,
+        minZoom: 4.0,
         slot: 'middle',
         filter: _danubeFilter,
         lineColor: 0xFF3DC7F0,
@@ -496,8 +495,10 @@ class HydroRoMapboxOverlay {
           'interpolate',
           <Object>['linear'],
           <Object>['zoom'],
-          4.4,
-          2.85,
+          4.0,
+          2.90,
+          5.6,
+          3.35,
           8.0,
           4.65,
           12.0,
@@ -579,7 +580,6 @@ class HydroRoMapboxOverlay {
       sourceId: sourceId,
       sourceLayer: 'rivers',
       minZoom: minZoom,
-      slot: 'top',
       filter: filter,
       symbolPlacement: mapbox.SymbolPlacement.LINE,
       symbolSpacing: spacing,
@@ -623,7 +623,7 @@ class HydroRoMapboxOverlay {
       style,
       label(
         id: riverLabelLayerId,
-        minZoom: 10.4,
+        minZoom: 9.6,
         color: 0xFF9AEFF3,
         minimumSize: 10.0,
         maximumSize: 12.0,
@@ -637,29 +637,29 @@ class HydroRoMapboxOverlay {
       style,
       label(
         id: majorRiverLabelLayerId,
-        minZoom: 5.8,
-        color: 0xFFC1FBFF,
-        minimumSize: 10.5,
-        maximumSize: 14.0,
-        sortKey: 8,
-        filter: _majorRiverFilter,
-        spacing: 420,
-        forceVisibleZoom: 6.6,
+        minZoom: 4.85,
+        color: 0xFFD5FDFF,
+        minimumSize: 12.0,
+        maximumSize: 15.2,
+        sortKey: 4,
+        filter: _nationalRiverLabelFilter,
+        spacing: 520,
+        forceVisibleZoom: 5.30,
       ),
     );
     await _addIfMissing(
       style,
       label(
         id: danubeLabelLayerId,
-        minZoom: 4.7,
+        minZoom: 4.15,
         color: 0xFFFFFFFF,
-        minimumSize: 12.5,
-        maximumSize: 16.5,
+        minimumSize: 14.0,
+        maximumSize: 17.8,
         sortKey: 0,
         filter: _danubeFilter,
-        spacing: 480,
-        opacity: .96,
-        forceVisibleZoom: 5.2,
+        spacing: 620,
+        opacity: .98,
+        forceVisibleZoom: 4.80,
       ),
     );
   }
@@ -697,7 +697,6 @@ class HydroRoMapboxOverlay {
       reservoirLayerId,
       reservoirOutlineLayerId,
     ], reservoirsVisible);
-    await _setLayersVisible(style, <String>[damLayerId], damsVisible);
 
     final riverSelected =
         riversVisible && selection?.type == HydroPublicFeatureType.river;
@@ -715,7 +714,6 @@ class HydroRoMapboxOverlay {
       reservoirSelectedLayerId,
       reservoirSelectedOutlineLayerId,
     ], reservoirSelected);
-    await _setLayersVisible(style, <String>[damSelectedLayerId], damSelected);
 
     if (riverSelected) {
       final filter = _selectionFilter(selection?.displayName);
@@ -744,81 +742,67 @@ class HydroRoMapboxOverlay {
         satelliteBasemap ? .42 : .30,
       );
     }
-    if (damSelected) {
-      await style.setStyleLayerProperty(
-        damSelectedLayerId,
-        'filter',
-        _selectionFilter(selection?.displayName),
-      );
-    }
 
     final focused = riverSelected || reservoirSelected || damSelected;
     if (await style.styleLayerExists(riverCasingLayerId)) {
       await style.setStyleLayerProperty(
         riverCasingLayerId,
         'line-opacity',
-        focused ? .25 : .54,
+        focused ? .20 : .42,
       );
     }
     if (await style.styleLayerExists(riverLayerId)) {
       await style.setStyleLayerProperty(
         riverLayerId,
         'line-opacity',
-        focused ? .22 : .52,
+        focused ? .18 : .34,
       );
     }
     if (await style.styleLayerExists(majorRiverCasingLayerId)) {
       await style.setStyleLayerProperty(
         majorRiverCasingLayerId,
         'line-opacity',
-        focused ? .40 : .84,
+        focused ? .40 : .86,
       );
     }
     if (await style.styleLayerExists(majorRiverLayerId)) {
       await style.setStyleLayerProperty(
         majorRiverLayerId,
         'line-opacity',
-        focused ? .42 : .92,
+        focused ? .42 : .94,
       );
     }
     if (await style.styleLayerExists(danubeCasingLayerId)) {
       await style.setStyleLayerProperty(
         danubeCasingLayerId,
         'line-opacity',
-        focused ? .50 : .94,
+        focused ? .50 : .95,
       );
     }
     if (await style.styleLayerExists(danubeLayerId)) {
       await style.setStyleLayerProperty(
         danubeLayerId,
         'line-opacity',
-        focused ? .54 : .96,
+        focused ? .54 : .98,
       );
     }
     if (await style.styleLayerExists(reservoirLayerId)) {
       await style.setStyleLayerProperty(
         reservoirLayerId,
         'fill-opacity',
-        focused ? .18 : (satelliteBasemap ? .50 : .38),
+        focused ? .20 : (satelliteBasemap ? .62 : .46),
       );
     }
     if (await style.styleLayerExists(reservoirOutlineLayerId)) {
       await style.setStyleLayerProperty(
         reservoirOutlineLayerId,
         'line-color',
-        satelliteBasemap ? 0xFF80E7EE : 0xFF08738F,
+        satelliteBasemap ? 0xFF8CF4F4 : 0xFF087F9B,
       );
       await style.setStyleLayerProperty(
         reservoirOutlineLayerId,
         'line-opacity',
-        focused ? .28 : (satelliteBasemap ? .68 : .56),
-      );
-    }
-    if (await style.styleLayerExists(damLayerId)) {
-      await style.setStyleLayerProperty(
-        damLayerId,
-        'text-opacity',
-        focused ? .36 : .88,
+        focused ? .30 : (satelliteBasemap ? .80 : .64),
       );
     }
     await _applyLabelPalette(style, satelliteBasemap, focused: focused);
@@ -905,8 +889,6 @@ class HydroRoMapboxOverlay {
     final queryLayers = <String>[
       if (preferences.reservoirs) reservoirSelectedLayerId,
       if (preferences.reservoirs) reservoirLayerId,
-      if (preferences.dams) damSelectedLayerId,
-      if (preferences.dams) damLayerId,
       if (preferences.rivers) riverSelectedLayerId,
       if (preferences.rivers) danubeLayerId,
       if (preferences.rivers) majorRiverLayerId,

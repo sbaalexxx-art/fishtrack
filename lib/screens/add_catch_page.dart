@@ -581,9 +581,13 @@ class _SpeciesRecognitionState extends StatelessWidget {
         : const Color(0xFFFFC857);
 
     final title = isAnalyzing
-        ? (isRomanian ? 'Fluvi Vision verifică fotografia' : 'Fluvi Vision is checking the photo')
+        ? (isRomanian
+              ? 'Fluvi Vision verifică fotografia'
+              : 'Fluvi Vision is checking the photo')
         : good
-        ? (isRomanian ? 'Fotografie potrivită pentru analiză' : 'Photo is suitable for analysis')
+        ? (isRomanian
+              ? 'Fotografie potrivită pentru analiză'
+              : 'Photo is suitable for analysis')
         : (isRomanian ? 'Verifică fotografia' : 'Check the photo');
 
     final subtitle = isAnalyzing
@@ -617,13 +621,19 @@ class _SpeciesRecognitionState extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2, color: accent),
             )
           else
-            Icon(good ? Icons.verified_rounded : Icons.auto_awesome_rounded, color: accent),
+            Icon(
+              good ? Icons.verified_rounded : Icons.auto_awesome_rounded,
+              color: accent,
+            ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 3),
                 Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
                 if (current != null && !isAnalyzing) ...[
@@ -649,15 +659,20 @@ class _SpeciesRecognitionState extends StatelessWidget {
           ? 'Confirmă specia manual înainte de salvare.'
           : 'Confirm the species manually before saving.';
     }
-    final labels = issues.map((issue) {
-      return switch (issue) {
-        PhotoQualityIssue.lowResolution => ro ? 'rezoluție mică' : 'low resolution',
-        PhotoQualityIssue.tooDark => ro ? 'prea întunecată' : 'too dark',
-        PhotoQualityIssue.tooBright => ro ? 'supraexpusă' : 'overexposed',
-        PhotoQualityIssue.lowContrast => ro ? 'contrast redus' : 'low contrast',
-        PhotoQualityIssue.blurry => ro ? 'posibil neclară' : 'possibly blurry',
-      };
-    }).join(', ');
+    final labels = issues
+        .map((issue) {
+          return switch (issue) {
+            PhotoQualityIssue.lowResolution =>
+              ro ? 'rezoluție mică' : 'low resolution',
+            PhotoQualityIssue.tooDark => ro ? 'prea întunecată' : 'too dark',
+            PhotoQualityIssue.tooBright => ro ? 'supraexpusă' : 'overexposed',
+            PhotoQualityIssue.lowContrast =>
+              ro ? 'contrast redus' : 'low contrast',
+            PhotoQualityIssue.blurry =>
+              ro ? 'posibil neclară' : 'possibly blurry',
+          };
+        })
+        .join(', ');
     return ro
         ? 'Poza are $labels. Refă fotografia dacă poți; specia rămâne confirmată manual.'
         : 'The photo has $labels. Retake it if possible; the species remains manually confirmed.';

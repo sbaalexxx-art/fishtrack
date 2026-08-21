@@ -6,9 +6,8 @@ import '../../models/water_level.dart';
 const Duration canonicalWater24HourTolerance = Duration(hours: 4);
 
 enum WaterHistoryRange {
-  hours24(Duration(hours: 24)),
-  days3(Duration(days: 3)),
-  days30(Duration(days: 30));
+  sevenDays(Duration(days: 7)),
+  thirtyDays(Duration(days: 30));
 
   const WaterHistoryRange(this.duration);
 

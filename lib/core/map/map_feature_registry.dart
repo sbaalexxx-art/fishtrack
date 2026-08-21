@@ -24,7 +24,18 @@ enum MapFeatureType {
   photo,
 }
 
-enum MapMarkerShape { circle, pin, diamond, warning, shield, square }
+enum MapMarkerShape {
+  circle,
+  pin,
+  river,
+  reservoir,
+  dam,
+  hydropower,
+  diamond,
+  warning,
+  shield,
+  square,
+}
 
 enum MapFeatureTapAction {
   openStationDetails,
@@ -79,16 +90,16 @@ class MapFeatureRegistry {
 
   static const Color river = Color(0xFF4FC3F7);
   static const Color branch = Color(0xFF26C6DA);
-  static const Color dam = Color(0xFFFF9B54);
+  static const Color dam = Color(0xFF8FA7B3);
   static const Color reservoir = Color(0xFF43D9CC);
-  static const Color hydropower = Color(0xFFFFC857);
+  static const Color hydropower = Color(0xFF7C6CFF);
   static const Color fishingPlace = Color(0xFFFFB74D);
   static const Color catchEntry = Color(0xFF66BB6A);
   static const Color communityReport = Color(0xFFB78CFF);
-  static const Color pollution = Color(0xFF8D6E63);
-  static const Color danger = Color(0xFFFF7043);
-  static const Color theft = Color(0xFFEF5350);
-  static const Color obstacle = Color(0xFFFF8A65);
+  static const Color pollution = Color(0xFFD45A52);
+  static const Color danger = Color(0xFFFF4D5A);
+  static const Color theft = Color(0xFFE53945);
+  static const Color obstacle = Color(0xFFFF9F43);
   static const Color waterAccess = Color(0xFF26C6DA);
   static const Color favorite = Color(0xFFFF75B5);
   static const Color currentLocation = Color(0xFF67D04B);
@@ -118,35 +129,35 @@ class MapFeatureRegistry {
       MapFeatureType.river => MapFeaturePresentation(
         icon: Icons.waves_rounded,
         color: river,
-        markerShape: MapMarkerShape.pin,
+        markerShape: MapMarkerShape.river,
         label: isRomanian ? 'Râu' : 'River',
         tapAction: MapFeatureTapAction.openWaterBodyDetails,
       ),
       MapFeatureType.branch => MapFeaturePresentation(
         icon: Icons.alt_route_rounded,
         color: branch,
-        markerShape: MapMarkerShape.pin,
+        markerShape: MapMarkerShape.river,
         label: isRomanian ? 'Braț' : 'Branch',
         tapAction: MapFeatureTapAction.openWaterBodyDetails,
       ),
       MapFeatureType.dam => MapFeaturePresentation(
         icon: Icons.account_balance_rounded,
         color: dam,
-        markerShape: MapMarkerShape.pin,
+        markerShape: MapMarkerShape.dam,
         label: isRomanian ? 'Baraj' : 'Dam',
         tapAction: MapFeatureTapAction.openWaterAssetDetails,
       ),
       MapFeatureType.reservoir => MapFeaturePresentation(
         icon: Icons.water_rounded,
         color: reservoir,
-        markerShape: MapMarkerShape.pin,
+        markerShape: MapMarkerShape.reservoir,
         label: isRomanian ? 'Lac de acumulare' : 'Reservoir',
         tapAction: MapFeatureTapAction.openWaterAssetDetails,
       ),
       MapFeatureType.hydropower => MapFeaturePresentation(
         icon: Icons.bolt_rounded,
         color: hydropower,
-        markerShape: MapMarkerShape.pin,
+        markerShape: MapMarkerShape.hydropower,
         label: isRomanian ? 'Hidrocentrală' : 'Hydropower',
         tapAction: MapFeatureTapAction.openWaterAssetDetails,
       ),

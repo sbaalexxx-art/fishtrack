@@ -167,6 +167,83 @@ class WaterAssetDetail {
 }
 
 @immutable
+class WaterHydropowerComplex {
+  const WaterHydropowerComplex({
+    required this.reservoirId,
+    required this.reservoirName,
+    required this.latitude,
+    required this.longitude,
+    required this.importanceClass,
+    required this.hydropowerUse,
+    required this.operationState,
+    required this.evidenceClass,
+    required this.freshnessStatus,
+    required this.communityReportCount,
+    required this.hasOperationalData,
+    this.damId,
+    this.damName,
+    this.waterBodyId,
+    this.riverName,
+    this.county,
+    this.basinName,
+    this.volumeMillionM3,
+    this.surfaceAreaKm2,
+    this.plantId,
+    this.plantName,
+  });
+
+  final String reservoirId;
+  final String reservoirName;
+  final String? damId;
+  final String? damName;
+  final String? waterBodyId;
+  final String? riverName;
+  final String? county;
+  final String? basinName;
+  final double latitude;
+  final double longitude;
+  final String importanceClass;
+  final double? volumeMillionM3;
+  final double? surfaceAreaKm2;
+  final String hydropowerUse;
+  final String? plantId;
+  final String? plantName;
+  final String operationState;
+  final String evidenceClass;
+  final String freshnessStatus;
+  final int communityReportCount;
+  final bool hasOperationalData;
+
+  String get displayName =>
+      damName?.trim().isNotEmpty == true ? damName! : reservoirName;
+
+  factory WaterHydropowerComplex.fromJson(Map<String, dynamic> json) =>
+      WaterHydropowerComplex(
+        reservoirId: json['reservoir_id']?.toString() ?? '',
+        reservoirName: json['reservoir_name']?.toString() ?? '',
+        damId: _text(json['dam_id']),
+        damName: _text(json['dam_name']),
+        waterBodyId: _text(json['water_body_id']),
+        riverName: _text(json['river_name']),
+        county: _text(json['county']),
+        basinName: _text(json['basin_name']),
+        latitude: _double(json['latitude']) ?? double.nan,
+        longitude: _double(json['longitude']) ?? double.nan,
+        importanceClass: json['importance_class']?.toString() ?? '',
+        volumeMillionM3: _double(json['volume_million_m3']),
+        surfaceAreaKm2: _double(json['surface_area_km2']),
+        hydropowerUse: json['hydropower_use']?.toString() ?? '',
+        plantId: _text(json['plant_id']),
+        plantName: _text(json['plant_name']),
+        operationState: json['operation_state']?.toString() ?? 'UNKNOWN',
+        evidenceClass: json['evidence_class']?.toString() ?? 'UNKNOWN',
+        freshnessStatus: json['freshness_status']?.toString() ?? 'unavailable',
+        communityReportCount: _int(json['community_report_count']) ?? 0,
+        hasOperationalData: json['has_operational_data'] == true,
+      );
+}
+
+@immutable
 class WaterEntityState {
   const WaterEntityState({
     required this.source,

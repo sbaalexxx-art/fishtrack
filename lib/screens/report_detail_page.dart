@@ -70,7 +70,6 @@ class _ReportDetailPageState extends State<ReportDetailPage> {
     }
   }
 
-
   Future<void> _saveArea() async {
     final post = widget.post;
     final lat = post.latitude;
@@ -94,14 +93,13 @@ class _ReportDetailPageState extends State<ReportDetailPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isRo ? 'Zona a fost salvată.' : 'Area saved.'),
-        ),
+        SnackBar(content: Text(_isRo ? 'Zona a fost salvată.' : 'Area saved.')),
       );
     } on SavedItemsException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _savingArea = false);
     }
@@ -295,7 +293,6 @@ class ReportValidationResultPage extends StatelessWidget {
   const ReportValidationResultPage({super.key, required this.stillValid});
 
   final bool stillValid;
-
 
   @override
   Widget build(BuildContext context) {

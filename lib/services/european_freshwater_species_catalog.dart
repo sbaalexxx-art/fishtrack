@@ -60,7 +60,14 @@ class EuropeanFreshwaterSpeciesCatalog {
       scientificName: 'Cyprinus carpio',
       romanianName: 'Crap',
       englishName: 'Common carp',
-      aliases: ['crap', 'carp', 'common carp', 'mirror carp', 'crap oglinda', 'crap oglindă'],
+      aliases: [
+        'crap',
+        'carp',
+        'common carp',
+        'mirror carp',
+        'crap oglinda',
+        'crap oglindă',
+      ],
     ),
     EuropeanFreshwaterSpecies(
       scientificName: 'Esox lucius',
@@ -102,7 +109,13 @@ class EuropeanFreshwaterSpeciesCatalog {
       scientificName: 'Salmo trutta',
       romanianName: 'Păstrăv brun',
       englishName: 'Brown trout',
-      aliases: ['pastrav', 'păstrăv', 'pastrav brun', 'păstrăv brun', 'brown trout'],
+      aliases: [
+        'pastrav',
+        'păstrăv',
+        'pastrav brun',
+        'păstrăv brun',
+        'brown trout',
+      ],
     ),
     EuropeanFreshwaterSpecies(
       scientificName: 'Sander lucioperca',
@@ -154,7 +167,10 @@ class EuropeanFreshwaterSpeciesCatalog {
     ),
   ];
 
-  static SpeciesTaxonomyMatch? match(String rawValue, {String languageCode = 'ro'}) {
+  static SpeciesTaxonomyMatch? match(
+    String rawValue, {
+    String languageCode = 'ro',
+  }) {
     final normalized = _normalize(rawValue);
     if (normalized.isEmpty) return null;
 

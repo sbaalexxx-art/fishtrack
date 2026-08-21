@@ -72,7 +72,9 @@ PhotoQualityResult _analyzePhoto(String path) {
   final source = image.bakeOrientation(decoded);
   final originalWidth = source.width;
   final originalHeight = source.height;
-  final longSide = originalWidth > originalHeight ? originalWidth : originalHeight;
+  final longSide = originalWidth > originalHeight
+      ? originalWidth
+      : originalHeight;
   final analysisImage = longSide <= 384
       ? source
       : originalWidth >= originalHeight

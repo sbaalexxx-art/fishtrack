@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fishtrack/core/context/selected_context.dart';
+
 import 'package:fishtrack/features/commercial_home/data/commercial_home_data_source.dart';
 import 'package:fishtrack/features/commercial_home/presentation/commercial_home_page.dart';
 import 'package:fishtrack/l10n/app_localizations.dart';
@@ -96,8 +97,21 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('home-more-menu-action')), findsNothing);
-    expect(find.text('Drobeta-Turnu Severin'), findsOneWidget);
-    expect(find.textContaining('Dunărea'), findsWidgets);
+    expect(find.text('Drobeta-Turnu Severin'), findsNWidgets(2));
+    expect(
+      find.byKey(const ValueKey('home-water-station-name')),
+      findsOneWidget,
+    );
+    final canonicalWaterCard = find.byKey(
+      const ValueKey('commercial-water-card'),
+    );
+    expect(
+      find.descendant(
+        of: canonicalWaterCard,
+        matching: find.textContaining(RegExp('Dunărea', caseSensitive: false)),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('690'), findsOneWidget);
     expect(find.text('22°'), findsOneWidget);
     expect(find.text('78'), findsOneWidget);
@@ -183,7 +197,11 @@ void main() {
 
     await tester.pumpWidget(_testApp(dataSource: source));
     await _settleHome(tester);
-    expect(find.text('Drobeta-Turnu Severin'), findsOneWidget);
+    expect(find.text('Drobeta-Turnu Severin'), findsNWidgets(2));
+    expect(
+      find.byKey(const ValueKey('home-water-station-name')),
+      findsOneWidget,
+    );
 
     final now = DateTime.now().toUtc();
     final station = Station(
@@ -214,7 +232,24 @@ void main() {
     await tester.pump();
 
     expect(find.text('Drobeta-Turnu Severin'), findsOneWidget);
-    expect(find.textContaining('Timiș'), findsWidgets);
+    final remoteGpsHeader = find.byKey(
+      const ValueKey('commercial-home-context-header'),
+    );
+    expect(
+      find.descendant(
+        of: remoteGpsHeader,
+        matching: find.textContaining(RegExp('Timiș', caseSensitive: false)),
+      ),
+      findsNothing,
+    );
+    final remoteWaterCard = find.byKey(const ValueKey('commercial-water-card'));
+    expect(
+      find.descendant(
+        of: remoteWaterCard,
+        matching: find.textContaining(RegExp('Timiș', caseSensitive: false)),
+      ),
+      findsOneWidget,
+    );
     final context = tester.element(find.byType(CommercialHomePage));
     final container = ProviderScope.containerOf(context, listen: false);
     expect(container.read(selectedContextProvider)?.stationId, 'bazias');
@@ -389,6 +424,33 @@ void main() {
     expect(find.text('Niciun raport activ'), findsOneWidget);
     expect(find.text('Fără semnal local recent'), findsOneWidget);
     expect(find.text('—'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('Home header shows GPS locality only', (tester) async {
+    _configurePhone(tester, const Size(390, 844));
+
+    await tester.pumpWidget(
+      _testApp(dataSource: _FakeCommercialHomeDataSource(_snapshot())),
+    );
+    await _settleHome(tester);
+
+    final gpsHeader = find.byKey(
+      const ValueKey('commercial-home-context-header'),
+    );
+    expect(gpsHeader, findsOneWidget);
+    expect(
+      find.descendant(
+        of: gpsHeader,
+        matching: find.text('Drobeta-Turnu Severin'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: gpsHeader, matching: find.textContaining('Dunărea')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('canonical-home-alerts')), findsOneWidget);
+    expect(find.byKey(const ValueKey('commercial-water-card')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

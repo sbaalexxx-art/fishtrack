@@ -10,6 +10,11 @@ class WeatherData {
     required this.precipitationProbability,
     required this.cloudCover,
     this.pressure,
+    this.precipitation,
+    this.visibility,
+    this.dewPoint,
+    this.uvIndex,
+    this.isDay,
     required this.observedAt,
     required this.forecast,
     required this.hourlyForecast,
@@ -29,6 +34,11 @@ class WeatherData {
   final double precipitationProbability;
   final double cloudCover;
   final double? pressure;
+  final double? precipitation;
+  final double? visibility;
+  final double? dewPoint;
+  final double? uvIndex;
+  final bool? isDay;
   final DateTime observedAt;
   final List<WeatherForecastDay> forecast;
   final List<WeatherForecastHour> hourlyForecast;
@@ -57,6 +67,13 @@ class WeatherForecastHour {
     required this.windSpeed,
     required this.windGusts,
     required this.windDirectionDegrees,
+    this.pressure,
+    this.condition,
+    this.precipitation,
+    this.visibility,
+    this.dewPoint,
+    this.uvIndex,
+    this.isDay,
   });
 
   final DateTime time;
@@ -68,6 +85,13 @@ class WeatherForecastHour {
   final double windSpeed;
   final double windGusts;
   final double windDirectionDegrees;
+  final double? pressure;
+  final String? condition;
+  final double? precipitation;
+  final double? visibility;
+  final double? dewPoint;
+  final double? uvIndex;
+  final bool? isDay;
 
   String get windDirectionLabel =>
       WeatherData.compassDirection(windDirectionDegrees);
@@ -81,6 +105,9 @@ class WeatherForecastDay {
     required this.condition,
     required this.sunrise,
     required this.sunset,
+    this.precipitationProbabilityMax,
+    this.precipitationSum,
+    this.uvIndexMax,
   });
 
   final DateTime date;
@@ -89,6 +116,9 @@ class WeatherForecastDay {
   final String condition;
   final DateTime sunrise;
   final DateTime sunset;
+  final double? precipitationProbabilityMax;
+  final double? precipitationSum;
+  final double? uvIndexMax;
 }
 
 enum FishingActivity { poor, fair, good, excellent }

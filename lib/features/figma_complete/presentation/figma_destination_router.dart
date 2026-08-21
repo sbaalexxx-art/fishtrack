@@ -10,7 +10,9 @@ import '../../../services/alert_rule_repository.dart';
 import '../../../services/billing_repository.dart';
 import '../../../services/community_service.dart';
 import '../../../services/weather_alert_rule_repository.dart';
+import '../../../services/weather_service.dart';
 import '../../../screens/notification_preferences_page.dart';
+import '../../../screens/weather_page.dart';
 import '../../../screens/map_page.dart';
 import '../../../core/navigation/map_entry.dart';
 import '../../../core/navigation/water_entry.dart';
@@ -56,9 +58,8 @@ abstract final class FigmaDestinationRouter {
     AppDestination.hydropower => FigmaHydropowerPage(
       label: arguments is String ? arguments : null,
     ),
-    AppDestination.weather => FigmaWeatherHubPage(
-      initialStation: arguments is Station ? arguments : null,
-      dataSource: dataSource,
+    AppDestination.weather => WeatherPage(
+      initialWeather: arguments is WeatherHomeResult ? arguments : null,
     ),
     AppDestination.fluvi => FigmaFluviHubPage(
       initialStation: arguments is Station ? arguments : null,

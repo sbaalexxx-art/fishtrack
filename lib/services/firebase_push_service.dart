@@ -110,7 +110,8 @@ class FirebasePushService {
           message: 'Foreground FCM message received',
           metadata: <String, Object?>{
             'message_id': message.messageId ?? '—',
-            'event_type': message.data['type'] ?? message.data['event_type'] ?? '—',
+            'event_type':
+                message.data['type'] ?? message.data['event_type'] ?? '—',
           },
         );
         unawaited(
@@ -118,7 +119,9 @@ class FirebasePushService {
             'push_received_foreground',
             parameters: <String, Object>{
               'event_type':
-                  (message.data['type'] ?? message.data['event_type'] ?? 'unknown')
+                  (message.data['type'] ??
+                          message.data['event_type'] ??
+                          'unknown')
                       .toString(),
             },
           ),
@@ -129,19 +132,18 @@ class FirebasePushService {
         _handleOpenedMessage,
       );
 
-      _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
-        (state) {
-          final userId = state.session?.user.id;
-          unawaited(
-            FirebaseObservabilityService.instance.setUserIdentifier(userId),
-          );
-          if (state.session == null) {
-            _registeredWithSupabase = false;
-            return;
-          }
-          unawaited(_registerCurrentToken());
-        },
-      );
+      _authSubscription = Supabase.instance.client.auth.onAuthStateChange
+          .listen((state) {
+            final userId = state.session?.user.id;
+            unawaited(
+              FirebaseObservabilityService.instance.setUserIdentifier(userId),
+            );
+            if (state.session == null) {
+              _registeredWithSupabase = false;
+              return;
+            }
+            unawaited(_registerCurrentToken());
+          });
 
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {

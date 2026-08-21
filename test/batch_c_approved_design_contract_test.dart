@@ -41,7 +41,7 @@ void main() {
     expect(settings, contains("ValueKey('settings-theme-selector')"));
 
     expect(environment, contains('SingleChildScrollView('));
-    expect(environment, contains("segment('Tendință', selected: true)"));
+    expect(environment, contains("(_WaterHubCategory.rivers, 'Râuri')"));
 
     expect(activity, isNot(contains('6 sesiuni · 14 capturi · 3 rapoarte')));
     expect(community, isNot(contains('Clean 72%')));

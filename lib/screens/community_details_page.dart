@@ -77,7 +77,6 @@ class _CatchDetailsPageState extends State<CatchDetailsPage> {
     }
   }
 
-
   Future<void> _saveCatch() async {
     if (_savingCatch) return;
     setState(() {

@@ -25,6 +25,8 @@ class WeatherRepository {
         'wind_direction_10m',
         'cloud_cover',
         'pressure_msl',
+        'precipitation',
+        'is_day',
       ].join(','),
       'hourly': [
         'temperature_2m',
@@ -35,6 +37,13 @@ class WeatherRepository {
         'wind_speed_10m',
         'wind_gusts_10m',
         'wind_direction_10m',
+        'pressure_msl',
+        'weather_code',
+        'precipitation',
+        'visibility',
+        'dew_point_2m',
+        'uv_index',
+        'is_day',
       ].join(','),
       'daily': [
         'weather_code',
@@ -42,8 +51,11 @@ class WeatherRepository {
         'temperature_2m_min',
         'sunrise',
         'sunset',
+        'precipitation_probability_max',
+        'precipitation_sum',
+        'uv_index_max',
       ].join(','),
-      'forecast_days': '3',
+      'forecast_days': '7',
       'timezone': 'auto',
     });
 
@@ -67,6 +79,8 @@ class WeatherRepository {
     final windDirection = _number(current['wind_direction_10m']);
     final cloudCover = _number(current['cloud_cover']);
     final pressure = _number(current['pressure_msl']);
+    final currentPrecipitation = _number(current['precipitation']);
+    final currentIsDay = _number(current['is_day']);
     final observedAt =
         DateTime.tryParse(current['time']?.toString() ?? '') ?? DateTime.now();
     final hourly = _hourly(payload['hourly'] as Map<String, dynamic>);
@@ -81,7 +95,7 @@ class WeatherRepository {
         windDirection == null ||
         cloudCover == null ||
         currentHour == null ||
-        forecast.length < 3) {
+        forecast.length < 7) {
       _logApiError(const WeatherRepositoryException('Incomplete response'));
       throw const WeatherRepositoryException('Incomplete weather response');
     }
@@ -97,6 +111,11 @@ class WeatherRepository {
       precipitationProbability: currentHour.precipitationProbability,
       cloudCover: cloudCover,
       pressure: pressure,
+      precipitation: currentPrecipitation ?? currentHour.precipitation,
+      visibility: currentHour.visibility,
+      dewPoint: currentHour.dewPoint,
+      uvIndex: currentHour.uvIndex,
+      isDay: currentIsDay == null ? currentHour.isDay : currentIsDay >= 0.5,
       observedAt: observedAt,
       forecast: forecast,
       hourlyForecast: hourly
@@ -131,6 +150,13 @@ class WeatherRepository {
     final windSpeeds = _list(hourly['wind_speed_10m']);
     final windGusts = _list(hourly['wind_gusts_10m']);
     final windDirections = _list(hourly['wind_direction_10m']);
+    final pressures = _list(hourly['pressure_msl']);
+    final weatherCodes = _list(hourly['weather_code']);
+    final precipitationAmounts = _list(hourly['precipitation']);
+    final visibilities = _list(hourly['visibility']);
+    final dewPoints = _list(hourly['dew_point_2m']);
+    final uvIndexes = _list(hourly['uv_index']);
+    final isDayValues = _list(hourly['is_day']);
     final length = [
       times.length,
       temperatures.length,
@@ -141,6 +167,8 @@ class WeatherRepository {
       windSpeeds.length,
       windGusts.length,
       windDirections.length,
+      pressures.length,
+      weatherCodes.length,
     ].reduce((a, b) => a < b ? a : b);
 
     return List.generate(length, (index) {
@@ -153,6 +181,13 @@ class WeatherRepository {
       final wind = _number(windSpeeds[index]);
       final gusts = _number(windGusts[index]);
       final direction = _number(windDirections[index]);
+      final pressure = _number(pressures[index]);
+      final weatherCode = _number(weatherCodes[index])?.round();
+      final precipitationAmount = _numberAt(precipitationAmounts, index);
+      final visibility = _numberAt(visibilities, index);
+      final dewPoint = _numberAt(dewPoints, index);
+      final uvIndex = _numberAt(uvIndexes, index);
+      final isDayRaw = _numberAt(isDayValues, index);
       if (time == null ||
           temperature == null ||
           apparent == null ||
@@ -161,7 +196,9 @@ class WeatherRepository {
           clouds == null ||
           wind == null ||
           gusts == null ||
-          direction == null) {
+          direction == null ||
+          pressure == null ||
+          weatherCode == null) {
         return null;
       }
       return WeatherForecastHour(
@@ -174,6 +211,13 @@ class WeatherRepository {
         windSpeed: wind,
         windGusts: gusts,
         windDirectionDegrees: direction,
+        pressure: pressure,
+        condition: _conditionForCode(weatherCode),
+        precipitation: precipitationAmount,
+        visibility: visibility,
+        dewPoint: dewPoint,
+        uvIndex: uvIndex,
+        isDay: isDayRaw == null ? null : isDayRaw >= 0.5,
       );
     }).whereType<WeatherForecastHour>().toList(growable: false);
   }
@@ -206,6 +250,11 @@ class WeatherRepository {
     final maximums = _list(daily['temperature_2m_max']);
     final sunrises = _list(daily['sunrise']);
     final sunsets = _list(daily['sunset']);
+    final precipitationProbabilityMax = _list(
+      daily['precipitation_probability_max'],
+    );
+    final precipitationSums = _list(daily['precipitation_sum']);
+    final uvIndexMax = _list(daily['uv_index_max']);
     final length = [
       dates.length,
       codes.length,
@@ -237,6 +286,12 @@ class WeatherRepository {
         condition: _conditionForCode(code),
         sunrise: sunrise,
         sunset: sunset,
+        precipitationProbabilityMax: _numberAt(
+          precipitationProbabilityMax,
+          index,
+        ),
+        precipitationSum: _numberAt(precipitationSums, index),
+        uvIndexMax: _numberAt(uvIndexMax, index),
       );
     }).whereType<WeatherForecastDay>().toList(growable: false);
   }
@@ -273,6 +328,11 @@ class WeatherRepository {
     if (distance <= .13) return FishingActivity.good;
     if (distance <= .20) return FishingActivity.fair;
     return FishingActivity.poor;
+  }
+
+  static double? _numberAt(List<Object?> values, int index) {
+    if (index < 0 || index >= values.length) return null;
+    return _number(values[index]);
   }
 
   static double? _number(Object? value) {

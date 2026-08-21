@@ -122,6 +122,41 @@ class WaterRiverDetail {
   }
 }
 
+@immutable
+class WaterHubRiverGroup {
+  const WaterHubRiverGroup({
+    required this.groupKey,
+    required this.displayName,
+    required this.canonicalNames,
+    required this.riverKeys,
+    required this.waterBodyIds,
+    required this.damCount,
+    required this.reservoirCount,
+  });
+
+  final String groupKey;
+  final String displayName;
+  final List<String> canonicalNames;
+  final List<String> riverKeys;
+  final List<String> waterBodyIds;
+  final int damCount;
+  final int reservoirCount;
+
+  bool get resolvesToSingleCanonicalRiver =>
+      riverKeys.length == 1 && waterBodyIds.length == 1;
+
+  factory WaterHubRiverGroup.fromJson(Map<String, dynamic> json) =>
+      WaterHubRiverGroup(
+        groupKey: json['group_key']?.toString() ?? '',
+        displayName: json['display_name']?.toString() ?? '',
+        canonicalNames: _strings(json['canonical_names']),
+        riverKeys: _strings(json['river_keys']),
+        waterBodyIds: _strings(json['water_body_ids']),
+        damCount: _int(json['dam_count']) ?? 0,
+        reservoirCount: _int(json['reservoir_count']) ?? 0,
+      );
+}
+
 String? _text(Object? value) {
   final text = value?.toString().trim();
   return text == null || text.isEmpty || text == 'null' ? null : text;

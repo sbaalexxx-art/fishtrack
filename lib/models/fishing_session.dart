@@ -34,7 +34,8 @@ class FishingSession {
 
   factory FishingSession.fromJson(Map<String, dynamic> json) => FishingSession(
     id: json['id']?.toString() ?? '',
-    startedAt: DateTime.tryParse(json['started_at']?.toString() ?? '')?.toLocal() ??
+    startedAt:
+        DateTime.tryParse(json['started_at']?.toString() ?? '')?.toLocal() ??
         DateTime.fromMillisecondsSinceEpoch(0),
     endedAt: DateTime.tryParse(json['ended_at']?.toString() ?? '')?.toLocal(),
     title: json['title']?.toString(),

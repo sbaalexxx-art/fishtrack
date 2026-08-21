@@ -127,19 +127,25 @@ class FluviAIThemeColors extends ThemeExtension<FluviAIThemeColors> {
   // between legacy blue/navy palettes. Semantic Water/Hydro/Weather accents
   // remain owned by [FluviAICommercialTokens].
   static const dark = FluviAIThemeColors(
-    background: Color(0xFF05090C),
-    backgroundRaised: Color(0xFF071216),
-    surface: Color(0xFF101C22),
-    surfaceRaised: Color(0xFF0D171C),
-    surfaceStrong: Color(0xFF0A151A),
-    border: Color(0xFF263941),
-    borderSoft: Color(0x66263941),
-    textPrimary: Color(0xFFF4F8FA),
-    textSecondary: Color(0xFF9AABB4),
-    textMuted: Color(0xFF8497A0),
-    navigationBackground: Color(0xFF101C22),
-    navigationInactive: Color(0xFF9AABB4),
-    navigationBorder: Color(0x99263941),
+    // FluviAI Product System v2 verified dark family:
+    // canvas #071018, bg2 #0A151E, surface #111C26,
+    // raised #17232E, strong #1B2B37, line #203440.
+    //
+    // This is a palette-only restoration. Current Bento geometry,
+    // current semantic colors and current runtime contracts stay unchanged.
+    background: Color(0xFF071018),
+    backgroundRaised: Color(0xFF0A151E),
+    surface: Color(0xFF111C26),
+    surfaceRaised: Color(0xFF17232E),
+    surfaceStrong: Color(0xFF1B2B37),
+    border: Color(0xFF203440),
+    borderSoft: Color(0x66203440),
+    textPrimary: Color(0xFFF7FAFC),
+    textSecondary: Color(0xFF9BB0BE),
+    textMuted: Color(0xFF6E8797),
+    navigationBackground: Color(0xFF0A151E),
+    navigationInactive: Color(0xFF9BB0BE),
+    navigationBorder: Color(0x99203440),
   );
 
   static const light = FluviAIThemeColors(

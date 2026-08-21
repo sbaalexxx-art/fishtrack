@@ -92,16 +92,15 @@ class FirebaseObservabilityService {
     final safeId = userId?.trim() ?? '';
     try {
       await FirebaseCrashlytics.instance.setUserIdentifier(safeId);
-      await FirebaseAnalytics.instance.setUserId(id: safeId.isEmpty ? null : safeId);
+      await FirebaseAnalytics.instance.setUserId(
+        id: safeId.isEmpty ? null : safeId,
+      );
     } on Object {
       // Observability must never break the product runtime.
     }
   }
 
-  Future<void> logEvent(
-    String name, {
-    Map<String, Object>? parameters,
-  }) async {
+  Future<void> logEvent(String name, {Map<String, Object>? parameters}) async {
     if (!isInitialized || !_collectionEnabled) return;
     try {
       await FirebaseAnalytics.instance.logEvent(
@@ -141,10 +140,7 @@ class FirebaseObservabilityService {
     }
   }
 
-  Future<T> trace<T>(
-    String name,
-    Future<T> Function() action,
-  ) async {
+  Future<T> trace<T>(String name, Future<T> Function() action) async {
     if (!isInitialized || !_collectionEnabled) return action();
     Trace? trace;
     try {
@@ -170,9 +166,7 @@ class FirebaseObservabilityService {
   Future<void> sendQaAnalyticsProbe() async {
     await logEvent(
       'po_analytics_probe',
-      parameters: <String, Object>{
-        'channel': BuildModeService.environment,
-      },
+      parameters: <String, Object>{'channel': BuildModeService.environment},
     );
   }
 

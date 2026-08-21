@@ -22,10 +22,7 @@ enum WaterLevelSource {
 }
 
 class WaterForecastPoint {
-  const WaterForecastPoint({
-    required this.hours,
-    required this.waterLevelCm,
-  });
+  const WaterForecastPoint({required this.hours, required this.waterLevelCm});
 
   final int hours;
   final double waterLevelCm;

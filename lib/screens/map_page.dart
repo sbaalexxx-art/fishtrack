@@ -321,8 +321,8 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   mapbox.PointAnnotationManager? _stationAnnotationManager;
   mapbox.CircleAnnotationManager? _stationHighlightAnnotationManager;
   mapbox.CircleAnnotationManager? _userAnnotationManager;
-  mapbox.CircleAnnotationManager? _reportAnnotationManager;
-  mapbox.CircleAnnotationManager? _catchAnnotationManager;
+  mapbox.PointAnnotationManager? _reportAnnotationManager;
+  mapbox.PointAnnotationManager? _catchAnnotationManager;
   mapbox.CircleAnnotationManager? _waterAssetHaloAnnotationManager;
   mapbox.PointAnnotationManager? _waterAssetAnnotationManager;
   mapbox.CircleAnnotationManager? _hydropowerHaloAnnotationManager;
@@ -742,6 +742,43 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
     unawaited(_restoreRuntimeAfterStyleLoad());
   }
 
+  Future<void> _applySatelliteCartographicPolish(
+    mapbox.MapboxMap mapboxMap,
+  ) async {
+    if (_selectedMapStyle != _FullMapStyle.satellite) return;
+
+    const configuration = <String, Object>{
+      'showPointOfInterestLabels': false,
+      'showTransitLabels': false,
+      'showPedestrianRoads': false,
+      'showRoadsAndTransit': true,
+      'showRoadLabels': true,
+      'showPlaceLabels': true,
+      'showAdminBoundaries': true,
+      'colorPlaceLabels': '#D7E2E5',
+      'colorRoadLabels': '#95A4A9',
+      'colorAdminBoundaries': '#77878E',
+      'colorMotorways': '#87969A',
+      'colorTrunks': '#77888E',
+      'colorRoads': '#687A80',
+    };
+
+    for (final entry in configuration.entries) {
+      try {
+        await mapboxMap.style.setStyleImportConfigProperty(
+          'basemap',
+          entry.key,
+          entry.value,
+        );
+      } on Object {
+        logMapRuntime(
+          'map.satellite-cartographic-polish-property-failed',
+          fields: {'property': entry.key},
+        );
+      }
+    }
+  }
+
   Future<void> _loadPreviewStationWater(Station station) async {
     final requestId = ++_previewStationWaterRequestId;
     final cached = _waterService.cachedWaterUiResult(
@@ -771,6 +808,10 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
 
   Future<void> _restoreRuntimeAfterStyleLoad() async {
     final mapboxMap = _mapboxMap;
+
+    if (mapboxMap != null) {
+      await _applySatelliteCartographicPolish(mapboxMap);
+    }
 
     if (mapboxMap != null && _effectiveHydroPreferences.enabled) {
       try {
@@ -824,12 +865,12 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       _userAnnotationManager = await mapboxMap.annotations
           .createCircleAnnotationManager();
       _reportAnnotationManager = await mapboxMap.annotations
-          .createCircleAnnotationManager();
+          .createPointAnnotationManager();
       _reportTapEvents = _reportAnnotationManager?.tapEvents(
         onTap: _handleReportAnnotationTap,
       );
       _catchAnnotationManager = await mapboxMap.annotations
-          .createCircleAnnotationManager();
+          .createPointAnnotationManager();
       _catchTapEvents = _catchAnnotationManager?.tapEvents(
         onTap: _handleCatchAnnotationTap,
       );
@@ -1477,19 +1518,34 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
         return;
       }
 
-      final candidates = await _waterAssetService.searchAssets(
+      final searchCandidates = await _waterAssetService.searchAssets(
         selection.displayName,
         limit: 24,
       );
       final expectedType = selection.type == HydroPublicFeatureType.dam
           ? WaterAssetType.dam
           : WaterAssetType.reservoir;
-      final asset = _bestAssetMatch(
-        candidates,
+      var asset = _bestAssetMatch(
+        searchCandidates,
         selection.displayName,
         expectedType,
       );
+      if (asset == null) {
+        final nearbyCandidates = await _waterAssetService.getNearby(
+          latitude: selection.latitude,
+          longitude: selection.longitude,
+          radiusKm: expectedType == WaterAssetType.reservoir ? 15 : 6,
+          limit: 64,
+        );
+        asset = _bestNearbyAssetMatch(
+          nearbyCandidates,
+          selection,
+          expectedType,
+        );
+      }
       if (asset == null || !mounted) return;
+      // Keep the public reservoir geometry selected for polygon highlight, but
+      // all panel/context identity comes from the canonical Supabase asset.
       await _selectWaterAsset(asset, preservePublicSelection: true);
     } on Exception {
       // Public vector identity remains selectable when optional intelligence
@@ -1532,6 +1588,64 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
     return null;
   }
 
+  WaterAssetRef? _bestNearbyAssetMatch(
+    Iterable<WaterAssetRef> candidates,
+    HydroPublicFeatureSelection selection,
+    WaterAssetType expectedType,
+  ) {
+    final typed = candidates
+        .where((asset) => asset.type == expectedType)
+        .toList(growable: false);
+    if (typed.isEmpty) return null;
+
+    const distance = Distance();
+    final tap = LatLng(selection.latitude, selection.longitude);
+    final targetName = _normalizeHydroIdentityName(selection.displayName);
+
+    int nameAffinity(WaterAssetRef asset) {
+      final candidateName = _normalizeHydroIdentityName(asset.name);
+      if (candidateName == targetName) return 0;
+      if (candidateName.isNotEmpty &&
+          targetName.isNotEmpty &&
+          (candidateName.contains(targetName) ||
+              targetName.contains(candidateName))) {
+        return 1;
+      }
+      return 2;
+    }
+
+    double distanceKm(WaterAssetRef asset) => distance.as(
+      LengthUnit.Kilometer,
+      tap,
+      LatLng(asset.latitude, asset.longitude),
+    );
+
+    final ranked = [...typed]
+      ..sort((left, right) {
+        final affinityOrder = nameAffinity(left).compareTo(nameAffinity(right));
+        if (affinityOrder != 0) return affinityOrder;
+        return distanceKm(left).compareTo(distanceKm(right));
+      });
+    final best = ranked.first;
+    final affinity = nameAffinity(best);
+    final maximumDistanceKm = expectedType == WaterAssetType.reservoir
+        ? (affinity <= 1 ? 15.0 : 8.0)
+        : (affinity <= 1 ? 6.0 : 2.5);
+    return distanceKm(best) <= maximumDistanceKm ? best : null;
+  }
+
+  String _normalizeHydroIdentityName(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll('ă', 'a')
+      .replaceAll('â', 'a')
+      .replaceAll('î', 'i')
+      .replaceAll('ș', 's')
+      .replaceAll('ş', 's')
+      .replaceAll('ț', 't')
+      .replaceAll('ţ', 't')
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '');
+
   Future<void> _refreshWaterAssetsAtCamera({bool force = false}) async {
     final mapboxMap = _mapboxMap;
     if (mapboxMap == null || !_cameraCoordinator.isReady) return;
@@ -1557,13 +1671,60 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
 
   List<Station> get _visibleStations {
     final valid = filterFullMapStations(stations: _stations);
-    if (_cameraZoom < 7.2) return const <Station>[];
     if (_cameraZoom >= 9) return valid;
-    return valid
+
+    final persistentStationIds = <String>{
+      ..._favoriteStationIds,
+      if (_previewStation case final station?) station.id,
+      if (_temporarilyHighlightedStation case final station?) station.id,
+    };
+    final nationalCandidates = valid
         .where(
           (station) =>
+              HydroRoMapboxOverlay.isDanubeName(station.river) ||
               HydroRoMapboxOverlay.isMajorRiverName(station.river) ||
-              HydroRoMapboxOverlay.isDanubeName(station.name),
+              persistentStationIds.contains(station.id),
+        )
+        .toList(growable: false);
+
+    // Danube monitoring stations are canonical navigation anchors and remain
+    // visible whenever the Danube itself is visible. Other national stations
+    // still use density thinning until regional zoom.
+    if (_cameraZoom < 4.0) {
+      return nationalCandidates
+          .where((station) => persistentStationIds.contains(station.id))
+          .toList(growable: false);
+    }
+    if (_cameraZoom >= 7.2) return nationalCandidates;
+
+    final selectedKeys = <String>{
+      for (final id in persistentStationIds) 'station:$id',
+    };
+    final densityKeys = selectHydroDensityKeys(
+      candidates: <HydroDensityCandidate>[
+        for (final station in nationalCandidates)
+          if (!HydroRoMapboxOverlay.isDanubeName(station.river))
+            HydroDensityCandidate(
+              key: 'station:${station.id}',
+              latitude: station.latitude,
+              longitude: station.longitude,
+              priority:
+                  (_previewStation?.id == station.id ? 1000 : 0) +
+                  (_temporarilyHighlightedStation?.id == station.id ? 900 : 0) +
+                  (_favoriteStationIds.contains(station.id) ? 500 : 0) +
+                  (station.hasKnownTrend ? 120 : 0) +
+                  50,
+            ),
+      ],
+      zoom: _cameraZoom,
+      selectedKeys: selectedKeys,
+    );
+    return nationalCandidates
+        .where(
+          (station) =>
+              HydroRoMapboxOverlay.isDanubeName(station.river) ||
+              densityKeys.contains('station:${station.id}') ||
+              persistentStationIds.contains(station.id),
         )
         .toList(growable: false);
   }
@@ -1785,8 +1946,15 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   String _buildStationAnnotationFingerprint(Iterable<Station> source) {
     final stations = List<Station>.of(source)
       ..sort((left, right) => left.id.compareTo(right.id));
+    final zoomBucket = _cameraZoom < 6.2
+        ? 'national'
+        : _cameraZoom < 7.4
+        ? 'wide-regional'
+        : _cameraZoom < 8.8
+        ? 'regional'
+        : 'local';
 
-    return stations
+    final entries = stations
         .map((station) {
           return '${station.id}|'
               '${station.latitude.toStringAsFixed(6)}|'
@@ -1797,6 +1965,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
               '${_previewStation?.id == station.id}';
         })
         .join(';');
+    return '$zoomBucket|$entries';
   }
 
   Future<mapbox.PointAnnotationOptions?> _stationAnnotationOptions(
@@ -1828,20 +1997,34 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
         return null;
       }
     }
+    final normalSize = _cameraZoom < 4.8
+        ? .40
+        : _cameraZoom < 5.4
+        ? .46
+        : _cameraZoom < 6.2
+        ? .52
+        : _cameraZoom < 7.4
+        ? .60
+        : _cameraZoom < 8.8
+        ? .68
+        : .78;
+    final selected = _previewStation?.id == station.id;
+    final favorite = _favoriteStationIds.contains(station.id);
+
     return mapbox.PointAnnotationOptions(
       geometry: mapbox.Point(
         coordinates: mapbox.Position(station.longitude, station.latitude),
       ),
       iconAnchor: mapbox.IconAnchor.BOTTOM,
       iconImage: imageId,
-      iconSize: _previewStation?.id == station.id
-          ? .98
-          : _favoriteStationIds.contains(station.id)
-          ? .88
-          : .78,
-      symbolSortKey: _previewStation?.id == station.id
+      iconSize: selected
+          ? math.max(.82, normalSize + .18)
+          : favorite
+          ? math.max(.68, normalSize + .10)
+          : normalSize,
+      symbolSortKey: selected
           ? 0
-          : _favoriteStationIds.contains(station.id)
+          : favorite
           ? 4
           : station.hasKnownTrend
           ? 14
@@ -1961,53 +2144,113 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   Future<void> _syncReportAnnotations() async {
     if (_annotationSyncBlocked) return;
     final manager = _reportAnnotationManager;
-    if (!_cameraCoordinator.isReady || manager == null) return;
+    final mapboxMap = _mapboxMap;
+    if (!_cameraCoordinator.isReady || manager == null || mapboxMap == null) {
+      return;
+    }
+    if (!mounted) return;
+    final l10n = context.l10n;
+
     await manager.deleteAll();
     final reports = _communityReportsVisible
         ? _visibleReports
         : const <CommunityPost>[];
-    if (reports.isNotEmpty) {
-      await manager.createMulti(
-        reports
-            .map((report) {
-              final category = report.reportCategory ?? ReportCategory.other;
-              final presentation = MapFeatureRegistry.forReportCategory(
-                category,
-                context.l10n,
-              );
-              return mapbox.CircleAnnotationOptions(
-                geometry: mapbox.Point(
-                  coordinates: mapbox.Position(
-                    report.longitude!,
-                    report.latitude!,
-                  ),
-                ),
-                circleRadius: 7,
-                circleColor: _mapboxColor(presentation.color),
-                circleOpacity: .96,
-                circleStrokeColor: _mapboxColor(Colors.white),
-                circleStrokeWidth: 2.4,
-                circleSortKey: 30,
-                customData: <String, Object>{
-                  'type': 'community_report',
-                  'reportId': report.id,
-                },
-              );
-            })
-            .toList(growable: false),
+    if (!mounted || reports.isEmpty) {
+      logMapRuntime(
+        'layers.report-annotations',
+        fields: {
+          'fetched': _activeReports.length,
+          'visible': reports.length,
+          'created': 0,
+        },
+      );
+      return;
+    }
+
+    final options = <mapbox.PointAnnotationOptions>[];
+    for (final report in reports) {
+      final category = report.reportCategory ?? ReportCategory.other;
+      final presentation = MapFeatureRegistry.forReportCategory(category, l10n);
+      final imageId = 'fluviai-report-${category.name}-v3';
+      if (!_registeredWaterAssetStyleImageIds.contains(imageId)) {
+        try {
+          final bytes = await FluviMapPinSystem.rasterize(
+            presentation,
+            cacheKey: imageId,
+            logicalSize: 42,
+            pixelRatio: 2,
+          );
+          await mapboxMap.style.addStyleImage(
+            imageId,
+            2,
+            mapbox.MbxImage(width: 100, height: 100, data: bytes),
+            false,
+            const [],
+            const [],
+            null,
+          );
+          _registeredWaterAssetStyleImageIds.add(imageId);
+        } on Exception {
+          continue;
+        }
+      }
+
+      final critical =
+          category == ReportCategory.theftWarning ||
+          category == ReportCategory.poaching;
+      final warning =
+          category == ReportCategory.accessBlocked ||
+          category == ReportCategory.strongCurrent;
+      final normalSize = _cameraZoom < 6.2
+          ? .46
+          : _cameraZoom < 8.0
+          ? .54
+          : _cameraZoom < 10.0
+          ? .64
+          : .74;
+
+      options.add(
+        mapbox.PointAnnotationOptions(
+          geometry: mapbox.Point(
+            coordinates: mapbox.Position(report.longitude!, report.latitude!),
+          ),
+          iconAnchor: mapbox.IconAnchor.CENTER,
+          iconImage: imageId,
+          iconSize: critical
+              ? math.max(.62, normalSize + .10)
+              : warning
+              ? math.max(.56, normalSize + .05)
+              : normalSize,
+          symbolSortKey: critical
+              ? 4
+              : warning
+              ? 10
+              : 24,
+          customData: <String, Object>{
+            'type': 'community_report',
+            'reportId': report.id,
+            'severity': critical
+                ? 'critical'
+                : warning
+                ? 'warning'
+                : 'standard',
+          },
+        ),
       );
     }
+
+    if (options.isNotEmpty) await manager.createMulti(options);
     logMapRuntime(
       'layers.report-annotations',
       fields: {
         'fetched': _activeReports.length,
         'visible': reports.length,
-        'created': reports.length,
+        'created': options.length,
       },
     );
   }
 
-  void _handleReportAnnotationTap(mapbox.CircleAnnotation annotation) {
+  void _handleReportAnnotationTap(mapbox.PointAnnotation annotation) {
     final reportId = annotation.customData?['reportId']?.toString();
     if (reportId == null) return;
     CommunityPost? report;
@@ -2028,7 +2271,11 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   Future<void> _syncCatchAnnotations() async {
     if (_annotationSyncBlocked) return;
     final manager = _catchAnnotationManager;
-    if (!_cameraCoordinator.isReady || manager == null) return;
+    final mapboxMap = _mapboxMap;
+    if (!_cameraCoordinator.isReady || manager == null || mapboxMap == null) {
+      return;
+    }
+
     await manager.deleteAll();
     if (!mounted) return;
     final catches = _publicCatchesVisible
@@ -2039,22 +2286,49 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
         MapFeatureType.catchEntry,
         context.l10n,
       );
+      const imageId = 'fluviai-catch-v3';
+      if (!_registeredWaterAssetStyleImageIds.contains(imageId)) {
+        try {
+          final bytes = await FluviMapPinSystem.rasterize(
+            presentation,
+            cacheKey: imageId,
+            logicalSize: 42,
+            pixelRatio: 2,
+          );
+          await mapboxMap.style.addStyleImage(
+            imageId,
+            2,
+            mapbox.MbxImage(width: 100, height: 100, data: bytes),
+            false,
+            const [],
+            const [],
+            null,
+          );
+          _registeredWaterAssetStyleImageIds.add(imageId);
+        } on Exception {
+          return;
+        }
+      }
+
+      final normalSize = _cameraZoom < 7.4
+          ? .42
+          : _cameraZoom < 9.4
+          ? .52
+          : .64;
       await manager.createMulti(
         catches
             .map(
-              (catchPost) => mapbox.CircleAnnotationOptions(
+              (catchPost) => mapbox.PointAnnotationOptions(
                 geometry: mapbox.Point(
                   coordinates: mapbox.Position(
                     catchPost.longitude!,
                     catchPost.latitude!,
                   ),
                 ),
-                circleRadius: 7,
-                circleColor: _mapboxColor(presentation.color),
-                circleOpacity: .96,
-                circleStrokeColor: _mapboxColor(Colors.white),
-                circleStrokeWidth: 2.4,
-                circleSortKey: 28,
+                iconAnchor: mapbox.IconAnchor.CENTER,
+                iconImage: imageId,
+                iconSize: normalSize,
+                symbolSortKey: 30,
                 customData: <String, Object>{
                   'type': 'public_catch',
                   'catchId': catchPost.id,
@@ -2074,7 +2348,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
     );
   }
 
-  void _handleCatchAnnotationTap(mapbox.CircleAnnotation annotation) {
+  void _handleCatchAnnotationTap(mapbox.PointAnnotation annotation) {
     final catchId = annotation.customData?['catchId']?.toString();
     if (catchId == null) return;
     CommunityPost? catchPost;
@@ -2095,7 +2369,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   List<WaterAssetRef> get _visibleWaterAssets {
     if (!_hasPremiumWater ||
         !_effectiveHydroPreferences.enabled ||
-        _cameraZoom < 7.8) {
+        _cameraZoom < 5.6) {
       return const <WaterAssetRef>[];
     }
     final densityKeys = _visibleHydroDensityKeys;
@@ -2114,7 +2388,15 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
               _savedWaterAssetKeys.contains(key) ||
               asset.hasOperationalData ||
               asset.communityReportCount > 0;
-          return priority && densityKeys.contains(key);
+          final localCanonicalReservoir =
+              asset.type == WaterAssetType.reservoir && _cameraZoom >= 10.2;
+          final localCanonicalDam =
+              asset.type == WaterAssetType.dam && _cameraZoom >= 11.6;
+          // Geometry remains the primary cartographic truth. Reservoir identity
+          // badges appear only after regional context is clear; dam structure
+          // symbols arrive later at local zoom.
+          return (priority || localCanonicalReservoir || localCanonicalDam) &&
+              densityKeys.contains(key);
         })
         .toList(growable: false);
   }
@@ -2175,9 +2457,16 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       return;
     }
     final assets = _visibleWaterAssets;
+    final annotationZoomBucket = _cameraZoom < 6.4
+        ? 'national'
+        : _cameraZoom < 7.6
+        ? 'wide-regional'
+        : _cameraZoom < 9.0
+        ? 'regional'
+        : 'local';
     final fingerprintEntries = assets.map((asset) {
       final key = '${asset.entityType}:${asset.id}';
-      return '$key|${asset.stateTrend}|${asset.hasOperationalData}|'
+      return '$annotationZoomBucket|$key|${asset.stateTrend}|${asset.hasOperationalData}|'
           '${asset.communityReportCount}|'
           '${_savedWaterAssetKeys.contains(key)}|'
           '${_previewWaterAsset?.id == asset.id}';
@@ -2222,7 +2511,15 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
             geometry: mapbox.Point(
               coordinates: mapbox.Position(asset.longitude, asset.latitude),
             ),
-            circleRadius: selected ? 24 : 20,
+            circleRadius: selected
+                ? 22
+                : _cameraZoom < 6.4
+                ? 13
+                : _cameraZoom < 7.6
+                ? 15
+                : _cameraZoom < 9.0
+                ? 17
+                : 20,
             circleColor: _mapboxColor(
               stateColor.withValues(alpha: selected ? .20 : .12),
             ),
@@ -2240,13 +2537,25 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
           geometry: mapbox.Point(
             coordinates: mapbox.Position(asset.longitude, asset.latitude),
           ),
-          iconAnchor: mapbox.IconAnchor.BOTTOM,
+          iconAnchor: mapbox.IconAnchor.CENTER,
           iconImage: imageId,
           iconSize: selected
-              ? 1.04
+              ? .98
               : asset.type == WaterAssetType.reservoir
-              ? .72
-              : .82,
+              ? (_cameraZoom < 6.4
+                    ? .46
+                    : _cameraZoom < 7.6
+                    ? .54
+                    : _cameraZoom < 9.0
+                    ? .64
+                    : .72)
+              : (_cameraZoom < 6.4
+                    ? .50
+                    : _cameraZoom < 7.6
+                    ? .60
+                    : _cameraZoom < 9.0
+                    ? .70
+                    : .82),
           symbolSortKey: selected
               ? 0
               : saved
@@ -2283,7 +2592,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   List<WaterMapPin> get _visibleHydropowerPins {
     if (!_hasPremiumWater ||
         !_effectiveHydroPreferences.enabled ||
-        _cameraZoom < 7.8 ||
+        _cameraZoom < 5.6 ||
         !_hydropowerLayerVisible) {
       return const <WaterMapPin>[];
     }
@@ -2292,12 +2601,11 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
         .where((plant) {
           final key = 'hydropower:${plant.entityId}';
           final priority =
-              _cameraZoom >= 10.8 ||
+              _cameraZoom >= 11.4 ||
               _previewHydropowerPin?.entityId == plant.entityId ||
               _savedWaterAssetKeys.contains(key) ||
               plant.hasOperationalData ||
-              plant.communityReportCount > 0 ||
-              plant.priority >= 80;
+              plant.communityReportCount > 0;
           return priority && densityKeys.contains(key);
         })
         .toList(growable: false);
@@ -2323,9 +2631,16 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       return;
     }
     final pins = _visibleHydropowerPins;
+    final annotationZoomBucket = _cameraZoom < 6.4
+        ? 'national'
+        : _cameraZoom < 7.6
+        ? 'wide-regional'
+        : _cameraZoom < 9.0
+        ? 'regional'
+        : 'local';
     final fingerprintEntries = pins.map((pin) {
       final key = 'hydropower:${pin.entityId}';
-      return '$key|${pin.operationState}|${pin.hasOperationalData}|'
+      return '$annotationZoomBucket|$key|${pin.operationState}|${pin.hasOperationalData}|'
           '${pin.communityReportCount}|${pin.priority}|'
           '${_savedWaterAssetKeys.contains(key)}|'
           '${_previewHydropowerPin?.entityId == pin.entityId}';
@@ -2368,7 +2683,15 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
             geometry: mapbox.Point(
               coordinates: mapbox.Position(pin.longitude, pin.latitude),
             ),
-            circleRadius: selected ? 24 : 19,
+            circleRadius: selected
+                ? 22
+                : _cameraZoom < 6.4
+                ? 13
+                : _cameraZoom < 7.6
+                ? 15
+                : _cameraZoom < 9.0
+                ? 17
+                : 19,
             circleColor: _mapboxColor(
               operationColor.withValues(alpha: selected ? .22 : .12),
             ),
@@ -2386,9 +2709,17 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
           geometry: mapbox.Point(
             coordinates: mapbox.Position(pin.longitude, pin.latitude),
           ),
-          iconAnchor: mapbox.IconAnchor.BOTTOM,
+          iconAnchor: mapbox.IconAnchor.CENTER,
           iconImage: imageId,
-          iconSize: selected ? 1.04 : .82,
+          iconSize: selected
+              ? .98
+              : _cameraZoom < 6.4
+              ? .50
+              : _cameraZoom < 7.6
+              ? .60
+              : _cameraZoom < 9.0
+              ? .70
+              : .82,
           symbolSortKey: selected
               ? 0
               : saved
@@ -2425,7 +2756,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   ) async {
     final operation = pin.operationState.toLowerCase();
     final reportBadge = pin.communityReportCount.clamp(0, 9);
-    final imageId = 'fluviai-hydropower-$operation-r$reportBadge-v1';
+    final imageId = 'fluviai-hydropower-$operation-r$reportBadge-v2';
     if (_registeredWaterAssetStyleImageIds.contains(imageId)) return imageId;
     try {
       final bytes = await FluviMapPinSystem.rasterize(
@@ -2590,7 +2921,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       _ => 'unknown',
     };
     final reportBadge = asset.communityReportCount.clamp(0, 9);
-    final imageId = 'fluviai-water-${asset.entityType}-$trend-r$reportBadge-v2';
+    final imageId = 'fluviai-water-${asset.entityType}-$trend-r$reportBadge-v3';
     if (_registeredWaterAssetStyleImageIds.contains(imageId)) return imageId;
     try {
       final bytes = await FluviMapPinSystem.rasterize(
@@ -4304,7 +4635,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
                     child: DraggableAskFluviControl(
                       controlKey: const ValueKey('map-ask-fluvi'),
                       scope: AskFluviPlacementScope.fullMap,
-                      controlSize: const Size(140, 48),
+                      controlSize: const Size(48, 48),
                       defaultNormalizedPosition: const Offset(0, .76),
                       workspaceBuilder: (size) => Rect.fromLTRB(
                         horizontalInset,
@@ -5400,34 +5731,19 @@ class _MapAskFluviButton extends StatelessWidget {
     child: Material(
       color: const Color(0xF0071015),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         side: const BorderSide(color: Color(0xFF43D9CC)),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: const SizedBox(
-          width: 140,
+          width: 48,
           height: 48,
-          child: Row(
-            children: [
-              SizedBox(width: 15),
-              Icon(Icons.circle, size: 12, color: Color(0xFF43D9CC)),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Întreabă Fluvi',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Color(0xFFF6F9FB),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              SizedBox(width: 10),
-            ],
+          child: Icon(
+            Icons.auto_awesome_rounded,
+            size: 20,
+            color: Color(0xFF43D9CC),
           ),
         ),
       ),
@@ -5506,15 +5822,17 @@ class FullMapHydropowerPreviewCard extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF59E0B).withValues(alpha: .16),
+                    color: MapFeatureRegistry.hydropower.withValues(alpha: .16),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: const Color(0xFFF59E0B).withValues(alpha: .45),
+                      color: MapFeatureRegistry.hydropower.withValues(
+                        alpha: .45,
+                      ),
                     ),
                   ),
                   child: const Icon(
                     Icons.bolt_rounded,
-                    color: Color(0xFFF59E0B),
+                    color: MapFeatureRegistry.hydropower,
                     size: 20,
                   ),
                 ),
