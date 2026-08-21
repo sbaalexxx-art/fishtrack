@@ -32,10 +32,18 @@ jobs:
         run: >-
           dart format --output=none --set-exit-if-changed
           lib/services/hydro_map_canonical_service.dart
+          lib/services/hydro_map_dispatch_presentation.dart
           test/hydro_map_canonical_service_test.dart
+          test/hydro_map_dispatch_presentation_test.dart
 
-      - name: Analyze canonical Hydro service
-        run: flutter analyze lib/services/hydro_map_canonical_service.dart
+      - name: Analyze canonical Hydro services
+        run: >-
+          flutter analyze
+          lib/services/hydro_map_canonical_service.dart
+          lib/services/hydro_map_dispatch_presentation.dart
 
       - name: Run canonical Hydro contract tests
-        run: flutter test test/hydro_map_canonical_service_test.dart
+        run: >-
+          flutter test
+          test/hydro_map_canonical_service_test.dart
+          test/hydro_map_dispatch_presentation_test.dart
