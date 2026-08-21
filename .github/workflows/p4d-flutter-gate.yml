@@ -15,380 +15,22 @@ permissions:
 jobs:
   hydro-mobile-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
-      - name: Checkout
+      - name: Checkout feature branch
+        if: github.event_name == 'push'
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'push' && 'feature/hydro-dispatch-olt-p4d-recovery' || github.ref }}
+          ref: feature/hydro-dispatch-olt-p4d-recovery
+
+      - name: Checkout pull request
+        if: github.event_name != 'push'
+        uses: actions/checkout@v6
 
       - name: Apply one-shot Hydro Map probability patch
         if: github.event_name == 'push'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          map_path = Path('lib/screens/map_page.dart')
-          panel_path = Path('lib/widgets/fluviai/hydro_intelligence_panel.dart')
-          test_path = Path('test/hydro_dispatch_mobile_contract_test.dart')
-          map_text = map_path.read_text(encoding='utf-8')
-          panel_text = panel_path.read_text(encoding='utf-8')
-          test_text = test_path.read_text(encoding='utf-8')
-
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'ABORT {label}: expected exactly 1 match, got {count}')
-              return text.replace(old, new, 1)
-
-          if '_previewHydroDispatchToday' not in map_text:
-              map_text = replace_once(
-                  map_text,
-                  "import '../core/water/water_history_analysis.dart';\nimport '../l10n/l10n.dart';",
-                  "import '../core/water/water_history_analysis.dart';\nimport '../features/hydro_dispatch/presentation/hydro_dispatch_presentation.dart';\nimport '../l10n/l10n.dart';",
-                  'dispatch presentation import',
-              )
-              map_text = replace_once(
-                  map_text,
-                  "import '../services/favorite_stations_service.dart';\nimport '../services/location_service.dart';",
-                  "import '../services/favorite_stations_service.dart';\nimport '../services/hydro_dispatch_service.dart';\nimport '../services/location_service.dart';",
-                  'dispatch service import',
-              )
-              map_text = replace_once(
-                  map_text,
-                  "  final WaterAssetService _waterAssetService = const WaterAssetService();\n  final SavedItemsService _savedItemsService = const SavedItemsService();",
-                  "  final WaterAssetService _waterAssetService = const WaterAssetService();\n  final HydroDispatchService _hydroDispatchService =\n      const HydroDispatchService();\n  final SavedItemsService _savedItemsService = const SavedItemsService();",
-                  'dispatch service field',
-              )
-              map_text = replace_once(
-                  map_text,
-                  "  WaterMapPin? _previewHydropowerPin;\n  HydropowerPlantState? _previewHydropowerState;\n  HydroOverlayPreferences _hydroPreferences = const HydroOverlayPreferences();",
-                  "  WaterMapPin? _previewHydropowerPin;\n  HydropowerPlantState? _previewHydropowerState;\n  HydroDispatchDayForecast? _previewHydroDispatchToday;\n  HydroOverlayPreferences _hydroPreferences = const HydroOverlayPreferences();",
-                  'dispatch preview state',
-              )
-              map_text = replace_once(
-                  map_text,
-                  "      _previewHydropowerPin = selected;\n      _previewHydropowerState = null;\n      _isLoadingHydroSelection = true;",
-                  "      _previewHydropowerPin = selected;\n      _previewHydropowerState = null;\n      _previewHydroDispatchToday = null;\n      _isLoadingHydroSelection = true;",
-                  'clear dispatch on plant tap',
-              )
-              old_refresh = '''  Future<void> _refreshHydropowerPreview(WaterMapPin pin) async {
-    try {
-      final state = await _waterAssetService.getHydropowerPlantState(
-        pin.entityId,
-      );
-      if (!mounted || _previewHydropowerPin?.entityId != pin.entityId) return;
-      setState(() => _previewHydropowerState = state);
-      if (state != null) {
-        ref
-            .read(selectedContextProvider.notifier)
-            .select(
-              SelectedContext(
-                countryCode: state.countryCode ?? pin.countryCode,
-                locationName: state.name,
-                latitude: state.latitude ?? pin.latitude,
-                longitude: state.longitude ?? pin.longitude,
-                waterId: state.waterBodyId ?? pin.waterBodyId,
-                waterName: pin.riverName,
-                riverName: pin.riverName,
-                damId: state.damId,
-                reservoirId: state.reservoirId,
-                hydropowerPlantId: state.plantId,
-                source: state.evidenceSource,
-                observedAt: state.evidenceObservedAt,
-              ),
-            );
-      }
-    } on Exception {
-      // The map-pin state remains the truthful fallback when detail refresh fails.
-    } finally {
-      if (mounted && _previewHydropowerPin?.entityId == pin.entityId) {
-        setState(() => _isLoadingHydroSelection = false);
-      }
-    }
-  }
-'''
-              new_refresh = '''  Future<void> _refreshHydropowerPreview(WaterMapPin pin) async {
-    HydroDispatchDayForecast? today;
-    try {
-      final forecasts = await _hydroDispatchService.getTodayTomorrow(
-        pin.entityId,
-      );
-      for (final forecast in forecasts) {
-        if (forecast.dayOffset == 0) {
-          today = forecast;
-          break;
-        }
-      }
-    } on Exception {
-      // Dispatch is optional. The operational pin remains independently valid.
-    }
-    if (!mounted || _previewHydropowerPin?.entityId != pin.entityId) return;
-    setState(() {
-      _previewHydroDispatchToday = today;
-      _isLoadingHydroSelection = false;
-    });
-    _publishHydropowerContext(pin);
-  }
-'''
-              map_text = replace_once(
-                  map_text,
-                  old_refresh,
-                  new_refresh,
-                  'safe hydropower preview refresh',
-              )
-              map_text = replace_once(
-                  map_text,
-                  "      final evidenceClass = state?.evidenceClass ?? plant.evidenceClass;\n      final hasOperationalEvidence =",
-                  "      final evidenceClass = state?.evidenceClass ?? plant.evidenceClass;\n      final dispatch = _previewHydroDispatchToday;\n      final dispatchPresentation = HydroDispatchPresentation.day(\n        dispatch,\n        isRomanian: isRomanian,\n      );\n      final hasDispatchForecast = dispatch?.isAvailable == true;\n      final hasOperationalEvidence =",
-                  'dispatch panel presentation',
-              )
-              old_mw = '''        if (state?.installedPowerMw case final power?)
-          HydroIntelligenceDatum(
-            label: isRomanian ? 'Putere instalată' : 'Installed capacity',
-            value: '${_formatMetricValue(power)} MW',
-            icon: Icons.bolt_rounded,
-          ),
-'''
-              map_text = replace_once(
-                  map_text,
-                  old_mw,
-                  '',
-                  'remove installed MW map datum',
-              )
-              map_text = replace_once(
-                  map_text,
-                  "        accentColor: MapFeatureRegistry.hydropower,\n        statusTitle: isRomanian ? 'Stare de funcționare' : 'Operating status',",
-                  "        accentColor: MapFeatureRegistry.hydropower,\n        forecastProbabilityLabel: hasDispatchForecast\n            ? dispatchPresentation.probabilityLabel\n            : null,\n        forecastWindowLabel: hasDispatchForecast\n            ? dispatchPresentation.windowLabel\n            : null,\n        forecastConfidenceLabel: hasDispatchForecast\n            ? dispatchPresentation.confidenceLabel\n            : null,\n        forecastEvidenceLabel: hasDispatchForecast\n            ? dispatchPresentation.evidenceLabel\n            : null,\n        statusTitle: isRomanian ? 'Stare de funcționare' : 'Operating status',",
-                  'dispatch panel view data',
-              )
-              map_text = replace_once(
-                  map_text,
-                  "          _previewHydropowerPin = focusedHydropower;\n          _previewHydropowerState = focusedHydropowerState;\n          _isLoadingHydroSelection = focusedHydropowerState == null;",
-                  "          _previewHydropowerPin = focusedHydropower;\n          _previewHydropowerState = focusedHydropowerState;\n          _previewHydroDispatchToday = null;\n          _isLoadingHydroSelection = true;",
-                  'focused hydropower dispatch reset',
-              )
-              map_text = replace_once(
-                  map_text,
-                  "      if (focusedHydropower != null) {\n        _publishHydropowerContext(focusedHydropower);\n        if (focusedHydropowerState == null) {\n          unawaited(_refreshHydropowerPreview(focusedHydropower));\n        }\n      }",
-                  "      if (focusedHydropower != null) {\n        _publishHydropowerContext(focusedHydropower);\n        unawaited(_refreshHydropowerPreview(focusedHydropower));\n      }",
-                  'focused hydropower dispatch load',
-              )
-
-          if 'forecastProbabilityLabel' not in panel_text:
-              panel_text = replace_once(
-                  panel_text,
-                  "    this.contextLabel,\n    this.metadataLabel,\n    this.statusColor,",
-                  "    this.contextLabel,\n    this.metadataLabel,\n    this.forecastProbabilityLabel,\n    this.forecastWindowLabel,\n    this.forecastConfidenceLabel,\n    this.forecastEvidenceLabel,\n    this.statusColor,",
-                  'panel constructor forecast fields',
-              )
-              panel_text = replace_once(
-                  panel_text,
-                  "  final String? contextLabel;\n  final String? metadataLabel;\n  final IconData icon;",
-                  "  final String? contextLabel;\n  final String? metadataLabel;\n  final String? forecastProbabilityLabel;\n  final String? forecastWindowLabel;\n  final String? forecastConfidenceLabel;\n  final String? forecastEvidenceLabel;\n  final IconData icon;",
-                  'panel forecast field declarations',
-              )
-              panel_text = replace_once(
-                  panel_text,
-                  "                    _OperationalSummary(\n                      sectionTitle: isRomanian\n                          ? 'CE ȘTIM ACUM'\n                          : 'WHAT WE KNOW NOW',\n                      title: data.statusTitle,\n                      status: data.statusLabel,\n                      unavailableLabel: data.unavailableLabel,\n                      available: data.hasOperationalStatus,\n                      color: effectiveStatusColor,\n                    ),\n                    if (data.evidenceLabel?.isNotEmpty == true ||",
-                  "                    _OperationalSummary(\n                      sectionTitle: isRomanian\n                          ? 'CE ȘTIM ACUM'\n                          : 'WHAT WE KNOW NOW',\n                      title: data.statusTitle,\n                      status: data.statusLabel,\n                      unavailableLabel: data.unavailableLabel,\n                      available: data.hasOperationalStatus,\n                      color: effectiveStatusColor,\n                    ),\n                    if (data.forecastProbabilityLabel?.isNotEmpty == true &&\n                        data.forecastWindowLabel?.isNotEmpty == true) ...<Widget>[\n                      const SizedBox(height: 8),\n                      _DispatchForecastSummary(\n                        probability: data.forecastProbabilityLabel!,\n                        window: data.forecastWindowLabel!,\n                        confidence: data.forecastConfidenceLabel,\n                        evidence: data.forecastEvidenceLabel,\n                        color: data.accentColor,\n                      ),\n                    ],\n                    if (data.evidenceLabel?.isNotEmpty == true ||",
-                  'panel compact forecast placement',
-              )
-              forecast_widget = '''class _DispatchForecastSummary extends StatelessWidget {
-  const _DispatchForecastSummary({
-    required this.probability,
-    required this.window,
-    required this.color,
-    this.confidence,
-    this.evidence,
-  });
-
-  final String probability;
-  final String window;
-  final String? confidence;
-  final String? evidence;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final isRomanian =
-        Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
-    return Container(
-      key: const ValueKey('hydro-panel-dispatch-summary'),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[
-            color.withValues(alpha: .16),
-            const Color(0xFF0A1920).withValues(alpha: .96),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: .42)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  isRomanian
-                      ? 'PROBABILITATE DE UZINARE'
-                      : 'GENERATION PROBABILITY',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: .55,
-                  ),
-                ),
-              ),
-              if (evidence?.isNotEmpty == true)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: color.withValues(alpha: .35)),
-                  ),
-                  child: Text(
-                    evidence!,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: <Widget>[
-              Text(
-                probability,
-                style: const TextStyle(
-                  color: Color(0xFFF6FBFD),
-                  fontSize: 29,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -.6,
-                ),
-              ),
-              const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: <Widget>[
-                  Text(
-                    isRomanian ? 'Interval estimat' : 'Estimated window',
-                    style: const TextStyle(
-                      color: Color(0xFF91A8B5),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    window,
-                    style: const TextStyle(
-                      color: Color(0xFFF6FBFD),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          if (confidence?.isNotEmpty == true) ...<Widget>[
-            const SizedBox(height: 7),
-            Text(
-              confidence!,
-              style: const TextStyle(
-                color: Color(0xFF9FB4BE),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-'''
-              panel_text = replace_once(
-                  panel_text,
-                  'class _OperationalSummary extends StatelessWidget {',
-                  forecast_widget + 'class _OperationalSummary extends StatelessWidget {',
-                  'forecast summary widget',
-              )
-
-          test_name = 'map shows Hydro dispatch forecast without exposing MW'
-          if test_name not in test_text:
-              if not test_text.startswith("import 'dart:io';"):
-                  test_text = "import 'dart:io';\n\n" + test_text
-              marker = "  });\n}\n"
-              if not test_text.endswith(marker):
-                  raise SystemExit('ABORT test insertion: unexpected file ending')
-              test_block = '''
-    test('map shows Hydro dispatch forecast without exposing MW', () {
-      final mapSource = File('lib/screens/map_page.dart').readAsStringSync();
-      final panelSource = File(
-        'lib/widgets/fluviai/hydro_intelligence_panel.dart',
-      ).readAsStringSync();
-
-      expect(
-        mapSource,
-        contains('_hydroDispatchService.getTodayTomorrow'),
-      );
-      expect(mapSource, contains('forecastProbabilityLabel'));
-      expect(panelSource, contains('PROBABILITATE DE UZINARE'));
-      expect(panelSource, contains("ValueKey('hydro-panel-dispatch-summary')"));
-      expect(
-        mapSource,
-        isNot(contains("label: isRomanian ? 'Putere instalată'")),
-      );
-      expect(
-        mapSource,
-        isNot(contains('_waterAssetService.getHydropowerPlantState(\n        pin.entityId')),
-      );
-    });
-'''
-              test_text = test_text[:-len(marker)] + test_block + marker
-
-          map_path.write_text(map_text, encoding='utf-8')
-          panel_path.write_text(panel_text, encoding='utf-8')
-          test_path.write_text(test_text, encoding='utf-8')
-          PY
-
-          dart format \
-            lib/screens/map_page.dart \
-            lib/widgets/fluviai/hydro_intelligence_panel.dart \
-            test/hydro_dispatch_mobile_contract_test.dart
-          git diff --check
-          if ! git diff --quiet -- \
-            lib/screens/map_page.dart \
-            lib/widgets/fluviai/hydro_intelligence_panel.dart \
-            test/hydro_dispatch_mobile_contract_test.dart; then
-            git config user.name 'FluviAI CI'
-            git config user.email 'actions@users.noreply.github.com'
-            git add \
-              lib/screens/map_page.dart \
-              lib/widgets/fluviai/hydro_intelligence_panel.dart \
-              test/hydro_dispatch_mobile_contract_test.dart
-            git commit -m 'feat(hydro-map): surface safe dispatch forecast on tap'
-            git push origin HEAD:feature/hydro-dispatch-olt-p4d-recovery
-          fi
+        run: python3 tool/ci/apply_hydro_map_probability_patch.py
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -399,6 +41,20 @@ jobs:
 
       - name: Resolve dependencies
         run: flutter pub get
+
+      - name: Format patched Hydro Map surface
+        if: github.event_name == 'push'
+        run: >-
+          dart format
+          lib/screens/map_page.dart
+          lib/widgets/fluviai/hydro_intelligence_panel.dart
+          lib/services/hydro_dispatch_service.dart
+          lib/features/hydro_dispatch/presentation/hydro_dispatch_presentation.dart
+          test/hydro_dispatch_mobile_contract_test.dart
+
+      - name: Verify clean patch diff
+        if: github.event_name == 'push'
+        run: git diff --check
 
       - name: Verify P4D formatting
         run: >-
@@ -427,7 +83,7 @@ jobs:
           lib/services/hydro_dispatch_geofence_service.dart
           lib/services/hydro_dispatch_service.dart
 
-      - name: Analyze Hydro Map bridge
+      - name: Analyze Hydro Map probability surface
         run: >-
           flutter analyze
           lib/screens/map_page.dart
@@ -449,7 +105,7 @@ jobs:
       - name: Analyze saved-item bridge
         run: flutter analyze lib/services/saved_items_service.dart
 
-      - name: Run Hydro Dispatch contract and cache tests
+      - name: Run Hydro Dispatch contract and map tests
         run: >-
           flutter test
           test/hydro_dispatch_mobile_contract_test.dart
@@ -479,10 +135,28 @@ jobs:
           flutter build apk --debug --no-pub
           --dart-define=MAPBOX_ACCESS_TOKEN="$MAPBOX_ACCESS_TOKEN"
 
+      - name: Commit validated Hydro Map probability wiring
+        if: github.event_name == 'push'
+        run: |
+          if git diff --quiet; then
+            echo "Hydro Map probability wiring already present; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            lib/screens/map_page.dart \
+            lib/widgets/fluviai/hydro_intelligence_panel.dart \
+            lib/services/hydro_dispatch_service.dart \
+            lib/features/hydro_dispatch/presentation/hydro_dispatch_presentation.dart \
+            test/hydro_dispatch_mobile_contract_test.dart
+          git commit -m "feat(hydro-map): surface safe dispatch probability on map"
+          git push origin HEAD:feature/hydro-dispatch-olt-p4d-recovery
+
       - name: Upload Samsung QA APK
         uses: actions/upload-artifact@v4
         with:
-          name: fluviai-hydro-p4d-samsung-debug
+          name: fluviai-hydro-map-probability-samsung-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 3
