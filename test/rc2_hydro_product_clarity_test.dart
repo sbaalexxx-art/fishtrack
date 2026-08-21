@@ -16,6 +16,10 @@ void main() {
           registry,
           contains('static const Color dam = Color(0xFF8FA7B3);'),
         );
+        expect(
+          registry,
+          contains('static const Color hydropower = Color(0xFFE8C878);'),
+        );
 
         final damStart = registry.indexOf(
           'MapFeatureType.dam => MapFeaturePresentation(',
@@ -44,13 +48,15 @@ void main() {
         expect(hydroStart, greaterThanOrEqualTo(0));
         expect(hydroEnd, greaterThan(hydroStart));
         final hydroVisibility = mapPage.substring(hydroStart, hydroEnd);
-        expect(hydroVisibility, contains('_cameraZoom >= 11.4'));
+        expect(hydroVisibility, contains('return densityKeys.contains(key);'));
+        expect(hydroVisibility, isNot(contains('_cameraZoom >= 11.4')));
         expect(hydroVisibility, isNot(contains('plant.priority >= 80')));
 
         expect(
           mapPage,
           contains('_hydropowerOperationColor(pin.operationState)'),
         );
+        expect(mapPage, contains('onCameraChange: _handleMapCameraChange'));
       },
     );
 
