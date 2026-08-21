@@ -1,4 +1,5 @@
 name: Hydro camera sync one-shot repair
+# one-shot trigger v2
 
 on:
   push:
