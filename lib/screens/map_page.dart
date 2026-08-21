@@ -28,6 +28,9 @@ import '../models/water_level.dart';
 import '../models/water_river.dart';
 import '../services/community_service.dart';
 import '../services/favorite_stations_service.dart';
+import '../services/hydro_map_canonical_service.dart';
+import '../services/hydro_dispatch_alert_service.dart';
+import '../services/hydro_map_dispatch_presentation.dart';
 import '../services/location_service.dart';
 import '../services/water_service.dart';
 import '../services/water_asset_service.dart';
@@ -310,6 +313,10 @@ class MapPage extends ConsumerStatefulWidget {
 class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   final WaterService _waterService = WaterService();
   final WaterAssetService _waterAssetService = const WaterAssetService();
+  final HydroMapCanonicalService _hydroMapCanonicalService =
+      const HydroMapCanonicalService();
+  final HydroDispatchAlertService _hydroDispatchAlertService =
+      const HydroDispatchAlertService();
   final SavedItemsService _savedItemsService = const SavedItemsService();
   final CommunityService _communityService = const CommunityService();
   FavoriteStationsService get _favoriteStationsService =>
@@ -368,6 +375,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   WaterEntityState? _previewWaterAssetState;
   WaterMapPin? _previewHydropowerPin;
   HydropowerPlantState? _previewHydropowerState;
+  HydroMapDispatchSnapshot? _previewHydroDispatchSnapshot;
   HydroOverlayPreferences _hydroPreferences = const HydroOverlayPreferences();
   HydroPublicFeatureSelection? _hydroPublicSelection;
   WaterRiverRef? _previewRiver;
@@ -1169,6 +1177,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
           _previewWaterAsset = null;
           _previewHydropowerPin = null;
           _previewHydropowerState = null;
+          _previewHydroDispatchSnapshot = null;
           _waterAssetLoadError = null;
         });
         await _syncWaterAssetAnnotations();
@@ -1186,6 +1195,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
           _previewWaterAsset = null;
           _previewHydropowerPin = null;
           _previewHydropowerState = null;
+          _previewHydroDispatchSnapshot = null;
           _waterAssetLoadError = null;
         });
         await _syncWaterAssetAnnotations();
@@ -1220,12 +1230,44 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
             ? 500
             : 350,
       );
+      final canonicalSites = await _hydroMapCanonicalService.getVerifiedSites(
+        countryCode: 'RO',
+      );
+      final canonicalDamIds = canonicalSites
+          .map((site) => site.damId)
+          .whereType<String>()
+          .toSet();
+      final canonicalReservoirIds = canonicalSites
+          .map((site) => site.reservoirId)
+          .whereType<String>()
+          .toSet();
+
       final assets = pins
           .map((pin) => pin.toWaterAssetRef())
           .whereType<WaterAssetRef>()
+          .where((asset) {
+            if (asset.type == WaterAssetType.dam) {
+              return !canonicalDamIds.contains(asset.id);
+            }
+            if (asset.type == WaterAssetType.reservoir) {
+              return !canonicalReservoirIds.contains(asset.id);
+            }
+            return true;
+          })
           .toList(growable: false);
-      var hydropowerPins = pins
-          .where((pin) => pin.isHydropower)
+
+      const distance = Distance();
+      var hydropowerPins = canonicalSites
+          .where(
+            (site) =>
+                distance.as(
+                  LengthUnit.Kilometer,
+                  center,
+                  LatLng(site.latitude, site.longitude),
+                ) <=
+                radiusKm,
+          )
+          .map((site) => site.toWaterMapPin())
           .toList(growable: false);
 
       Set<String> savedKeys = _savedWaterAssetKeys;
@@ -1250,7 +1292,6 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       final activeEntityId = _cameraCoordinator.activeTarget?.entityId;
       WaterAssetRef? focusedAsset;
       WaterMapPin? focusedHydropower;
-      HydropowerPlantState? focusedHydropowerState;
       if (activeEntityId != null) {
         for (final asset in assets) {
           if (asset.id == activeEntityId) {
@@ -1259,29 +1300,18 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
           }
         }
         if (focusedAsset == null) {
-          for (final pin in hydropowerPins) {
-            if (pin.entityId == activeEntityId) {
-              focusedHydropower = pin;
+          for (final site in canonicalSites) {
+            if (site.plantId == activeEntityId ||
+                site.damId == activeEntityId ||
+                site.reservoirId == activeEntityId) {
+              focusedHydropower = site.toWaterMapPin();
               break;
             }
           }
-        }
-        final activeTarget = _cameraCoordinator.activeTarget;
-        if (focusedAsset == null &&
-            focusedHydropower == null &&
-            activeTarget?.source == 'global-search-hydropower') {
-          final state = await _waterAssetService.getHydropowerPlantState(
-            activeEntityId,
-          );
-          if (state?.latitude != null && state?.longitude != null) {
-            focusedHydropowerState = state;
-            final selected = ref.read(selectedContextProvider);
-            focusedHydropower = waterMapPinFromHydropowerState(
-              state!,
-              riverName: selected?.hydropowerPlantId == activeEntityId
-                  ? selected?.riverName
-                  : null,
-            );
+          if (focusedHydropower != null &&
+              !hydropowerPins.any(
+                (pin) => pin.entityId == focusedHydropower!.entityId,
+              )) {
             hydropowerPins = <WaterMapPin>[
               ...hydropowerPins,
               focusedHydropower,
@@ -1298,14 +1328,15 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
         if (focusedAsset != null) _previewWaterAsset = focusedAsset;
         if (focusedHydropower != null) {
           _previewHydropowerPin = focusedHydropower;
-          _previewHydropowerState = focusedHydropowerState;
-          _isLoadingHydroSelection = focusedHydropowerState == null;
+          _previewHydropowerState = null;
+          _previewHydroDispatchSnapshot = null;
+          _isLoadingHydroSelection = true;
         }
       });
       logMapRuntime(
         'layers.water-map-pins-fetched',
         fields: {
-          'count': pins.length,
+          'genericCount': pins.length,
           'radiusKm': radiusKm,
           'zoom': effectiveZoom,
           'dams': assets.where((a) => a.type == WaterAssetType.dam).length,
@@ -1313,15 +1344,16 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
               .where((a) => a.type == WaterAssetType.reservoir)
               .length,
           'hydropower': hydropowerPins.length,
+          'canonicalHydroSites': canonicalSites.length,
+          'suppressedHydroDams': canonicalDamIds.length,
+          'suppressedHydroReservoirs': canonicalReservoirIds.length,
         },
       );
       await _syncWaterAssetAnnotations();
       await _syncHydropowerAnnotations();
       if (focusedHydropower != null) {
         _publishHydropowerContext(focusedHydropower);
-        if (focusedHydropowerState == null) {
-          unawaited(_refreshHydropowerPreview(focusedHydropower));
-        }
+        unawaited(_refreshHydropowerPreview(focusedHydropower));
       }
     } on Exception {
       if (!mounted) return;
@@ -1341,6 +1373,35 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
     if (zoom >= 7.5) return 180;
     if (zoom >= 6) return 280;
     return 420;
+  }
+
+  int _hydroCameraPresentationBucket(double zoom) {
+    if (zoom < 5.6) return 0;
+    if (zoom < 6.4) return 1;
+    if (zoom < 7.4) return 2;
+    if (zoom < 7.6) return 3;
+    if (zoom < 8.2) return 4;
+    if (zoom < 9.0) return 5;
+    if (zoom < 9.2) return 6;
+    if (zoom < 10.2) return 7;
+    if (zoom < 10.8) return 8;
+    return 9;
+  }
+
+  void _handleMapCameraChange(mapbox.CameraChangedEventData data) {
+    if (!mounted) return;
+    final zoom = data.cameraState.zoom;
+    if (!zoom.isFinite) return;
+    final previousBucket = _hydroCameraPresentationBucket(_cameraZoom);
+    final nextBucket = _hydroCameraPresentationBucket(zoom);
+    _cameraZoom = zoom;
+    if (previousBucket == nextBucket) return;
+
+    // Camera motion updates presentation only. Network/data refresh stays on
+    // MapIdle, so pinch zoom remains responsive and never floods Supabase.
+    unawaited(_syncStationAnnotations());
+    unawaited(_syncWaterAssetAnnotations());
+    unawaited(_syncHydropowerAnnotations());
   }
 
   Future<void> _handleMapIdle(mapbox.MapIdleEventData _) async {
@@ -1396,6 +1457,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       _previewWaterAssetState = null;
       _previewHydropowerPin = null;
       _previewHydropowerState = null;
+      _previewHydroDispatchSnapshot = null;
       _isLoadingHydroSelection = true;
       _isHydroPanelExpanded = false;
     });
@@ -2125,6 +2187,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       _previewWaterAssetState = null;
       _previewHydropowerPin = null;
       _previewHydropowerState = null;
+      _previewHydroDispatchSnapshot = null;
       _hydroPublicSelection = null;
       _previewRiver = null;
       _previewRiverDetail = null;
@@ -2600,13 +2663,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
     return _hydropowerPins
         .where((plant) {
           final key = 'hydropower:${plant.entityId}';
-          final priority =
-              _cameraZoom >= 11.4 ||
-              _previewHydropowerPin?.entityId == plant.entityId ||
-              _savedWaterAssetKeys.contains(key) ||
-              plant.hasOperationalData ||
-              plant.communityReportCount > 0;
-          return priority && densityKeys.contains(key);
+          return densityKeys.contains(key);
         })
         .toList(growable: false);
   }
@@ -2674,6 +2731,9 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       final operationColor = saved
           ? MapFeatureRegistry.favorite
           : _hydropowerOperationColor(pin.operationState);
+      final haloColor = selected
+          ? MapFeatureRegistry.hydropower
+          : operationColor;
       if (selected ||
           saved ||
           pin.operationState != 'UNKNOWN' ||
@@ -2693,11 +2753,13 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
                 ? 17
                 : 19,
             circleColor: _mapboxColor(
-              operationColor.withValues(alpha: selected ? .22 : .12),
+              haloColor.withValues(alpha: selected ? .28 : .12),
             ),
             circleOpacity: 1,
             circleStrokeColor: _mapboxColor(
-              selected ? Colors.white : operationColor.withValues(alpha: .78),
+              selected
+                  ? MapFeatureRegistry.hydropower
+                  : operationColor.withValues(alpha: .78),
             ),
             circleStrokeWidth: selected ? 2.2 : 1.4,
             circleSortKey: selected ? 28 : 21,
@@ -2756,7 +2818,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   ) async {
     final operation = pin.operationState.toLowerCase();
     final reportBadge = pin.communityReportCount.clamp(0, 9);
-    final imageId = 'fluviai-hydropower-$operation-r$reportBadge-v2';
+    final imageId = 'fluviai-hydropower-$operation-r$reportBadge-v3';
     if (_registeredWaterAssetStyleImageIds.contains(imageId)) return imageId;
     try {
       final bytes = await FluviMapPinSystem.rasterize(
@@ -2797,6 +2859,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
     setState(() {
       _previewHydropowerPin = selected;
       _previewHydropowerState = null;
+      _previewHydroDispatchSnapshot = null;
       _isLoadingHydroSelection = true;
       _previewWaterAsset = null;
       _previewStation = null;
@@ -2814,41 +2877,50 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
     unawaited(_applyHydroRuntime());
   }
 
-  void _publishHydropowerContext(WaterMapPin pin) {
+  void _publishHydropowerContext(
+    WaterMapPin pin, {
+    HydroMapDispatchSnapshot? snapshot,
+  }) {
+    final payload = pin.statePayload;
+    final damId = snapshot?.damId ?? payload['dam_id']?.toString();
+    final reservoirId =
+        snapshot?.reservoirId ?? payload['reservoir_id']?.toString();
     ref
         .read(selectedContextProvider.notifier)
-        .select(SelectedContext.fromHydropowerPin(pin));
+        .select(
+          SelectedContext(
+            countryCode: pin.countryCode,
+            locationName: pin.name,
+            latitude: pin.latitude,
+            longitude: pin.longitude,
+            waterId: pin.waterBodyId,
+            waterName: pin.riverName,
+            riverName: pin.riverName,
+            damId: damId,
+            reservoirId: reservoirId,
+            hydropowerPlantId: pin.entityId,
+            source: snapshot?.evidenceClass ?? pin.stateSource,
+          ),
+        );
   }
 
   Future<void> _refreshHydropowerPreview(WaterMapPin pin) async {
     try {
-      final state = await _waterAssetService.getHydropowerPlantState(
+      final snapshot = await _hydroMapCanonicalService.getDispatchSnapshot(
         pin.entityId,
       );
       if (!mounted || _previewHydropowerPin?.entityId != pin.entityId) return;
-      setState(() => _previewHydropowerState = state);
-      if (state != null) {
-        ref
-            .read(selectedContextProvider.notifier)
-            .select(
-              SelectedContext(
-                countryCode: state.countryCode ?? pin.countryCode,
-                locationName: state.name,
-                latitude: state.latitude ?? pin.latitude,
-                longitude: state.longitude ?? pin.longitude,
-                waterId: state.waterBodyId ?? pin.waterBodyId,
-                waterName: pin.riverName,
-                riverName: pin.riverName,
-                damId: state.damId,
-                reservoirId: state.reservoirId,
-                hydropowerPlantId: state.plantId,
-                source: state.evidenceSource,
-                observedAt: state.evidenceObservedAt,
-              ),
-            );
-      }
+      setState(() {
+        _previewHydropowerState = null;
+        _previewHydroDispatchSnapshot = snapshot;
+      });
+      _publishHydropowerContext(pin, snapshot: snapshot);
     } on Exception {
-      // The map-pin state remains the truthful fallback when detail refresh fails.
+      if (!mounted || _previewHydropowerPin?.entityId != pin.entityId) return;
+      setState(() {
+        _previewHydropowerState = null;
+        _previewHydroDispatchSnapshot = null;
+      });
     } finally {
       if (mounted && _previewHydropowerPin?.entityId == pin.entityId) {
         setState(() => _isLoadingHydroSelection = false);
@@ -2897,10 +2969,6 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   }
 
   Future<void> _openHydropowerDetails(WaterMapPin pin) async {
-    if (_previewHydropowerState == null ||
-        _previewHydropowerState?.plantId != pin.entityId) {
-      await _refreshHydropowerPreview(pin);
-    }
     if (!mounted) return;
     await AppNavigator.open<void>(
       context,
@@ -2989,6 +3057,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       _previewWaterAssetState = null;
       _previewHydropowerPin = null;
       _previewHydropowerState = null;
+      _previewHydroDispatchSnapshot = null;
       _previewStation = null;
       _temporarilyHighlightedStation = null;
       _previewRiver = null;
@@ -3821,15 +3890,22 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
 
     final plant = _previewHydropowerPin;
     if (plant != null) {
-      final state = _previewHydropowerState;
-      final operation = state?.operationState ?? plant.operationState;
-      final evidenceClass = state?.evidenceClass ?? plant.evidenceClass;
-      final hasOperationalEvidence =
-          state?.evidenceValue != null ||
-          (evidenceClass.isNotEmpty &&
-              evidenceClass.toUpperCase() != 'UNKNOWN');
-      final hasOperationalStatus =
-          hasOperationalEvidence && operation.toUpperCase() != 'UNKNOWN';
+      final snapshot = _previewHydroDispatchSnapshot;
+      final forecast = HydroMapDispatchPresenter.present(
+        snapshot,
+        isRomanian: isRomanian,
+      );
+      final observedState =
+          snapshot?.observedState.toUpperCase() ?? 'NO_RECENT_OBSERVATION';
+      final observedActive = observedState == 'OBSERVED_ACTIVE';
+      final observedEnded = observedState == 'OBSERVED_ENDED';
+      final operation = observedActive
+          ? 'ACTIVE'
+          : observedEnded
+          ? 'INACTIVE'
+          : 'UNKNOWN';
+      final hasObservedOperation = observedActive || observedEnded;
+      final observedConfidence = snapshot?.observedConfidence ?? 0;
       final data = <HydroIntelligenceDatum>[
         if (plant.riverName?.isNotEmpty == true)
           HydroIntelligenceDatum(
@@ -3837,55 +3913,43 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
             value: plant.riverName!,
             icon: Icons.waves_rounded,
           ),
-        if (state?.installedPowerMw case final power?)
-          HydroIntelligenceDatum(
-            label: isRomanian ? 'Putere instalată' : 'Installed capacity',
-            value: '${_formatMetricValue(power)} MW',
-            icon: Icons.bolt_rounded,
-          ),
-        if (state?.operatorName?.isNotEmpty == true)
-          HydroIntelligenceDatum(
-            label: isRomanian ? 'Operator' : 'Operator',
-            value: state!.operatorName!,
-            icon: Icons.factory_outlined,
-          ),
-        if (state?.evidenceValue case final value?)
-          HydroIntelligenceDatum(
-            label: state?.evidenceMetric ?? l10n.hydroOfficialState,
-            value: '${_formatMetricValue(value)} ${state?.evidenceUnit ?? ''}'
-                .trim(),
-            icon: Icons.verified_outlined,
-          ),
       ];
       return HydroIntelligenceViewData(
         name: plant.name,
         typeLabel: l10n.hydroPlant,
         contextLabel: plant.riverName,
+        forecastProbabilityLabel: forecast.available
+            ? forecast.probabilityLabel
+            : null,
+        forecastWindowLabel: forecast.available ? forecast.windowLabel : null,
+        forecastConfidenceLabel: forecast.available
+            ? forecast.confidenceLabel
+            : null,
+        forecastEvidenceLabel: forecast.available
+            ? forecast.evidenceLabel
+            : null,
         icon: Icons.bolt_rounded,
         accentColor: MapFeatureRegistry.hydropower,
         statusTitle: isRomanian ? 'Stare de funcționare' : 'Operating status',
-        unavailableLabel: l10n.hydroEvidenceUnknown,
-        statusLabel: hasOperationalStatus
+        unavailableLabel: isRomanian
+            ? 'Fără observație recentă în teren'
+            : 'No recent field observation',
+        statusLabel: hasObservedOperation
             ? _localizedOperation(operation)
             : l10n.hydroEvidenceUnknown,
-        hasOperationalStatus: hasOperationalStatus,
+        hasOperationalStatus: hasObservedOperation,
         statusColor: _hydropowerOperationColor(operation),
-        evidenceLabel: hasOperationalEvidence
-            ? _evidenceExplanation(evidenceClass)
+        evidenceLabel: hasObservedOperation
+            ? _evidenceExplanation('OBSERVED')
             : _evidenceExplanation('UNKNOWN'),
-        sourceLabel: hasOperationalEvidence
-            ? _humanSourceLabel(state?.evidenceSource ?? plant.stateSource)
+        sourceLabel: hasObservedOperation
+            ? (isRomanian ? 'Observații comunitare' : 'Community observations')
             : null,
-        freshnessLabel:
-            !hasOperationalEvidence || state?.evidenceObservedAt == null
-            ? null
-            : _hydroFreshnessLabel(state?.evidenceObservedAt),
-        confidenceLabel:
-            hasOperationalEvidence &&
-                (state?.confidence ?? plant.confidence) > 0
-            ? _confidenceExplanation(state?.confidence ?? plant.confidence)
+        freshnessLabel: null,
+        confidenceLabel: hasObservedOperation && observedConfidence > 0
+            ? _confidenceExplanation(observedConfidence)
             : null,
-        relationships: _hydropowerRelationships(plant, state),
+        relationships: _hydropowerRelationships(plant, null),
         unknownMessage: l10n.hydroUnknownState,
         data: data,
         loading: _isLoadingHydroSelection,
@@ -4067,6 +4131,10 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   ) {
     final isRomanian =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
+    final payload = plant.statePayload;
+    final reservoirId =
+        state?.reservoirId ?? payload['reservoir_id']?.toString();
+    final damId = state?.damId ?? payload['dam_id']?.toString();
     return <HydroRelationshipItem>[
       if (plant.riverName?.isNotEmpty == true)
         HydroRelationshipItem(
@@ -4075,14 +4143,14 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
           typeLabel: context.l10n.hydroRiver,
           icon: Icons.waves_rounded,
         ),
-      if (state?.reservoirId != null)
+      if (reservoirId != null)
         HydroRelationshipItem(
           label: isRomanian ? 'Aici' : 'Here',
           title: isRomanian ? 'Acumulare asociată' : 'Linked reservoir',
           typeLabel: context.l10n.hydroReservoir,
           icon: Icons.water_rounded,
         ),
-      if (state?.damId != null)
+      if (damId != null)
         HydroRelationshipItem(
           label: isRomanian ? 'Aici' : 'Here',
           title: isRomanian ? 'Baraj asociat' : 'Linked dam',
@@ -4254,6 +4322,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       _previewWaterAssetState = null;
       _previewHydropowerPin = null;
       _previewHydropowerState = null;
+      _previewHydroDispatchSnapshot = null;
       _hydroPublicSelection = null;
       _previewRiver = null;
       _previewRiverDetail = null;
@@ -4352,12 +4421,35 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   bool get _hasValidHydroWaterContext => _previewStation != null;
 
   bool get _hasHydroAlertTarget {
+    if (_previewHydropowerPin != null) return true;
     if (_previewStation != null || _previewWaterAsset != null) return true;
     if (_previewRiver case final river?) return river.waterBodyId != null;
     return false;
   }
 
   Future<void> _openHydroAlert() async {
+    if (_previewHydropowerPin case final plant?) {
+      try {
+        await _hydroDispatchAlertService.enableDefaultAlerts(plant.entityId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Localizations.localeOf(context).languageCode.toLowerCase() == 'ro'
+                  ? 'Alerte Hydro activate pentru ${plant.name}: probabilitate ≥70%, fereastră estimată și observații.'
+                  : 'Hydro alerts enabled for ${plant.name}: probability ≥70%, estimated window and observations.',
+            ),
+          ),
+        );
+      } on HydroDispatchAlertException catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+
     Object? arguments;
     if (_previewStation case final station?) {
       arguments = station;
@@ -4444,6 +4536,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
                   initialCenter: initialCenter,
                   onMapCreated: _onMapCreated,
                   onStyleLoaded: _onStyleLoaded,
+                  onCameraChange: _handleMapCameraChange,
                   onMapIdle: _handleMapIdle,
                   onMapTap: _handleHydroMapTap,
                 ),
@@ -4845,6 +4938,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
                         setState(() {
                           _previewHydropowerPin = null;
                           _previewHydropowerState = null;
+                          _previewHydroDispatchSnapshot = null;
                         });
                         unawaited(_syncHydropowerAnnotations());
                       },
@@ -6488,6 +6582,7 @@ class MapboxMapView extends StatefulWidget {
     required this.initialCenter,
     required this.onMapCreated,
     required this.onStyleLoaded,
+    required this.onCameraChange,
     required this.onMapIdle,
     required this.onMapTap,
   });
@@ -6496,6 +6591,7 @@ class MapboxMapView extends StatefulWidget {
   final LatLng? initialCenter;
   final ValueChanged<mapbox.MapboxMap> onMapCreated;
   final ValueChanged<mapbox.StyleLoadedEventData> onStyleLoaded;
+  final ValueChanged<mapbox.CameraChangedEventData> onCameraChange;
   final ValueChanged<mapbox.MapIdleEventData> onMapIdle;
   final ValueChanged<mapbox.MapContentGestureContext> onMapTap;
 
@@ -6530,6 +6626,7 @@ class _MapboxMapViewState extends State<MapboxMapView> {
       viewport: _initialViewport,
       onMapCreated: widget.onMapCreated,
       onStyleLoadedListener: widget.onStyleLoaded,
+      onCameraChangeListener: widget.onCameraChange,
       onMapIdleListener: widget.onMapIdle,
       // ignore: deprecated_member_use
       onTapListener: widget.onMapTap,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/navigation/app_destination.dart';
 import '../../commercial_home/data/commercial_home_data_source.dart';
+import '../../hydro_dispatch/presentation/hydro_dispatch_canonical_route.dart';
 import '../../../models/catch.dart';
 import '../../../models/station.dart';
 import '../../../models/water_asset.dart';
@@ -55,8 +56,9 @@ abstract final class FigmaDestinationRouter {
       asset: arguments is WaterAssetRef ? arguments : null,
       label: arguments is String ? arguments : null,
     ),
-    AppDestination.hydropower => FigmaHydropowerPage(
-      label: arguments is String ? arguments : null,
+    AppDestination.hydropower => HydroDispatchCanonicalRoute(
+      plantLabel: arguments is String ? arguments : null,
+      child: FigmaHydropowerPage(label: arguments is String ? arguments : null),
     ),
     AppDestination.weather => WeatherPage(
       initialWeather: arguments is WeatherHomeResult ? arguments : null,

@@ -1,0 +1,134 @@
+name: B45C Hydro Mobile Runtime Guarded Apply
+
+on:
+  push:
+    branches:
+      - feature/b45c-hydro-map-canonical-pro
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Hydro integration branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/b45c-hydro-map-canonical-pro
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Protect approved B45C push and Ask Fluvi core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin recovery/b45c-product-owner-pass:refs/remotes/origin/recovery/b45c-product-owner-pass
+          git diff --exit-code origin/recovery/b45c-product-owner-pass -- \
+            lib/main.dart \
+            lib/screens/main_navigation.dart \
+            lib/services/firebase_push_service.dart \
+            lib/services/fluvi_deterministic_answer_service.dart \
+            lib/features/figma_complete/presentation/figma_environment_pages.dart
+
+      - name: Apply guarded Hydro mobile runtime patch
+        run: python3 .github/scripts/apply_b45c_hydro_mobile_runtime_patch.py
+
+      - name: Format touched Dart files
+        run: >-
+          dart format
+          lib/services/notification_preferences_service.dart
+          lib/screens/notification_preferences_page.dart
+          lib/services/notification_service.dart
+          lib/features/figma_complete/presentation/figma_account_pages.dart
+          lib/screens/map_page.dart
+          lib/services/hydro_dispatch_alert_service.dart
+          test/b45c_hydro_mobile_runtime_regression_test.dart
+          test/b45c_hydro_map_regression_test.dart
+
+      - name: Verify patch scope only
+        shell: bash
+        run: |
+          set -euo pipefail
+          allowed='^(lib/services/notification_preferences_service\.dart|lib/screens/notification_preferences_page\.dart|lib/services/notification_service\.dart|lib/features/figma_complete/presentation/figma_account_pages\.dart|lib/screens/map_page\.dart|lib/services/hydro_dispatch_alert_service\.dart|test/b45c_hydro_mobile_runtime_regression_test\.dart|test/b45c_hydro_map_regression_test\.dart)$'
+          git diff --name-only | tee /tmp/hydro-mobile-changed.txt
+          if grep -Ev "$allowed" /tmp/hydro-mobile-changed.txt | grep -q .; then
+            echo "::error::Guarded mobile patch changed files outside the approved scope."
+            grep -Ev "$allowed" /tmp/hydro-mobile-changed.txt
+            exit 1
+          fi
+
+      - name: Analyze mobile Hydro integration
+        run: >-
+          flutter analyze
+          lib/services/notification_preferences_service.dart
+          lib/screens/notification_preferences_page.dart
+          lib/services/notification_service.dart
+          lib/features/figma_complete/presentation/figma_account_pages.dart
+          lib/screens/map_page.dart
+          lib/services/hydro_dispatch_alert_service.dart
+
+      - name: Hydro mobile runtime regression
+        run: flutter test test/b45c_hydro_mobile_runtime_regression_test.dart
+
+      - name: Hydro canonical service regression
+        run: flutter test test/hydro_map_canonical_service_test.dart
+
+      - name: Hydro dispatch presentation regression
+        run: flutter test test/hydro_map_dispatch_presentation_test.dart
+
+      - name: B45C Hydro map regression
+        run: flutter test test/b45c_hydro_map_regression_test.dart
+
+      - name: Water map bridge regression
+        run: flutter test test/water_map_mobile_bridge_test.dart
+
+      - name: Verify protected runtime still present after patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler)" lib/main.dart
+          grep -F "await FirebasePushService.instance.initialize();" lib/main.dart
+          grep -F "FirebasePushService.instance.openedMessages.listen" lib/screens/main_navigation.dart
+          grep -F "final _answerService = const FluviDeterministicAnswerService();" lib/features/figma_complete/presentation/figma_environment_pages.dart
+          grep -F "_answerService.answer(" lib/features/figma_complete/presentation/figma_environment_pages.dart
+          grep -F "_previewHydropowerPin != null" lib/screens/map_page.dart
+          grep -F "_hydroDispatchAlertService.enableDefaultAlerts" lib/screens/map_page.dart
+          grep -F "hydroDispatch('Hydro Dispatch')" lib/services/notification_preferences_service.dart
+          grep -F "hydroDispatchForecast('hydro_dispatch_forecast')" lib/services/notification_service.dart
+          grep -F "notification.entityType == 'hydropower_plant'" lib/features/figma_complete/presentation/figma_account_pages.dart
+
+      - name: Commit validated mobile integration only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            lib/services/notification_preferences_service.dart \
+            lib/screens/notification_preferences_page.dart \
+            lib/services/notification_service.dart \
+            lib/features/figma_complete/presentation/figma_account_pages.dart \
+            lib/screens/map_page.dart \
+            lib/services/hydro_dispatch_alert_service.dart \
+            test/b45c_hydro_mobile_runtime_regression_test.dart \
+            test/b45c_hydro_map_regression_test.dart
+          if git diff --cached --quiet; then
+            echo "No mobile integration changes to commit; validated state already present."
+            exit 0
+          fi
+          git commit -m "test(hydro): normalize canonical regression source"
+          git push origin HEAD:feature/b45c-hydro-map-canonical-pro

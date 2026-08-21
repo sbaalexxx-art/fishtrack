@@ -12,7 +12,8 @@ enum NotificationCategory {
   aiFishingInsights('FluviAI Radar'),
   reputationTrust('Reputation & Trust'),
   achievements('Achievements'),
-  catchActivity('Catch Activity');
+  catchActivity('Catch Activity'),
+  hydroDispatch('Hydro Dispatch');
 
   const NotificationCategory(this.label);
   final String label;
@@ -32,6 +33,7 @@ class NotificationPreferences {
       NotificationCategory.reputationTrust,
       NotificationCategory.achievements,
       NotificationCategory.catchActivity,
+      NotificationCategory.hydroDispatch,
     },
     this.inAppEnabled = true,
     this.pushEnabled = true,

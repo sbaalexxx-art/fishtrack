@@ -59,7 +59,7 @@ void main() {
     });
 
     test(
-      'geometry remains primary and infrastructure arrives by semantic zoom',
+      'geometry remains primary and Hydro uses semantic density across zoom',
       () {
         final mapPage = File('lib/screens/map_page.dart').readAsStringSync();
         final overlay = File(
@@ -96,12 +96,13 @@ void main() {
           'List<WaterMapPin> get _visibleHydropowerPins',
           'Color _hydropowerOperationColor',
         );
-        expect(hydroVisibility, contains('_cameraZoom >= 11.4'));
+        expect(hydroVisibility, contains('return densityKeys.contains(key);'));
+        expect(hydroVisibility, isNot(contains('_cameraZoom >= 11.4')));
         expect(hydroVisibility, isNot(contains('plant.priority >= 80')));
       },
     );
 
-    test('CHE identity is distinct from operation state', () {
+    test('CHE identity is Gold and distinct from operation state', () {
       final registry = File(
         'lib/core/map/map_feature_registry.dart',
       ).readAsStringSync();
@@ -109,8 +110,9 @@ void main() {
 
       expect(
         registry,
-        contains('static const Color hydropower = Color(0xFF7C6CFF);'),
+        contains('static const Color hydropower = Color(0xFFE8C878);'),
       );
+      expect(registry, isNot(contains('Color(0xFF7C6CFF)')));
 
       final sync = scoped(
         mapPage,
@@ -130,6 +132,7 @@ void main() {
         contains('_hydropowerOperationColor(pin.operationState)'),
         reason: 'Operation state must remain as halo/accent.',
       );
+      expect(sync, contains('MapFeatureRegistry.hydropower'));
       expect(sync, contains('iconAnchor: mapbox.IconAnchor.CENTER'));
     });
 

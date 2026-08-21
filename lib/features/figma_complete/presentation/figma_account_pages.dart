@@ -12,6 +12,7 @@ import '../../../core/localization/locale_controller.dart';
 import '../../../core/navigation/app_destination.dart';
 import '../../../core/navigation/app_navigator.dart';
 import '../../../core/navigation/map_entry.dart';
+import '../../../core/map/pending_map_camera.dart';
 import '../../../core/theme/fluviai_commercial_tokens.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../l10n/l10n.dart';
@@ -23,6 +24,7 @@ import '../../../services/alert_rule_repository.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/billing_repository.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/hydro_map_canonical_service.dart';
 import '../../../services/community_service.dart';
 import '../../../services/favorite_stations_service.dart';
 import '../../../services/saved_items_service.dart';
@@ -926,7 +928,10 @@ class _AlertHistory extends StatelessWidget {
             AppNotificationType.newCatchNearSavedArea ||
             AppNotificationType.weatherAlert ||
             AppNotificationType.reportVerificationChanged ||
-            AppNotificationType.catchLiked => true,
+            AppNotificationType.catchLiked ||
+            AppNotificationType.hydroDispatchForecast ||
+            AppNotificationType.hydroDispatchWindowApproaching ||
+            AppNotificationType.hydroDispatchObserved => true,
             _ => false,
           },
         )
@@ -1031,6 +1036,40 @@ class _FigmaNotificationCenterPageState
                 ? AppDestination.reportDetail
                 : AppDestination.catchDetail,
             arguments: target,
+          );
+          return;
+        }
+      }
+
+      final notificationEntityId = notification.entityId;
+      if (notification.entityType == 'hydropower_plant' &&
+          notificationEntityId != null &&
+          notificationEntityId.isNotEmpty) {
+        final sites = await const HydroMapCanonicalService().getVerifiedSites(
+          countryCode: 'RO',
+        );
+        HydroCanonicalMapSite? site;
+        for (final candidate in sites) {
+          if (candidate.plantId == notificationEntityId) {
+            site = candidate;
+            break;
+          }
+        }
+        if (!mounted) return;
+        if (site != null) {
+          await AppNavigator.open<void>(
+            context,
+            AppDestination.contextualMap,
+            arguments: ContextualMapEntry.forTarget(
+              source: 'notification-hydro-dispatch',
+              target: RuntimeMapCameraTarget(
+                source: 'notification-hydro-dispatch',
+                entityId: site.plantId!,
+                latitude: site.latitude,
+                longitude: site.longitude,
+                zoom: 13.4,
+              ),
+            ),
           );
           return;
         }
@@ -1202,6 +1241,9 @@ class _FigmaNotificationCenterPageState
     AppNotificationType.weatherAlert => Icons.cloud_outlined,
     AppNotificationType.reportVerificationChanged => Icons.fact_check_outlined,
     AppNotificationType.catchLiked => Icons.favorite_border_rounded,
+    AppNotificationType.hydroDispatchForecast ||
+    AppNotificationType.hydroDispatchWindowApproaching ||
+    AppNotificationType.hydroDispatchObserved => Icons.bolt_rounded,
   };
 
   static Color _notificationAccent(NotificationPriority priority) =>

@@ -1,0 +1,16 @@
+name: B45C Hydro Map Guarded Apply (Archived)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archived:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Protect committed canonical integration
+        run: |
+          echo "Canonical Hydro Map wiring is already committed on feature/b45c-hydro-map-canonical-pro."
+          echo "This executor is archived intentionally to prevent accidental re-application over the validated source."

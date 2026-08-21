@@ -1,0 +1,223 @@
+name: B45C Hydro Canonical Gate
+
+on:
+  push:
+    branches:
+      - feature/b45c-hydro-map-canonical-pro
+  pull_request:
+    branches:
+      - recovery/b45c-product-owner-pass
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout committed Hydro head
+        uses: actions/checkout@v6
+        with:
+          ref: feature/b45c-hydro-map-canonical-pro
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify committed canonical Hydro wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "_hydroMapCanonicalService.getVerifiedSites" lib/screens/map_page.dart
+          grep -F "_hydroMapCanonicalService.getDispatchSnapshot" lib/screens/map_page.dart
+          grep -F "canonicalDamIds.contains(asset.id)" lib/screens/map_page.dart
+          grep -F "canonicalReservoirIds.contains(asset.id)" lib/screens/map_page.dart
+          grep -F "hydro-panel-dispatch-summary" lib/widgets/fluviai/hydro_intelligence_panel.dart
+          if grep -F ".where((pin) => pin.isHydropower)" lib/screens/map_page.dart; then
+            echo "::error::Legacy generic Hydro point path returned."
+            exit 1
+          fi
+          if grep -F "Putere instalată" lib/screens/map_page.dart || grep -F "Installed capacity" lib/screens/map_page.dart; then
+            echo "::error::Installed MW returned to Hydro Map preview."
+            exit 1
+          fi
+
+      - name: Verify durable Hydro camera and Gold semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "onCameraChange: _handleMapCameraChange" lib/screens/map_page.dart
+          grep -F "onCameraChangeListener: widget.onCameraChange" lib/screens/map_page.dart
+          grep -F "_handleMapCameraChange(mapbox.CameraChangedEventData data)" lib/screens/map_page.dart
+          grep -F "return densityKeys.contains(key);" lib/screens/map_page.dart
+          grep -F "static const Color hydropower = Color(0xFFE8C878);" lib/core/map/map_feature_registry.dart
+          grep -F 'fluviai-hydropower-$operation-r$reportBadge-v3' lib/screens/map_page.dart
+          grep -F "static const _cyan = Color(0xFFE8C878);" lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart
+          if grep -F "_cameraZoom >= 11.4" lib/screens/map_page.dart; then
+            echo "::error::Legacy Hydro zoom 11.4 gate returned."
+            exit 1
+          fi
+          if grep -F "Color(0xFF7C6CFF)" lib/core/map/map_feature_registry.dart; then
+            echo "::error::Legacy purple Hydro identity returned."
+            exit 1
+          fi
+
+      - name: Verify protected Danube station runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "Future<void> _loadStations() async {" lib/screens/map_page.dart
+          grep -F "_stationAnnotationManager" lib/screens/map_page.dart
+          grep -F "_syncStationAnnotations()" lib/screens/map_page.dart
+          grep -F "_stationAnnotationOptions(" lib/screens/map_page.dart
+          grep -F "'type': 'water_station'" lib/screens/map_page.dart
+
+      - name: Verify protected push and Ask Fluvi core unchanged from B45C
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin recovery/b45c-product-owner-pass:refs/remotes/origin/recovery/b45c-product-owner-pass
+          git diff --exit-code origin/recovery/b45c-product-owner-pass -- \
+            lib/main.dart \
+            lib/screens/main_navigation.dart \
+            lib/services/firebase_push_service.dart \
+            lib/services/fluvi_deterministic_answer_service.dart \
+            lib/features/figma_complete/presentation/figma_environment_pages.dart
+          grep -F "FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler)" lib/main.dart
+          grep -F "await FirebasePushService.instance.initialize();" lib/main.dart
+          grep -F "FirebasePushService.instance.openedMessages.listen" lib/screens/main_navigation.dart
+          grep -F "final _answerService = const FluviDeterministicAnswerService();" lib/features/figma_complete/presentation/figma_environment_pages.dart
+          grep -F "_answerService.answer(" lib/features/figma_complete/presentation/figma_environment_pages.dart
+
+      - name: Verify Hydro mobile dispatch runtime wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "hydroDispatch('Hydro Dispatch')" lib/services/notification_preferences_service.dart
+          grep -F "hydroDispatchForecast('hydro_dispatch_forecast')" lib/services/notification_service.dart
+          grep -F "hydroDispatchWindowApproaching('hydro_dispatch_window_approaching')" lib/services/notification_service.dart
+          grep -F "hydroDispatchObserved('hydro_dispatch_observed')" lib/services/notification_service.dart
+          grep -F "NotificationCategory.hydroDispatch" lib/services/notification_service.dart
+          grep -F "notification.entityType == 'hydropower_plant'" lib/features/figma_complete/presentation/figma_account_pages.dart
+          grep -F "source: 'notification-hydro-dispatch'" lib/features/figma_complete/presentation/figma_account_pages.dart
+          grep -F "_previewHydropowerPin != null" lib/screens/map_page.dart
+          grep -F "_hydroDispatchAlertService.enableDefaultAlerts" lib/screens/map_page.dart
+          grep -F "'upsert_hydro_dispatch_alert_rule_v1'" lib/services/hydro_dispatch_alert_service.dart
+          grep -F "'p_probability_threshold': 0.70" lib/services/hydro_dispatch_alert_service.dart
+          grep -F "'p_notify_probability': true" lib/services/hydro_dispatch_alert_service.dart
+          grep -F "'p_notify_window_approaching': true" lib/services/hydro_dispatch_alert_service.dart
+          grep -F "'p_notify_observed_activity': true" lib/services/hydro_dispatch_alert_service.dart
+
+      - name: Normalize legacy map regression test in QA workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format test/b45c_hydro_map_regression_test.dart
+          git diff -- test/b45c_hydro_map_regression_test.dart
+
+      - name: Format check Hydro production files
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib/screens/map_page.dart
+          lib/core/map/map_feature_registry.dart
+          lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart
+          lib/widgets/fluviai/hydro_intelligence_panel.dart
+          lib/services/hydro_map_canonical_service.dart
+          lib/services/hydro_map_dispatch_presentation.dart
+          lib/services/hydro_dispatch_alert_service.dart
+          lib/services/notification_preferences_service.dart
+          lib/screens/notification_preferences_page.dart
+          lib/services/notification_service.dart
+          lib/features/figma_complete/presentation/figma_account_pages.dart
+          test/hydro_map_canonical_service_test.dart
+          test/hydro_map_dispatch_presentation_test.dart
+          test/b45c_hydro_map_regression_test.dart
+          test/b45c_hydro_mobile_runtime_regression_test.dart
+          test/hydro_camera_sync_regression_test.dart
+          test/rc2_hydro_cartographic_language_test.dart
+          test/rc2_hydro_product_clarity_test.dart
+
+      - name: Analyze Hydro map and mobile runtime integration
+        run: >-
+          flutter analyze
+          lib/screens/map_page.dart
+          lib/core/map/map_feature_registry.dart
+          lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart
+          lib/widgets/fluviai/hydro_intelligence_panel.dart
+          lib/services/hydro_map_canonical_service.dart
+          lib/services/hydro_map_dispatch_presentation.dart
+          lib/services/hydro_dispatch_alert_service.dart
+          lib/services/notification_preferences_service.dart
+          lib/screens/notification_preferences_page.dart
+          lib/services/notification_service.dart
+          lib/features/figma_complete/presentation/figma_account_pages.dart
+
+      - name: Hydro mobile runtime regression
+        run: flutter test test/b45c_hydro_mobile_runtime_regression_test.dart
+
+      - name: Hydro canonical service contract
+        run: flutter test test/hydro_map_canonical_service_test.dart
+
+      - name: Hydro dispatch presentation contract
+        run: flutter test test/hydro_map_dispatch_presentation_test.dart
+
+      - name: B45C Hydro map regression
+        run: flutter test test/b45c_hydro_map_regression_test.dart
+
+      - name: Hydro camera synchronization regression
+        run: flutter test test/hydro_camera_sync_regression_test.dart
+
+      - name: Water map mobile bridge regression
+        run: flutter test test/water_map_mobile_bridge_test.dart
+
+      - name: RC2 Hydro cartographic language regression
+        run: flutter test test/rc2_hydro_cartographic_language_test.dart
+
+      - name: RC2 Hydro identity icon semantics regression
+        run: flutter test test/rc2_hydro_identity_icon_semantics_test.dart
+
+      - name: RC2 Hydro product clarity regression
+        run: flutter test test/rc2_hydro_product_clarity_test.dart
+
+      - name: Validate Mapbox public build token
+        shell: bash
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAPBOX_ACCESS_TOKEN:-}" || "${MAPBOX_ACCESS_TOKEN}" != pk.* ]]; then
+            echo "::error::MAPBOX_ACCESS_TOKEN secret is missing or invalid."
+            exit 1
+          fi
+
+      - name: Build Samsung ARM64 debug APK
+        shell: bash
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/b45c-hydro-qa
+          flutter build apk --debug --target-platform android-arm64 \
+            --dart-define="MAPBOX_ACCESS_TOKEN=${MAPBOX_ACCESS_TOKEN}"
+          test -f build/app/outputs/flutter-apk/app-debug.apk
+          sha256sum build/app/outputs/flutter-apk/app-debug.apk \
+            | tee build/b45c-hydro-qa/app-debug.apk.sha256
+          cp build/app/outputs/flutter-apk/app-debug.apk build/b45c-hydro-qa/FluviAI-B45C-Hydro-Canonical-PRO-debug.apk
+
+      - name: Upload Samsung QA bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Samsung QA APK
+          path: build/b45c-hydro-qa/
+          if-no-files-found: error
+          retention-days: 7
