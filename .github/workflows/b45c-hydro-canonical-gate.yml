@@ -32,12 +32,18 @@ jobs:
         run: flutter pub get
 
       - name: Verify formatting
-        run: >-
-          dart format --output=none --set-exit-if-changed
-          lib/services/hydro_map_canonical_service.dart
-          lib/services/hydro_map_dispatch_presentation.dart
-          test/hydro_map_canonical_service_test.dart
-          test/hydro_map_dispatch_presentation_test.dart
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            lib/services/hydro_map_canonical_service.dart
+            lib/services/hydro_map_dispatch_presentation.dart
+            test/hydro_map_canonical_service_test.dart
+            test/hydro_map_dispatch_presentation_test.dart
+          )
+          dart format "${files[@]}"
+          git diff -- "${files[@]}"
+          git diff --exit-code -- "${files[@]}"
 
       - name: Analyze canonical Hydro services
         run: >-
