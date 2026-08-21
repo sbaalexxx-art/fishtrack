@@ -10,19 +10,20 @@ import 'hydro_dispatch_route_bridge.dart';
 
 /// Canonicalizes a hydropower route before Hydro Dispatch binds to it.
 ///
-/// Some legacy/map entry points only carry the CHE display name. Hydro Dispatch
-/// requires the canonical `plant_id`, so this route resolves the real CHE from
-/// the Water catalog and synchronizes [selectedContextProvider]. No forecast is
-/// fabricated and no name is converted to a hard-coded id.
+/// New map/runtime callers must pass the canonical [plant] so identity is never
+/// downgraded to a display name. [plantLabel] remains only as a legacy/deep-link
+/// fallback for routes that predate the canonical plant contract.
 class HydroDispatchCanonicalRoute extends ConsumerStatefulWidget {
   const HydroDispatchCanonicalRoute({
     super.key,
     required this.child,
+    this.plant,
     this.plantLabel,
     this.waterAssetService = const WaterAssetService(),
   });
 
   final Widget child;
+  final WaterMapPin? plant;
   final String? plantLabel;
   final WaterAssetService waterAssetService;
 
@@ -33,7 +34,7 @@ class HydroDispatchCanonicalRoute extends ConsumerStatefulWidget {
 
 class _HydroDispatchCanonicalRouteState
     extends ConsumerState<HydroDispatchCanonicalRoute> {
-  String? _lastResolvedLabel;
+  String? _lastResolvedIdentity;
   bool _resolving = false;
 
   @override
@@ -47,7 +48,9 @@ class _HydroDispatchCanonicalRouteState
   @override
   void didUpdateWidget(covariant HydroDispatchCanonicalRoute oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.plantLabel != widget.plantLabel) {
+    final oldIdentity = oldWidget.plant?.entityId ?? oldWidget.plantLabel;
+    final newIdentity = widget.plant?.entityId ?? widget.plantLabel;
+    if (oldIdentity != newIdentity) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _ensureCanonicalPlant(),
       );
@@ -56,6 +59,22 @@ class _HydroDispatchCanonicalRouteState
 
   Future<void> _ensureCanonicalPlant() async {
     if (!mounted || _resolving) return;
+
+    final canonicalPlant = widget.plant;
+    if (canonicalPlant != null) {
+      final plantId = canonicalPlant.entityId.trim();
+      if (plantId.isEmpty) return;
+      final selected = ref.read(selectedContextProvider);
+      if (selected?.hydropowerPlantId?.trim() != plantId ||
+          selected?.locationName != canonicalPlant.name) {
+        ref
+            .read(selectedContextProvider.notifier)
+            .select(SelectedContext.fromHydropowerPin(canonicalPlant));
+      }
+      _lastResolvedIdentity = plantId;
+      return;
+    }
+
     final label = widget.plantLabel?.trim();
     if (label == null || label.isEmpty) return;
 
@@ -67,10 +86,10 @@ class _HydroDispatchCanonicalRouteState
         selectedPlantId.isNotEmpty &&
         selectedName != null &&
         _normalizeHydropowerName(selectedName) == normalizedLabel) {
-      _lastResolvedLabel = normalizedLabel;
+      _lastResolvedIdentity = selectedPlantId;
       return;
     }
-    if (_lastResolvedLabel == normalizedLabel && selectedPlantId != null) {
+    if (_lastResolvedIdentity == normalizedLabel && selectedPlantId != null) {
       return;
     }
 
@@ -85,18 +104,14 @@ class _HydroDispatchCanonicalRouteState
       if (pin == null) return;
 
       final current = ref.read(selectedContextProvider);
-      if (current?.hydropowerPlantId?.trim() == pin.entityId) {
-        _lastResolvedLabel = normalizedLabel;
-        return;
+      if (current?.hydropowerPlantId?.trim() != pin.entityId) {
+        ref
+            .read(selectedContextProvider.notifier)
+            .select(SelectedContext.fromHydropowerPin(pin));
       }
-
-      ref
-          .read(selectedContextProvider.notifier)
-          .select(SelectedContext.fromHydropowerPin(pin));
-      _lastResolvedLabel = normalizedLabel;
+      _lastResolvedIdentity = pin.entityId;
     } on Exception {
-      // The child remains truthful and usable even if canonicalization cannot
-      // resolve. Hydro Dispatch will not display a forecast without a real id.
+      // No forecast is fabricated when legacy canonicalization cannot resolve.
     } finally {
       _resolving = false;
     }
