@@ -35,7 +35,6 @@ jobs:
         run: flutter pub get
 
       - name: Apply one-shot Hydro camera synchronization repair
-        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
