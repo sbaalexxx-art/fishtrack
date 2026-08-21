@@ -95,16 +95,26 @@ jobs:
           lib/services/hydro_map_canonical_service.dart
           lib/services/hydro_map_dispatch_presentation.dart
 
-      - name: Run canonical and B45C regression tests
-        run: >-
-          flutter test
-          test/hydro_map_canonical_service_test.dart
-          test/hydro_map_dispatch_presentation_test.dart
-          test/b45c_hydro_map_regression_test.dart
-          test/water_map_mobile_bridge_test.dart
-          test/rc2_hydro_cartographic_language_test.dart
-          test/rc2_hydro_identity_icon_semantics_test.dart
-          test/rc2_hydro_product_clarity_test.dart
+      - name: Hydro canonical service contract
+        run: flutter test test/hydro_map_canonical_service_test.dart
+
+      - name: Hydro dispatch presentation contract
+        run: flutter test test/hydro_map_dispatch_presentation_test.dart
+
+      - name: B45C Hydro map regression
+        run: flutter test test/b45c_hydro_map_regression_test.dart
+
+      - name: Water map mobile bridge regression
+        run: flutter test test/water_map_mobile_bridge_test.dart
+
+      - name: RC2 Hydro cartographic language regression
+        run: flutter test test/rc2_hydro_cartographic_language_test.dart
+
+      - name: RC2 Hydro identity icon semantics regression
+        run: flutter test test/rc2_hydro_identity_icon_semantics_test.dart
+
+      - name: RC2 Hydro product clarity regression
+        run: flutter test test/rc2_hydro_product_clarity_test.dart
 
       - name: Verify protected station runtime remains present
         shell: bash
