@@ -57,12 +57,13 @@ jobs:
           lib/screens/map_page.dart
           lib/services/hydro_dispatch_alert_service.dart
           test/b45c_hydro_mobile_runtime_regression_test.dart
+          test/b45c_hydro_map_regression_test.dart
 
       - name: Verify patch scope only
         shell: bash
         run: |
           set -euo pipefail
-          allowed='^(lib/services/notification_preferences_service\.dart|lib/screens/notification_preferences_page\.dart|lib/services/notification_service\.dart|lib/features/figma_complete/presentation/figma_account_pages\.dart|lib/screens/map_page\.dart|lib/services/hydro_dispatch_alert_service\.dart|test/b45c_hydro_mobile_runtime_regression_test\.dart)$'
+          allowed='^(lib/services/notification_preferences_service\.dart|lib/screens/notification_preferences_page\.dart|lib/services/notification_service\.dart|lib/features/figma_complete/presentation/figma_account_pages\.dart|lib/screens/map_page\.dart|lib/services/hydro_dispatch_alert_service\.dart|test/b45c_hydro_mobile_runtime_regression_test\.dart|test/b45c_hydro_map_regression_test\.dart)$'
           git diff --name-only | tee /tmp/hydro-mobile-changed.txt
           if grep -Ev "$allowed" /tmp/hydro-mobile-changed.txt | grep -q .; then
             echo "::error::Guarded mobile patch changed files outside the approved scope."
@@ -123,10 +124,11 @@ jobs:
             lib/features/figma_complete/presentation/figma_account_pages.dart \
             lib/screens/map_page.dart \
             lib/services/hydro_dispatch_alert_service.dart \
-            test/b45c_hydro_mobile_runtime_regression_test.dart
+            test/b45c_hydro_mobile_runtime_regression_test.dart \
+            test/b45c_hydro_map_regression_test.dart
           if git diff --cached --quiet; then
             echo "No mobile integration changes to commit; validated state already present."
             exit 0
           fi
-          git commit -m "feat(hydro): wire dispatch alerts into mobile runtime"
+          git commit -m "test(hydro): normalize canonical regression source"
           git push origin HEAD:feature/b45c-hydro-map-canonical-pro
