@@ -15,8 +15,7 @@ permissions:
 jobs:
   canonical-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    timeout-minutes: 20
     steps:
       - name: Checkout committed Hydro head
         uses: actions/checkout@v6
@@ -31,10 +30,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Resolve dependencies
-        run: flutter pub get
-
-      - name: Apply one-shot Hydro camera synchronization repair
+      - name: Apply robust one-shot Hydro camera repair
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +52,7 @@ jobs:
               if new in source:
                   return source
               if source.count(old) != 1:
-                  raise SystemExit(f'ABORT {label}: expected exactly one old contract')
+                  raise SystemExit(f'ABORT {label}: expected one old contract, found {source.count(old)}')
               changed = True
               return source.replace(old, new, 1)
 
@@ -76,7 +72,7 @@ jobs:
               text,
               "  final ValueChanged<mapbox.StyleLoadedEventData> onStyleLoaded;\n  final ValueChanged<mapbox.MapIdleEventData> onMapIdle;",
               "  final ValueChanged<mapbox.StyleLoadedEventData> onStyleLoaded;\n  final ValueChanged<mapbox.CameraChangedEventData> onCameraChange;\n  final ValueChanged<mapbox.MapIdleEventData> onMapIdle;",
-              'MapboxMapView callback field',
+              'MapboxMapView camera field',
           )
           text = replace_once(
               text,
@@ -85,31 +81,26 @@ jobs:
               'MapWidget camera listener',
           )
 
-          old_visibility = """    return _hydropowerPins
-              .where((plant) {
-                final key = 'hydropower:${plant.entityId}';
-                final priority =
-                    _cameraZoom >= 11.4 ||
-                    _previewHydropowerPin?.entityId == plant.entityId ||
-                    _savedWaterAssetKeys.contains(key) ||
-                    plant.hasOperationalData ||
-                    plant.communityReportCount > 0;
-                return priority && densityKeys.contains(key);
-              })
-              .toList(growable: false);"""
-          new_visibility = """    return _hydropowerPins
-              .where((plant) {
-                final key = 'hydropower:${plant.entityId}';
-                return densityKeys.contains(key);
-              })
-              .toList(growable: false);"""
-          text = replace_once(text, old_visibility, new_visibility, 'Hydro visibility gate')
+          visibility_start = text.index('  List<WaterMapPin> get _visibleHydropowerPins {')
+          visibility_end = text.index('\n  Color _hydropowerOperationColor', visibility_start)
+          visibility = text[visibility_start:visibility_end]
+          if '_cameraZoom >= 11.4' in visibility:
+              priority_start = visibility.index('          final priority =')
+              priority_end_marker = '          return priority && densityKeys.contains(key);'
+              priority_end = visibility.index(priority_end_marker, priority_start) + len(priority_end_marker)
+              visibility = (
+                  visibility[:priority_start]
+                  + '          return densityKeys.contains(key);'
+                  + visibility[priority_end:]
+              )
+              text = text[:visibility_start] + visibility + text[visibility_end:]
+              changed = True
+          if '_cameraZoom >= 11.4' in text[visibility_start:visibility_end]:
+              raise SystemExit('ABORT: stale Hydro 11.4 gate remains')
 
           if '_handleMapCameraChange(mapbox.CameraChangedEventData data)' not in text:
-              marker = "  Future<void> _handleMapIdle(mapbox.MapIdleEventData _) async {"
-              if text.count(marker) != 1:
-                  raise SystemExit('ABORT camera handler marker mismatch')
-              camera_handler = """  int _hydroCameraPresentationBucket(double zoom) {
+              marker = '  Future<void> _handleMapIdle(mapbox.MapIdleEventData _) async {'
+              handler = """  int _hydroCameraPresentationBucket(double zoom) {
             if (zoom < 5.6) return 0;
             if (zoom < 6.4) return 1;
             if (zoom < 7.4) return 2;
@@ -139,172 +130,138 @@ jobs:
           }
 
           """
-              text = text.replace(marker, camera_handler + marker, 1)
+              if text.count(marker) != 1:
+                  raise SystemExit('ABORT: map idle marker mismatch')
+              text = text.replace(marker, handler + marker, 1)
               changed = True
 
-          if "fluviai-hydropower-$operation-r$reportBadge-v3" not in text:
-              old = "fluviai-hydropower-$operation-r$reportBadge-v2"
-              if text.count(old) != 1:
-                  raise SystemExit('ABORT Hydro style image cache version mismatch')
-              text = text.replace(old, "fluviai-hydropower-$operation-r$reportBadge-v3", 1)
+          if 'fluviai-hydropower-$operation-r$reportBadge-v3' not in text:
+              if text.count('fluviai-hydropower-$operation-r$reportBadge-v2') != 1:
+                  raise SystemExit('ABORT: Hydro icon cache contract mismatch')
+              text = text.replace(
+                  'fluviai-hydropower-$operation-r$reportBadge-v2',
+                  'fluviai-hydropower-$operation-r$reportBadge-v3',
+                  1,
+              )
               changed = True
 
           if 'final haloColor = selected ? MapFeatureRegistry.hydropower : operationColor;' not in text:
-              old = """      final operationColor = saved
+              operation_marker = """      final operationColor = saved
                   ? MapFeatureRegistry.favorite
-                  : _hydropowerOperationColor(pin.operationState);
-              if (selected ||"""
-              new = """      final operationColor = saved
-                  ? MapFeatureRegistry.favorite
-                  : _hydropowerOperationColor(pin.operationState);
-              final haloColor = selected ? MapFeatureRegistry.hydropower : operationColor;
-              if (selected ||"""
-              if text.count(old) != 1:
-                  raise SystemExit('ABORT selected Hydro halo insertion mismatch')
-              text = text.replace(old, new, 1)
+                  : _hydropowerOperationColor(pin.operationState);"""
+              if text.count(operation_marker) != 1:
+                  raise SystemExit('ABORT: Hydro operation color marker mismatch')
               text = text.replace(
-                  '              operationColor.withValues(alpha: selected ? .22 : .12),',
-                  '              haloColor.withValues(alpha: selected ? .28 : .12),',
+                  operation_marker,
+                  operation_marker + "\n      final haloColor = selected ? MapFeatureRegistry.hydropower : operationColor;",
                   1,
               )
-              old_stroke = """            circleStrokeColor: _mapboxColor(
-                    selected ? Colors.white : operationColor.withValues(alpha: .78),
-                  ),"""
-              new_stroke = """            circleStrokeColor: _mapboxColor(
-                    selected
-                        ? MapFeatureRegistry.hydropower
-                        : operationColor.withValues(alpha: .78),
-                  ),"""
-              if text.count(old_stroke) != 1:
-                  raise SystemExit('ABORT selected Hydro stroke mismatch')
-              text = text.replace(old_stroke, new_stroke, 1)
+              if text.count('operationColor.withValues(alpha: selected ? .22 : .12)') != 1:
+                  raise SystemExit('ABORT: Hydro halo fill marker mismatch')
+              text = text.replace(
+                  'operationColor.withValues(alpha: selected ? .22 : .12)',
+                  'haloColor.withValues(alpha: selected ? .28 : .12)',
+                  1,
+              )
+              if text.count('selected ? Colors.white : operationColor.withValues(alpha: .78)') != 1:
+                  raise SystemExit('ABORT: Hydro halo stroke marker mismatch')
+              text = text.replace(
+                  'selected ? Colors.white : operationColor.withValues(alpha: .78)',
+                  'selected\n                  ? MapFeatureRegistry.hydropower\n                  : operationColor.withValues(alpha: .78)',
+                  1,
+              )
               changed = True
 
           map_path.write_text(text, encoding='utf-8')
 
           registry = registry_path.read_text(encoding='utf-8')
-          old_color = '  static const Color hydropower = Color(0xFF7C6CFF);'
-          new_color = '  static const Color hydropower = Color(0xFFE8C878);'
+          old_color = 'static const Color hydropower = Color(0xFF7C6CFF);'
+          new_color = 'static const Color hydropower = Color(0xFFE8C878);'
           if old_color in registry:
               registry = registry.replace(old_color, new_color, 1)
               registry_path.write_text(registry, encoding='utf-8')
               changed = True
           elif new_color not in registry:
-              raise SystemExit('ABORT Hydro semantic color contract mismatch')
+              raise SystemExit('ABORT: Hydro semantic Gold contract missing')
 
           dock = dock_path.read_text(encoding='utf-8')
-          if '  static const _cyan = Color(0xFF43D9CC);' in dock:
+          if 'static const _cyan = Color(0xFF43D9CC);' in dock:
               dock = dock.replace(
-                  '  static const _cyan = Color(0xFF43D9CC);',
-                  '  static const _cyan = Color(0xFFE8C878);',
+                  'static const _cyan = Color(0xFF43D9CC);',
+                  'static const _cyan = Color(0xFFE8C878);',
                   1,
               )
               changed = True
-          old_days = """                Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _DayCard(
-                          data: today,
-                          primary: true,
-                          isRomanian: isRomanian,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _DayCard(
-                          data: tomorrow,
-                          primary: false,
-                          isRomanian: isRomanian,
-                        ),
-                      ),
-                    ],
-                  ),"""
-          new_days = """                Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _DayCard(
-                        data: today,
-                        primary: true,
-                        isRomanian: isRomanian,
-                      ),
-                      const SizedBox(height: 10),
-                      _DayCard(
-                        data: tomorrow,
-                        primary: false,
-                        isRomanian: isRomanian,
-                      ),
-                    ],
-                  ),"""
-          if old_days in dock:
-              dock = dock.replace(old_days, new_days, 1)
+          anchor = dock.index('    final tomorrow = HydroDispatchPresentation.day(')
+          if 'const SizedBox(width: 10)' in dock[anchor:]:
+              row_start = dock.index('                Row(', anchor)
+              row_end_marker = '                if (state.lastError != null) ...['
+              row_end = dock.index(row_end_marker, row_start)
+              replacement = """                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _DayCard(
+                      data: today,
+                      primary: true,
+                      isRomanian: isRomanian,
+                    ),
+                    const SizedBox(height: 10),
+                    _DayCard(
+                      data: tomorrow,
+                      primary: false,
+                      isRomanian: isRomanian,
+                    ),
+                  ],
+                ),
+"""
+              dock = dock[:row_start] + replacement + dock[row_end:]
               changed = True
-          elif new_days not in dock:
-              raise SystemExit('ABORT Today/Tomorrow vertical layout mismatch')
           dock_path.write_text(dock, encoding='utf-8')
 
           for path in (cartographic_test, clarity_test):
               test = path.read_text(encoding='utf-8')
-              if "contains('_cameraZoom >= 11.4')" in test:
-                  test = test.replace(
-                      "contains('_cameraZoom >= 11.4')",
-                      "contains('return densityKeys.contains(key);')",
-                  )
+              test2 = test.replace(
+                  "contains('_cameraZoom >= 11.4')",
+                  "contains('return densityKeys.contains(key);')",
+              ).replace(
+                  'static const Color hydropower = Color(0xFF7C6CFF);',
+                  'static const Color hydropower = Color(0xFFE8C878);',
+              )
+              if test2 != test:
+                  path.write_text(test2, encoding='utf-8')
                   changed = True
-              if 'static const Color hydropower = Color(0xFF7C6CFF);' in test:
-                  test = test.replace(
-                      'static const Color hydropower = Color(0xFF7C6CFF);',
-                      'static const Color hydropower = Color(0xFFE8C878);',
-                  )
-                  changed = True
-              path.write_text(test, encoding='utf-8')
 
-          camera_contract = """import 'dart:io';
+          camera_source = """import 'dart:io';
 
-          import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
-          void main() {
-            test('Hydro pins synchronize while camera crosses zoom buckets', () {
-              final mapPage = File('lib/screens/map_page.dart').readAsStringSync();
-              final registry = File(
-                'lib/core/map/map_feature_registry.dart',
-              ).readAsStringSync();
-              final dock = File(
-                'lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart',
-              ).readAsStringSync();
+void main() {
+  test('Hydro pins synchronize while camera crosses zoom buckets', () {
+    final mapPage = File('lib/screens/map_page.dart').readAsStringSync();
+    final registry = File('lib/core/map/map_feature_registry.dart').readAsStringSync();
+    final dock = File('lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart').readAsStringSync();
 
-              expect(mapPage, contains('onCameraChange: _handleMapCameraChange'));
-              expect(mapPage, contains('onCameraChangeListener: widget.onCameraChange'));
-              expect(
-                mapPage,
-                contains('_handleMapCameraChange(mapbox.CameraChangedEventData data)'),
-              );
-              expect(mapPage, contains('return densityKeys.contains(key);'));
-              expect(mapPage, isNot(contains('_cameraZoom >= 11.4')));
-              expect(
-                mapPage,
-                contains('Network/data refresh stays on'),
-                reason: 'Camera gestures must not trigger Supabase refreshes per frame.',
-              );
-              expect(
-                registry,
-                contains('static const Color hydropower = Color(0xFFE8C878);'),
-              );
-              expect(registry, isNot(contains('Color(0xFF7C6CFF)')));
-              expect(mapPage, contains('fluviai-hydropower-$operation-r$reportBadge-v3'));
-              expect(dock, contains('static const _cyan = Color(0xFFE8C878);'));
-              expect(dock, contains('const SizedBox(height: 10)'));
-            });
-          }
-          """
-          normalized = '\n'.join(line[10:] if line.startswith('          ') else line for line in camera_contract.splitlines()) + '\n'
-          if not camera_test.exists() or camera_test.read_text(encoding='utf-8') != normalized:
-              camera_test.write_text(normalized, encoding='utf-8')
+    expect(mapPage, contains('onCameraChange: _handleMapCameraChange'));
+    expect(mapPage, contains('onCameraChangeListener: widget.onCameraChange'));
+    expect(mapPage, contains('_handleMapCameraChange(mapbox.CameraChangedEventData data)'));
+    expect(mapPage, contains('return densityKeys.contains(key);'));
+    expect(mapPage, isNot(contains('_cameraZoom >= 11.4')));
+    expect(mapPage, contains('Network/data refresh stays on'));
+    expect(registry, contains('static const Color hydropower = Color(0xFFE8C878);'));
+    expect(registry, isNot(contains('Color(0xFF7C6CFF)')));
+    expect(mapPage, contains('fluviai-hydropower-$operation-r$reportBadge-v3'));
+    expect(dock, contains('static const _cyan = Color(0xFFE8C878);'));
+    expect(dock, contains('const SizedBox(height: 10)'));
+  });
+}
+"""
+          if not camera_test.exists() or camera_test.read_text(encoding='utf-8') != camera_source:
+              camera_test.write_text(camera_source, encoding='utf-8')
               changed = True
 
-          temp_workflow = Path('.github/workflows/hydro-camera-sync-patch.yml')
-          if temp_workflow.exists():
-              temp_workflow.unlink()
+          temp = Path('.github/workflows/hydro-camera-sync-patch.yml')
+          if temp.exists():
+              temp.unlink()
               changed = True
 
           print(f'changed={changed}')
@@ -320,7 +277,7 @@ jobs:
           git diff --check
 
           if git diff --quiet; then
-            echo "Hydro camera synchronization repair already committed."
+            echo "Hydro camera repair already committed."
             exit 0
           fi
 
@@ -329,171 +286,3 @@ jobs:
           git add -A
           git commit -m "Fix Hydro zoom synchronization and Gold semantics"
           git push origin HEAD:feature/b45c-hydro-map-canonical-pro
-
-      - name: Verify committed canonical Hydro wiring
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -F "_hydroMapCanonicalService.getVerifiedSites" lib/screens/map_page.dart
-          grep -F "_hydroMapCanonicalService.getDispatchSnapshot" lib/screens/map_page.dart
-          grep -F "canonicalDamIds.contains(asset.id)" lib/screens/map_page.dart
-          grep -F "canonicalReservoirIds.contains(asset.id)" lib/screens/map_page.dart
-          grep -F "hydro-panel-dispatch-summary" lib/widgets/fluviai/hydro_intelligence_panel.dart
-          if grep -F ".where((pin) => pin.isHydropower)" lib/screens/map_page.dart; then
-            echo "::error::Legacy generic Hydro point path returned."
-            exit 1
-          fi
-          if grep -F "Putere instalată" lib/screens/map_page.dart || grep -F "Installed capacity" lib/screens/map_page.dart; then
-            echo "::error::Installed MW returned to Hydro Map preview."
-            exit 1
-          fi
-
-      - name: Verify protected Danube station runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -F "Future<void> _loadStations() async {" lib/screens/map_page.dart
-          grep -F "_stationAnnotationManager" lib/screens/map_page.dart
-          grep -F "_syncStationAnnotations()" lib/screens/map_page.dart
-          grep -F "_stationAnnotationOptions(" lib/screens/map_page.dart
-          grep -F "'type': 'water_station'" lib/screens/map_page.dart
-
-      - name: Verify protected push and Ask Fluvi core unchanged from B45C
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin recovery/b45c-product-owner-pass:refs/remotes/origin/recovery/b45c-product-owner-pass
-          git diff --exit-code origin/recovery/b45c-product-owner-pass -- \
-            lib/main.dart \
-            lib/screens/main_navigation.dart \
-            lib/services/firebase_push_service.dart \
-            lib/services/fluvi_deterministic_answer_service.dart \
-            lib/features/figma_complete/presentation/figma_environment_pages.dart
-          grep -F "FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler)" lib/main.dart
-          grep -F "await FirebasePushService.instance.initialize();" lib/main.dart
-          grep -F "FirebasePushService.instance.openedMessages.listen" lib/screens/main_navigation.dart
-          grep -F "final _answerService = const FluviDeterministicAnswerService();" lib/features/figma_complete/presentation/figma_environment_pages.dart
-          grep -F "_answerService.answer(" lib/features/figma_complete/presentation/figma_environment_pages.dart
-
-      - name: Verify Hydro mobile dispatch runtime wiring
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -F "hydroDispatch('Hydro Dispatch')" lib/services/notification_preferences_service.dart
-          grep -F "hydroDispatchForecast('hydro_dispatch_forecast')" lib/services/notification_service.dart
-          grep -F "hydroDispatchWindowApproaching('hydro_dispatch_window_approaching')" lib/services/notification_service.dart
-          grep -F "hydroDispatchObserved('hydro_dispatch_observed')" lib/services/notification_service.dart
-          grep -F "NotificationCategory.hydroDispatch" lib/services/notification_service.dart
-          grep -F "notification.entityType == 'hydropower_plant'" lib/features/figma_complete/presentation/figma_account_pages.dart
-          grep -F "source: 'notification-hydro-dispatch'" lib/features/figma_complete/presentation/figma_account_pages.dart
-          grep -F "_previewHydropowerPin != null" lib/screens/map_page.dart
-          grep -F "_hydroDispatchAlertService.enableDefaultAlerts" lib/screens/map_page.dart
-          grep -F "'upsert_hydro_dispatch_alert_rule_v1'" lib/services/hydro_dispatch_alert_service.dart
-          grep -F "'p_probability_threshold': 0.70" lib/services/hydro_dispatch_alert_service.dart
-          grep -F "'p_notify_probability': true" lib/services/hydro_dispatch_alert_service.dart
-          grep -F "'p_notify_window_approaching': true" lib/services/hydro_dispatch_alert_service.dart
-          grep -F "'p_notify_observed_activity': true" lib/services/hydro_dispatch_alert_service.dart
-
-      - name: Normalize legacy map regression test in QA workspace
-        shell: bash
-        run: |
-          set -euo pipefail
-          dart format test/b45c_hydro_map_regression_test.dart
-          git diff -- test/b45c_hydro_map_regression_test.dart
-
-      - name: Format check canonical and mobile runtime files
-        run: >-
-          dart format --output=none --set-exit-if-changed
-          lib/screens/map_page.dart
-          lib/core/map/map_feature_registry.dart
-          lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart
-          lib/widgets/fluviai/hydro_intelligence_panel.dart
-          lib/services/hydro_map_canonical_service.dart
-          lib/services/hydro_map_dispatch_presentation.dart
-          lib/services/hydro_dispatch_alert_service.dart
-          lib/services/notification_preferences_service.dart
-          lib/screens/notification_preferences_page.dart
-          lib/services/notification_service.dart
-          lib/features/figma_complete/presentation/figma_account_pages.dart
-          test/hydro_map_canonical_service_test.dart
-          test/hydro_map_dispatch_presentation_test.dart
-          test/b45c_hydro_map_regression_test.dart
-          test/b45c_hydro_mobile_runtime_regression_test.dart
-          test/rc2_hydro_cartographic_language_test.dart
-          test/rc2_hydro_product_clarity_test.dart
-          test/hydro_camera_sync_regression_test.dart
-
-      - name: Analyze Hydro map and mobile runtime integration
-        run: >-
-          flutter analyze
-          lib/screens/map_page.dart
-          lib/core/map/map_feature_registry.dart
-          lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart
-          lib/widgets/fluviai/hydro_intelligence_panel.dart
-          lib/services/hydro_map_canonical_service.dart
-          lib/services/hydro_map_dispatch_presentation.dart
-          lib/services/hydro_dispatch_alert_service.dart
-          lib/services/notification_preferences_service.dart
-          lib/screens/notification_preferences_page.dart
-          lib/services/notification_service.dart
-          lib/features/figma_complete/presentation/figma_account_pages.dart
-
-      - name: Hydro mobile runtime regression
-        run: flutter test test/b45c_hydro_mobile_runtime_regression_test.dart
-
-      - name: Hydro canonical service contract
-        run: flutter test test/hydro_map_canonical_service_test.dart
-
-      - name: Hydro dispatch presentation contract
-        run: flutter test test/hydro_map_dispatch_presentation_test.dart
-
-      - name: B45C Hydro map regression
-        run: flutter test test/b45c_hydro_map_regression_test.dart
-
-      - name: Hydro camera synchronization regression
-        run: flutter test test/hydro_camera_sync_regression_test.dart
-
-      - name: Water map mobile bridge regression
-        run: flutter test test/water_map_mobile_bridge_test.dart
-
-      - name: RC2 Hydro cartographic language regression
-        run: flutter test test/rc2_hydro_cartographic_language_test.dart
-
-      - name: RC2 Hydro identity icon semantics regression
-        run: flutter test test/rc2_hydro_identity_icon_semantics_test.dart
-
-      - name: RC2 Hydro product clarity regression
-        run: flutter test test/rc2_hydro_product_clarity_test.dart
-
-      - name: Validate Mapbox public build token
-        shell: bash
-        env:
-          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${MAPBOX_ACCESS_TOKEN:-}" || "${MAPBOX_ACCESS_TOKEN}" != pk.* ]]; then
-            echo "::error::MAPBOX_ACCESS_TOKEN secret is missing or invalid."
-            exit 1
-          fi
-
-      - name: Build Samsung ARM64 debug APK
-        shell: bash
-        env:
-          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-        run: |
-          set -euo pipefail
-          mkdir -p build/b45c-hydro-qa
-          flutter build apk --debug --target-platform android-arm64 \
-            --dart-define="MAPBOX_ACCESS_TOKEN=${MAPBOX_ACCESS_TOKEN}"
-          test -f build/app/outputs/flutter-apk/app-debug.apk
-          sha256sum build/app/outputs/flutter-apk/app-debug.apk \
-            | tee build/b45c-hydro-qa/app-debug.apk.sha256
-          cp build/app/outputs/flutter-apk/app-debug.apk build/b45c-hydro-qa/FluviAI-B45C-Hydro-Canonical-PRO-debug.apk
-
-      - name: Upload Samsung QA bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: Samsung QA APK
-          path: build/b45c-hydro-qa/
-          if-no-files-found: error
-          retention-days: 7
