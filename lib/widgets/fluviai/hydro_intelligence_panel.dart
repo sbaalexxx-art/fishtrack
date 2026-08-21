@@ -29,6 +29,31 @@ class HydroRelationshipItem {
 }
 
 @immutable
+class HydroDispatchDayViewData {
+  const HydroDispatchDayViewData({
+    required this.dayLabel,
+    required this.dateLabel,
+    required this.statusLabel,
+    required this.probabilityLabel,
+    required this.windowLabel,
+    required this.evidenceLabel,
+    required this.confidenceLabel,
+    required this.freshnessLabel,
+    required this.available,
+  });
+
+  final String dayLabel;
+  final String dateLabel;
+  final String statusLabel;
+  final String probabilityLabel;
+  final String windowLabel;
+  final String evidenceLabel;
+  final String confidenceLabel;
+  final String freshnessLabel;
+  final bool available;
+}
+
+@immutable
 class HydroIntelligenceViewData {
   const HydroIntelligenceViewData({
     required this.name,
@@ -45,6 +70,7 @@ class HydroIntelligenceViewData {
     this.forecastWindowLabel,
     this.forecastConfidenceLabel,
     this.forecastEvidenceLabel,
+    this.dispatchDays = const <HydroDispatchDayViewData>[],
     this.statusColor,
     this.evidenceLabel,
     this.sourceLabel,
@@ -65,6 +91,7 @@ class HydroIntelligenceViewData {
   final String? forecastWindowLabel;
   final String? forecastConfidenceLabel;
   final String? forecastEvidenceLabel;
+  final List<HydroDispatchDayViewData> dispatchDays;
   final IconData icon;
   final Color accentColor;
   final String statusLabel;
@@ -151,7 +178,7 @@ class HydroIntelligencePanel extends StatelessWidget {
           alignment: Alignment.bottomCenter,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * .52,
+              maxHeight: MediaQuery.sizeOf(context).height * .58,
             ),
             child: SingleChildScrollView(
               key: ValueKey<String>(
@@ -196,9 +223,7 @@ class HydroIntelligencePanel extends StatelessWidget {
                                 color: data.accentColor.withValues(alpha: .14),
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
-                                  color: data.accentColor.withValues(
-                                    alpha: .48,
-                                  ),
+                                  color: data.accentColor.withValues(alpha: .48),
                                 ),
                               ),
                               child: Icon(
@@ -274,9 +299,15 @@ class HydroIntelligencePanel extends StatelessWidget {
                       available: data.hasOperationalStatus,
                       color: effectiveStatusColor,
                     ),
-                    if (data.forecastProbabilityLabel?.isNotEmpty == true &&
-                        data.forecastWindowLabel?.isNotEmpty ==
-                            true) ...<Widget>[
+                    if (data.dispatchDays.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 8),
+                      _DispatchDayStack(
+                        days: data.dispatchDays,
+                        accent: data.accentColor,
+                      ),
+                    ] else if (data.forecastProbabilityLabel?.isNotEmpty ==
+                            true &&
+                        data.forecastWindowLabel?.isNotEmpty == true) ...<Widget>[
                       const SizedBox(height: 8),
                       _DispatchForecastSummary(
                         probability: data.forecastProbabilityLabel!,
@@ -311,8 +342,7 @@ class HydroIntelligencePanel extends StatelessWidget {
                     if (expanded) ...<Widget>[
                       const SizedBox(height: 12),
                       if (data.relationships.isNotEmpty ||
-                          data.relationshipLabel?.isNotEmpty ==
-                              true) ...<Widget>[
+                          data.relationshipLabel?.isNotEmpty == true) ...<Widget>[
                         _SectionLabel(
                           label: isRomanian ? 'CONTEXT HIDRO' : 'HYDRO CONTEXT',
                         ),
@@ -500,6 +530,129 @@ class HydroIntelligencePanel extends StatelessWidget {
   }
 }
 
+class _DispatchDayStack extends StatelessWidget {
+  const _DispatchDayStack({required this.days, required this.accent});
+
+  final List<HydroDispatchDayViewData> days;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: const ValueKey('hydro-panel-dispatch-summary'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      for (var index = 0; index < days.length; index++) ...<Widget>[
+        _DispatchDayCard(day: days[index], accent: accent),
+        if (index != days.length - 1) const SizedBox(height: 8),
+      ],
+    ],
+  );
+}
+
+class _DispatchDayCard extends StatelessWidget {
+  const _DispatchDayCard({required this.day, required this.accent});
+
+  final HydroDispatchDayViewData day;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: ValueKey<String>('hydro-panel-dispatch-${day.dayLabel}'),
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
+    decoration: BoxDecoration(
+      color: const Color(0xFF102029),
+      borderRadius: BorderRadius.circular(15),
+      border: Border.all(color: accent.withValues(alpha: .34)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Icon(Icons.bolt_rounded, color: accent, size: 15),
+            const SizedBox(width: 5),
+            Text(
+              day.dayLabel.toUpperCase(),
+              style: TextStyle(
+                color: accent,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: .75,
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              day.dateLabel,
+              style: const TextStyle(
+                color: Color(0xFF91A8B5),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              day.evidenceLabel,
+              style: const TextStyle(
+                color: Color(0xFFA7BBC5),
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: <Widget>[
+            Text(
+              day.probabilityLabel,
+              style: const TextStyle(
+                color: Color(0xFFF6FBFD),
+                fontSize: 27,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -.5,
+              ),
+            ),
+            const Spacer(),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[
+                Text(
+                  day.available ? day.windowLabel : day.statusLabel,
+                  style: const TextStyle(
+                    color: Color(0xFFF6FBFD),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  day.confidenceLabel,
+                  style: const TextStyle(
+                    color: Color(0xFF91A8B5),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          day.freshnessLabel,
+          style: const TextStyle(
+            color: Color(0xFF78909C),
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class _DispatchForecastSummary extends StatelessWidget {
   const _DispatchForecastSummary({
     required this.probability,
@@ -520,19 +673,12 @@ class _DispatchForecastSummary extends StatelessWidget {
     final isRomanian =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
     return Container(
-      key: const ValueKey('hydro-panel-dispatch-summary'),
+      key: const ValueKey('hydro-panel-dispatch-summary-legacy'),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[
-            color.withValues(alpha: .16),
-            const Color(0xFF0A1920).withValues(alpha: .96),
-          ],
-        ),
+        color: const Color(0xFF102029),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: .42)),
+        border: Border.all(color: color.withValues(alpha: .34)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -553,23 +699,12 @@ class _DispatchForecastSummary extends StatelessWidget {
                 ),
               ),
               if (evidence?.isNotEmpty == true)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: color.withValues(alpha: .35)),
-                  ),
-                  child: Text(
-                    evidence!,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                    ),
+                Text(
+                  evidence!,
+                  style: const TextStyle(
+                    color: Color(0xFFA7BBC5),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
             ],
