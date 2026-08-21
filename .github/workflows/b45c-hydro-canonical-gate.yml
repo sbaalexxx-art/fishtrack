@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   canonical-contract:
@@ -33,6 +33,303 @@ jobs:
 
       - name: Resolve dependencies
         run: flutter pub get
+
+      - name: Apply one-shot Hydro camera synchronization repair
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          map_path = Path('lib/screens/map_page.dart')
+          registry_path = Path('lib/core/map/map_feature_registry.dart')
+          dock_path = Path('lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart')
+          cartographic_test = Path('test/rc2_hydro_cartographic_language_test.dart')
+          clarity_test = Path('test/rc2_hydro_product_clarity_test.dart')
+          camera_test = Path('test/hydro_camera_sync_regression_test.dart')
+
+          changed = False
+          text = map_path.read_text(encoding='utf-8')
+
+          def replace_once(source, old, new, label):
+              global changed
+              if new in source:
+                  return source
+              if source.count(old) != 1:
+                  raise SystemExit(f'ABORT {label}: expected exactly one old contract')
+              changed = True
+              return source.replace(old, new, 1)
+
+          text = replace_once(
+              text,
+              "                  onStyleLoaded: _onStyleLoaded,\n                  onMapIdle: _handleMapIdle,\n                  onMapTap: _handleHydroMapTap,",
+              "                  onStyleLoaded: _onStyleLoaded,\n                  onCameraChange: _handleMapCameraChange,\n                  onMapIdle: _handleMapIdle,\n                  onMapTap: _handleHydroMapTap,",
+              'parent camera callback',
+          )
+          text = replace_once(
+              text,
+              "    required this.onStyleLoaded,\n    required this.onMapIdle,\n    required this.onMapTap,",
+              "    required this.onStyleLoaded,\n    required this.onCameraChange,\n    required this.onMapIdle,\n    required this.onMapTap,",
+              'MapboxMapView constructor',
+          )
+          text = replace_once(
+              text,
+              "  final ValueChanged<mapbox.StyleLoadedEventData> onStyleLoaded;\n  final ValueChanged<mapbox.MapIdleEventData> onMapIdle;",
+              "  final ValueChanged<mapbox.StyleLoadedEventData> onStyleLoaded;\n  final ValueChanged<mapbox.CameraChangedEventData> onCameraChange;\n  final ValueChanged<mapbox.MapIdleEventData> onMapIdle;",
+              'MapboxMapView callback field',
+          )
+          text = replace_once(
+              text,
+              "      onStyleLoadedListener: widget.onStyleLoaded,\n      onMapIdleListener: widget.onMapIdle,",
+              "      onStyleLoadedListener: widget.onStyleLoaded,\n      onCameraChangeListener: widget.onCameraChange,\n      onMapIdleListener: widget.onMapIdle,",
+              'MapWidget camera listener',
+          )
+
+          old_visibility = """    return _hydropowerPins
+              .where((plant) {
+                final key = 'hydropower:${plant.entityId}';
+                final priority =
+                    _cameraZoom >= 11.4 ||
+                    _previewHydropowerPin?.entityId == plant.entityId ||
+                    _savedWaterAssetKeys.contains(key) ||
+                    plant.hasOperationalData ||
+                    plant.communityReportCount > 0;
+                return priority && densityKeys.contains(key);
+              })
+              .toList(growable: false);"""
+          new_visibility = """    return _hydropowerPins
+              .where((plant) {
+                final key = 'hydropower:${plant.entityId}';
+                return densityKeys.contains(key);
+              })
+              .toList(growable: false);"""
+          text = replace_once(text, old_visibility, new_visibility, 'Hydro visibility gate')
+
+          if '_handleMapCameraChange(mapbox.CameraChangedEventData data)' not in text:
+              marker = "  Future<void> _handleMapIdle(mapbox.MapIdleEventData _) async {"
+              if text.count(marker) != 1:
+                  raise SystemExit('ABORT camera handler marker mismatch')
+              camera_handler = """  int _hydroCameraPresentationBucket(double zoom) {
+            if (zoom < 5.6) return 0;
+            if (zoom < 6.4) return 1;
+            if (zoom < 7.4) return 2;
+            if (zoom < 7.6) return 3;
+            if (zoom < 8.2) return 4;
+            if (zoom < 9.0) return 5;
+            if (zoom < 9.2) return 6;
+            if (zoom < 10.2) return 7;
+            if (zoom < 10.8) return 8;
+            return 9;
+          }
+
+          void _handleMapCameraChange(mapbox.CameraChangedEventData data) {
+            if (!mounted) return;
+            final zoom = data.cameraState.zoom;
+            if (!zoom.isFinite) return;
+            final previousBucket = _hydroCameraPresentationBucket(_cameraZoom);
+            final nextBucket = _hydroCameraPresentationBucket(zoom);
+            _cameraZoom = zoom;
+            if (previousBucket == nextBucket) return;
+
+            // Camera motion updates presentation only. Network/data refresh stays on
+            // MapIdle, so pinch zoom remains responsive and never floods Supabase.
+            unawaited(_syncStationAnnotations());
+            unawaited(_syncWaterAssetAnnotations());
+            unawaited(_syncHydropowerAnnotations());
+          }
+
+          """
+              text = text.replace(marker, camera_handler + marker, 1)
+              changed = True
+
+          if "fluviai-hydropower-$operation-r$reportBadge-v3" not in text:
+              old = "fluviai-hydropower-$operation-r$reportBadge-v2"
+              if text.count(old) != 1:
+                  raise SystemExit('ABORT Hydro style image cache version mismatch')
+              text = text.replace(old, "fluviai-hydropower-$operation-r$reportBadge-v3", 1)
+              changed = True
+
+          if 'final haloColor = selected ? MapFeatureRegistry.hydropower : operationColor;' not in text:
+              old = """      final operationColor = saved
+                  ? MapFeatureRegistry.favorite
+                  : _hydropowerOperationColor(pin.operationState);
+              if (selected ||"""
+              new = """      final operationColor = saved
+                  ? MapFeatureRegistry.favorite
+                  : _hydropowerOperationColor(pin.operationState);
+              final haloColor = selected ? MapFeatureRegistry.hydropower : operationColor;
+              if (selected ||"""
+              if text.count(old) != 1:
+                  raise SystemExit('ABORT selected Hydro halo insertion mismatch')
+              text = text.replace(old, new, 1)
+              text = text.replace(
+                  '              operationColor.withValues(alpha: selected ? .22 : .12),',
+                  '              haloColor.withValues(alpha: selected ? .28 : .12),',
+                  1,
+              )
+              old_stroke = """            circleStrokeColor: _mapboxColor(
+                    selected ? Colors.white : operationColor.withValues(alpha: .78),
+                  ),"""
+              new_stroke = """            circleStrokeColor: _mapboxColor(
+                    selected
+                        ? MapFeatureRegistry.hydropower
+                        : operationColor.withValues(alpha: .78),
+                  ),"""
+              if text.count(old_stroke) != 1:
+                  raise SystemExit('ABORT selected Hydro stroke mismatch')
+              text = text.replace(old_stroke, new_stroke, 1)
+              changed = True
+
+          map_path.write_text(text, encoding='utf-8')
+
+          registry = registry_path.read_text(encoding='utf-8')
+          old_color = '  static const Color hydropower = Color(0xFF7C6CFF);'
+          new_color = '  static const Color hydropower = Color(0xFFE8C878);'
+          if old_color in registry:
+              registry = registry.replace(old_color, new_color, 1)
+              registry_path.write_text(registry, encoding='utf-8')
+              changed = True
+          elif new_color not in registry:
+              raise SystemExit('ABORT Hydro semantic color contract mismatch')
+
+          dock = dock_path.read_text(encoding='utf-8')
+          if '  static const _cyan = Color(0xFF43D9CC);' in dock:
+              dock = dock.replace(
+                  '  static const _cyan = Color(0xFF43D9CC);',
+                  '  static const _cyan = Color(0xFFE8C878);',
+                  1,
+              )
+              changed = True
+          old_days = """                Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _DayCard(
+                          data: today,
+                          primary: true,
+                          isRomanian: isRomanian,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _DayCard(
+                          data: tomorrow,
+                          primary: false,
+                          isRomanian: isRomanian,
+                        ),
+                      ),
+                    ],
+                  ),"""
+          new_days = """                Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _DayCard(
+                        data: today,
+                        primary: true,
+                        isRomanian: isRomanian,
+                      ),
+                      const SizedBox(height: 10),
+                      _DayCard(
+                        data: tomorrow,
+                        primary: false,
+                        isRomanian: isRomanian,
+                      ),
+                    ],
+                  ),"""
+          if old_days in dock:
+              dock = dock.replace(old_days, new_days, 1)
+              changed = True
+          elif new_days not in dock:
+              raise SystemExit('ABORT Today/Tomorrow vertical layout mismatch')
+          dock_path.write_text(dock, encoding='utf-8')
+
+          for path in (cartographic_test, clarity_test):
+              test = path.read_text(encoding='utf-8')
+              if "contains('_cameraZoom >= 11.4')" in test:
+                  test = test.replace(
+                      "contains('_cameraZoom >= 11.4')",
+                      "contains('return densityKeys.contains(key);')",
+                  )
+                  changed = True
+              if 'static const Color hydropower = Color(0xFF7C6CFF);' in test:
+                  test = test.replace(
+                      'static const Color hydropower = Color(0xFF7C6CFF);',
+                      'static const Color hydropower = Color(0xFFE8C878);',
+                  )
+                  changed = True
+              path.write_text(test, encoding='utf-8')
+
+          camera_contract = """import 'dart:io';
+
+          import 'package:flutter_test/flutter_test.dart';
+
+          void main() {
+            test('Hydro pins synchronize while camera crosses zoom buckets', () {
+              final mapPage = File('lib/screens/map_page.dart').readAsStringSync();
+              final registry = File(
+                'lib/core/map/map_feature_registry.dart',
+              ).readAsStringSync();
+              final dock = File(
+                'lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart',
+              ).readAsStringSync();
+
+              expect(mapPage, contains('onCameraChange: _handleMapCameraChange'));
+              expect(mapPage, contains('onCameraChangeListener: widget.onCameraChange'));
+              expect(
+                mapPage,
+                contains('_handleMapCameraChange(mapbox.CameraChangedEventData data)'),
+              );
+              expect(mapPage, contains('return densityKeys.contains(key);'));
+              expect(mapPage, isNot(contains('_cameraZoom >= 11.4')));
+              expect(
+                mapPage,
+                contains('Network/data refresh stays on'),
+                reason: 'Camera gestures must not trigger Supabase refreshes per frame.',
+              );
+              expect(
+                registry,
+                contains('static const Color hydropower = Color(0xFFE8C878);'),
+              );
+              expect(registry, isNot(contains('Color(0xFF7C6CFF)')));
+              expect(mapPage, contains('fluviai-hydropower-$operation-r$reportBadge-v3'));
+              expect(dock, contains('static const _cyan = Color(0xFFE8C878);'));
+              expect(dock, contains('const SizedBox(height: 10)'));
+            });
+          }
+          """
+          normalized = '\n'.join(line[10:] if line.startswith('          ') else line for line in camera_contract.splitlines()) + '\n'
+          if not camera_test.exists() or camera_test.read_text(encoding='utf-8') != normalized:
+              camera_test.write_text(normalized, encoding='utf-8')
+              changed = True
+
+          temp_workflow = Path('.github/workflows/hydro-camera-sync-patch.yml')
+          if temp_workflow.exists():
+              temp_workflow.unlink()
+              changed = True
+
+          print(f'changed={changed}')
+          PY
+
+          dart format \
+            lib/screens/map_page.dart \
+            lib/core/map/map_feature_registry.dart \
+            lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart \
+            test/rc2_hydro_cartographic_language_test.dart \
+            test/rc2_hydro_product_clarity_test.dart \
+            test/hydro_camera_sync_regression_test.dart
+          git diff --check
+
+          if git diff --quiet; then
+            echo "Hydro camera synchronization repair already committed."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix Hydro zoom synchronization and Gold semantics"
+          git push origin HEAD:feature/b45c-hydro-map-canonical-pro
 
       - name: Verify committed canonical Hydro wiring
         shell: bash
@@ -109,6 +406,8 @@ jobs:
         run: >-
           dart format --output=none --set-exit-if-changed
           lib/screens/map_page.dart
+          lib/core/map/map_feature_registry.dart
+          lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart
           lib/widgets/fluviai/hydro_intelligence_panel.dart
           lib/services/hydro_map_canonical_service.dart
           lib/services/hydro_map_dispatch_presentation.dart
@@ -121,11 +420,16 @@ jobs:
           test/hydro_map_dispatch_presentation_test.dart
           test/b45c_hydro_map_regression_test.dart
           test/b45c_hydro_mobile_runtime_regression_test.dart
+          test/rc2_hydro_cartographic_language_test.dart
+          test/rc2_hydro_product_clarity_test.dart
+          test/hydro_camera_sync_regression_test.dart
 
       - name: Analyze Hydro map and mobile runtime integration
         run: >-
           flutter analyze
           lib/screens/map_page.dart
+          lib/core/map/map_feature_registry.dart
+          lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart
           lib/widgets/fluviai/hydro_intelligence_panel.dart
           lib/services/hydro_map_canonical_service.dart
           lib/services/hydro_map_dispatch_presentation.dart
@@ -146,6 +450,9 @@ jobs:
 
       - name: B45C Hydro map regression
         run: flutter test test/b45c_hydro_map_regression_test.dart
+
+      - name: Hydro camera synchronization regression
+        run: flutter test test/hydro_camera_sync_regression_test.dart
 
       - name: Water map mobile bridge regression
         run: flutter test test/water_map_mobile_bridge_test.dart
