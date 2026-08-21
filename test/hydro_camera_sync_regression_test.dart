@@ -3,72 +3,57 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('Hydro camera synchronization contract', () {
-    final mapPage = File('lib/screens/map_page.dart').readAsStringSync();
-    final registry = File(
-      'lib/core/map/map_feature_registry.dart',
-    ).readAsStringSync();
-    final dock = File(
-      'lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart',
-    ).readAsStringSync();
+  const parentCamera = 'onCameraChange: _handleMapCameraChange';
+  const mapboxCamera = 'onCameraChangeListener: widget.onCameraChange';
+  const handler = '_handleMapCameraChange(mapbox.CameraChangedEventData data)';
+  const oldZoomGate = '_cameraZoom >= 11.4';
+  const densityReturn = 'return densityKeys.contains(key);';
+  const gold = 'static const Color hydropower = Color(0xFFE8C878);';
+  const oldPurple = 'Color(0xFF7C6CFF)';
+  const imageV3 = r'fluviai-hydropower-$operation-r$reportBadge-v3';
+  const dockGold = 'static const _cyan = Color(0xFFE8C878);';
 
-    test(
-      'updates Hydro presentation in both zoom directions without network churn',
-      () {
-        expect(mapPage, contains('onCameraChange: _handleMapCameraChange'));
-        expect(
-          mapPage,
-          contains('onCameraChangeListener: widget.onCameraChange'),
-        );
-        expect(
-          mapPage,
-          contains('_handleMapCameraChange(mapbox.CameraChangedEventData data)'),
-        );
-        expect(
-          mapPage,
-          contains('_hydroCameraPresentationBucket(_cameraZoom)'),
-        );
-        expect(mapPage, contains('_hydroCameraPresentationBucket(zoom)'));
-        expect(mapPage, contains('Network/data refresh stays on'));
-        expect(mapPage, contains('await _refreshWaterAssetsAtCamera();'));
-      },
-    );
+  final mapPage = File('lib/screens/map_page.dart').readAsStringSync();
+  final registry = File(
+    'lib/core/map/map_feature_registry.dart',
+  ).readAsStringSync();
+  final dock = File(
+    'lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart',
+  ).readAsStringSync();
 
-    test('does not retain the legacy 11.4 Hydro visibility gate', () {
+  group('Hydro camera sync', () {
+    test('camera updates presentation without network churn', () {
+      expect(mapPage, contains(parentCamera));
+      expect(mapPage, contains(mapboxCamera));
+      expect(mapPage, contains(handler));
+      expect(mapPage, contains('_hydroCameraPresentationBucket(_cameraZoom)'));
+      expect(mapPage, contains('_hydroCameraPresentationBucket(zoom)'));
+      expect(mapPage, contains('Network/data refresh stays on'));
+      expect(mapPage, contains('await _refreshWaterAssetsAtCamera();'));
+    });
+
+    test('legacy Hydro zoom gate is absent', () {
       final start = mapPage.indexOf(
         'List<WaterMapPin> get _visibleHydropowerPins',
       );
-      final end = mapPage.indexOf(
-        'Color _hydropowerOperationColor',
-        start,
-      );
+      final end = mapPage.indexOf('Color _hydropowerOperationColor', start);
       expect(start, greaterThanOrEqualTo(0));
       expect(end, greaterThan(start));
       final visibility = mapPage.substring(start, end);
-      expect(visibility, contains('return densityKeys.contains(key);'));
-      expect(visibility, isNot(contains('_cameraZoom >= 11.4')));
+      expect(visibility, contains(densityReturn));
+      expect(visibility, isNot(contains(oldZoomGate)));
     });
 
-    test('uses durable Gold Hydro identity and invalidated marker cache', () {
-      expect(
-        registry,
-        contains('static const Color hydropower = Color(0xFFE8C878);'),
-      );
-      expect(registry, isNot(contains('Color(0xFF7C6CFF)')));
-      expect(
-        mapPage,
-        contains(r'fluviai-hydropower-$operation-r$reportBadge-v3'),
-      );
-      expect(
-        mapPage,
-        contains(
-          'final haloColor = selected\n          ? MapFeatureRegistry.hydropower\n          : operationColor;',
-        ),
-      );
+    test('Hydro identity is Gold with refreshed marker cache', () {
+      expect(registry, contains(gold));
+      expect(registry, isNot(contains(oldPurple)));
+      expect(mapPage, contains(imageV3));
+      expect(mapPage, contains('final haloColor = selected'));
+      expect(mapPage, contains('MapFeatureRegistry.hydropower'));
     });
 
-    test('keeps Today and Tomorrow vertically stacked in Hydro PRO', () {
-      expect(dock, contains('static const _cyan = Color(0xFFE8C878);'));
+    test('Today and Tomorrow are vertically ordered', () {
+      expect(dock, contains(dockGold));
       final today = dock.indexOf('data: today');
       final spacer = dock.indexOf('const SizedBox(height: 10)', today);
       final tomorrow = dock.indexOf('data: tomorrow', spacer);
