@@ -6,37 +6,53 @@ import '../../../services/hydro_dispatch_service.dart';
 class HydroDispatchDayPresentation {
   const HydroDispatchDayPresentation({
     required this.dayLabel,
+    required this.dateLabel,
     required this.statusLabel,
     required this.probabilityLabel,
     required this.windowLabel,
     required this.evidenceLabel,
     required this.confidenceLabel,
+    required this.freshnessLabel,
     required this.available,
   });
 
   final String dayLabel;
+  final String dateLabel;
   final String statusLabel;
   final String probabilityLabel;
   final String windowLabel;
   final String evidenceLabel;
   final String confidenceLabel;
+  final String freshnessLabel;
   final bool available;
 }
 
 abstract final class HydroDispatchPresentation {
   static bool _timezoneReady = false;
 
+  /// Presents one explicit delivery day. [fallbackDayOffset] is mandatory for
+  /// callers that may pass a null forecast so an unavailable Tomorrow can
+  /// never be mislabeled as Today.
   static HydroDispatchDayPresentation day(
     HydroDispatchDayForecast? forecast, {
     required bool isRomanian,
+    int fallbackDayOffset = 0,
   }) {
-    final dayLabel = forecast?.dayOffset == 1
+    final dayOffset = forecast?.dayOffset ?? fallbackDayOffset;
+    final dayLabel = dayOffset == 1
         ? (isRomanian ? 'Mâine' : 'Tomorrow')
         : (isRomanian ? 'Azi' : 'Today');
+    final deliveryDate = forecast?.deliveryDate ?? _deliveryDate(dayOffset);
+    final dateLabel = _dateLabel(deliveryDate);
+    final freshnessLabel = _freshness(
+      forecast?.updatedAt,
+      isRomanian: isRomanian,
+    );
 
     if (forecast == null) {
       return HydroDispatchDayPresentation(
         dayLabel: dayLabel,
+        dateLabel: dateLabel,
         statusLabel: isRomanian ? 'Date indisponibile' : 'Data unavailable',
         probabilityLabel: '—',
         windowLabel: '—',
@@ -44,6 +60,7 @@ abstract final class HydroDispatchPresentation {
         confidenceLabel: isRomanian
             ? 'încredere necunoscută'
             : 'unknown confidence',
+        freshnessLabel: freshnessLabel,
         available: false,
       );
     }
@@ -52,19 +69,22 @@ abstract final class HydroDispatchPresentation {
       final notPublished = forecast.availabilityStatus == 'NOT_YET_PUBLISHED';
       return HydroDispatchDayPresentation(
         dayLabel: dayLabel,
+        dateLabel: dateLabel,
         statusLabel: notPublished
-            ? (isRomanian ? 'Încă nepublicat' : 'Not published yet')
+            ? (isRomanian ? 'În așteptarea publicării' : 'Awaiting publication')
             : (isRomanian ? 'Date indisponibile' : 'Data unavailable'),
         probabilityLabel: '—',
         windowLabel: '—',
         evidenceLabel: forecast.evidenceClass,
         confidenceLabel: _confidence(forecast.confidence, isRomanian),
+        freshnessLabel: freshnessLabel,
         available: false,
       );
     }
 
     return HydroDispatchDayPresentation(
       dayLabel: dayLabel,
+      dateLabel: dateLabel,
       statusLabel: isRomanian
           ? 'Probabilitate uzinare'
           : 'Generation probability',
@@ -73,6 +93,7 @@ abstract final class HydroDispatchPresentation {
           '${_romaniaTime(forecast.windowStart)}–${_romaniaTime(forecast.windowEnd)}',
       evidenceLabel: forecast.evidenceClass,
       confidenceLabel: _confidence(forecast.confidence, isRomanian),
+      freshnessLabel: freshnessLabel,
       available: true,
     );
   }
@@ -81,9 +102,11 @@ abstract final class HydroDispatchPresentation {
     HydroMapDispatchSnapshot? snapshot, {
     required bool isRomanian,
   }) {
+    final date = _deliveryDate(0);
     if (snapshot == null || !snapshot.isAvailable) {
       return HydroDispatchDayPresentation(
         dayLabel: isRomanian ? 'Azi' : 'Today',
+        dateLabel: _dateLabel(date),
         statusLabel: isRomanian ? 'Date indisponibile' : 'Data unavailable',
         probabilityLabel: '—',
         windowLabel: '—',
@@ -92,11 +115,16 @@ abstract final class HydroDispatchPresentation {
           snapshot?.confidence ?? 'unknown',
           isRomanian,
         ),
+        freshnessLabel: _freshness(
+          snapshot?.updatedAt,
+          isRomanian: isRomanian,
+        ),
         available: false,
       );
     }
     return HydroDispatchDayPresentation(
       dayLabel: isRomanian ? 'Azi' : 'Today',
+      dateLabel: _dateLabel(date),
       statusLabel: isRomanian
           ? 'Probabilitate uzinare'
           : 'Generation probability',
@@ -105,6 +133,10 @@ abstract final class HydroDispatchPresentation {
           '${_romaniaTime(snapshot.windowStart)}–${_romaniaTime(snapshot.windowEnd)}',
       evidenceLabel: snapshot.evidenceClass,
       confidenceLabel: _confidence(snapshot.confidence, isRomanian),
+      freshnessLabel: _freshness(
+        snapshot.updatedAt,
+        isRomanian: isRomanian,
+      ),
       available: true,
     );
   }
@@ -201,15 +233,45 @@ abstract final class HydroDispatchPresentation {
   static String _percent(double? value) =>
       value == null ? '—' : '${(value * 100).toStringAsFixed(1)}%';
 
-  static String _romaniaTime(DateTime? value) {
-    if (value == null) return '—';
+  static timezone.Location _romaniaLocation() {
     if (!_timezoneReady) {
       timezone_data.initializeTimeZones();
       _timezoneReady = true;
     }
-    final location = timezone.getLocation('Europe/Bucharest');
-    final local = timezone.TZDateTime.from(value.toUtc(), location);
+    return timezone.getLocation('Europe/Bucharest');
+  }
+
+  static DateTime _deliveryDate(int dayOffset) {
+    final now = timezone.TZDateTime.now(_romaniaLocation());
+    return timezone.TZDateTime(
+      _romaniaLocation(),
+      now.year,
+      now.month,
+      now.day + dayOffset,
+    );
+  }
+
+  static String _romaniaTime(DateTime? value) {
+    if (value == null) return '—';
+    final local = timezone.TZDateTime.from(value.toUtc(), _romaniaLocation());
     return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  static String _dateLabel(DateTime value) {
+    final local = value is timezone.TZDateTime
+        ? value
+        : timezone.TZDateTime.from(value.toUtc(), _romaniaLocation());
+    return '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}.${local.year}';
+  }
+
+  static String _freshness(
+    DateTime? updatedAt, {
+    required bool isRomanian,
+  }) {
+    if (updatedAt == null) {
+      return isRomanian ? 'actualizare indisponibilă' : 'update unavailable';
+    }
+    return '${isRomanian ? 'actualizat' : 'updated'} ${_romaniaTime(updatedAt)}';
   }
 
   static String _confidence(String value, bool ro) => switch (value
