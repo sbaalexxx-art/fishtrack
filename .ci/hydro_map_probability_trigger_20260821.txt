@@ -1,0 +1,2 @@
+One-shot trigger for Hydro Map probability wiring QA on 2026-08-21.
+Remove after the wiring commit is produced and validated.
