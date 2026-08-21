@@ -1,0 +1,13 @@
+name: B45C Hydro Canonical Gate Clean
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo placeholder
