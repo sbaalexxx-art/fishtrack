@@ -15,7 +15,8 @@ class HydroDispatchOltCatalogException implements Exception {
 }
 
 class HydroDispatchOltCatalogService {
-  const HydroDispatchOltCatalogService({SupabaseClient? client}) : _client = client;
+  const HydroDispatchOltCatalogService({SupabaseClient? client})
+    : _client = client;
 
   final SupabaseClient? _client;
 
@@ -34,20 +35,23 @@ class HydroDispatchOltCatalogService {
           .timeout(const Duration(seconds: 20));
       if (response is! List) return const <HydroDispatchDayForecast>[];
 
-      final rows = response
-          .whereType<Map>()
-          .map(
-            (row) => HydroDispatchDayForecast.fromJson(
-              Map<String, dynamic>.from(row),
-            ),
-          )
-          .where((row) => row.plantId.isNotEmpty && row.plantName.isNotEmpty)
-          .toList(growable: false)
-        ..sort((left, right) {
-          final order = left.nodeOrder.compareTo(right.nodeOrder);
-          if (order != 0) return order;
-          return left.dayOffset.compareTo(right.dayOffset);
-        });
+      final rows =
+          response
+              .whereType<Map>()
+              .map(
+                (row) => HydroDispatchDayForecast.fromJson(
+                  Map<String, dynamic>.from(row),
+                ),
+              )
+              .where(
+                (row) => row.plantId.isNotEmpty && row.plantName.isNotEmpty,
+              )
+              .toList(growable: false)
+            ..sort((left, right) {
+              final order = left.nodeOrder.compareTo(right.nodeOrder);
+              if (order != 0) return order;
+              return left.dayOffset.compareTo(right.dayOffset);
+            });
 
       return List<HydroDispatchDayForecast>.unmodifiable(rows);
     } on HydroDispatchOltCatalogException {
