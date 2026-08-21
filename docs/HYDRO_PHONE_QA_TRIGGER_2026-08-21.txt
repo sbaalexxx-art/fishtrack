@@ -1,1 +1,0 @@
-Temporary QA trigger for Hydro camera synchronization validation on Samsung SM-S928B. Remove after the validated Hydro patch is committed and the canonical gate is restored.
