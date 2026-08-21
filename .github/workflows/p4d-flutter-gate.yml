@@ -1,0 +1,119 @@
+name: P4D Flutter Gate
+
+on:
+  push:
+    branches:
+      - feature/hydro-dispatch-olt-p4d-recovery
+  pull_request:
+    branches:
+      - recovery/figma-production-integration
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hydro-mobile-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify P4D formatting
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib/features/hydro_dispatch
+          lib/services/hydro_dispatch_geofence_service.dart
+          lib/services/hydro_dispatch_service.dart
+          lib/features/figma_complete/presentation/figma_destination_router.dart
+          lib/core/navigation/app_navigator.dart
+          lib/core/navigation/hydro_dispatch_navigation_intent.dart
+          lib/core/context/selected_context.dart
+          lib/screens/main_navigation.dart
+          lib/screens/map_page.dart
+          lib/widgets/fluviai/hydro_intelligence_panel.dart
+          lib/services/saved_items_service.dart
+          test/hydro_dispatch_mobile_contract_test.dart
+          test/hydro_dispatch_cache_test.dart
+          test/hydro_dispatch_navigation_intent_test.dart
+
+      - name: Analyze Hydro Dispatch integration
+        run: flutter analyze lib/features/hydro_dispatch
+
+      - name: Analyze Hydro services
+        run: >-
+          flutter analyze
+          lib/services/hydro_dispatch_geofence_service.dart
+          lib/services/hydro_dispatch_service.dart
+
+      - name: Analyze Hydro Map probability surface
+        run: >-
+          flutter analyze
+          lib/screens/map_page.dart
+          lib/widgets/fluviai/hydro_intelligence_panel.dart
+
+      - name: Analyze destination bridge
+        run: flutter analyze lib/features/figma_complete/presentation/figma_destination_router.dart
+
+      - name: Analyze Hydro navigation bridge
+        run: >-
+          flutter analyze
+          lib/core/navigation/app_navigator.dart
+          lib/core/navigation/hydro_dispatch_navigation_intent.dart
+          lib/core/context/selected_context.dart
+
+      - name: Analyze notification deep-link bridge
+        run: flutter analyze lib/screens/main_navigation.dart
+
+      - name: Analyze saved-item bridge
+        run: flutter analyze lib/services/saved_items_service.dart
+
+      - name: Run Hydro Dispatch contract and map tests
+        run: >-
+          flutter test
+          test/hydro_dispatch_mobile_contract_test.dart
+          test/hydro_dispatch_cache_test.dart
+          test/hydro_dispatch_navigation_intent_test.dart
+
+      - name: Verify Mapbox build credential
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          if [ -z "${MAPBOX_ACCESS_TOKEN:-}" ]; then
+            echo "::error::Repository Actions secret MAPBOX_ACCESS_TOKEN is missing or unavailable to this workflow."
+            exit 1
+          fi
+          case "$MAPBOX_ACCESS_TOKEN" in
+            pk.*) ;;
+            *)
+              echo "::error::MAPBOX_ACCESS_TOKEN must be the public Mapbox token (pk.*) required by Android build."
+              exit 1
+              ;;
+          esac
+
+      - name: Build Android debug APK
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: >-
+          flutter build apk --debug --no-pub
+          --dart-define=MAPBOX_ACCESS_TOKEN="$MAPBOX_ACCESS_TOKEN"
+
+      - name: Upload Samsung QA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluviai-hydro-map-probability-samsung-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 3

@@ -6,8 +6,10 @@ import '../../features/commercial_home/data/commercial_home_data_source.dart';
 import '../../models/station.dart';
 import '../../services/firebase_observability_service.dart';
 import '../map/map_runtime_provenance.dart';
+import '../map/pending_map_camera.dart';
 import '../../features/figma_complete/presentation/figma_destination_router.dart';
 import 'app_destination.dart';
+import 'hydro_dispatch_navigation_intent.dart';
 import 'map_entry.dart';
 
 typedef MainTabSelector = void Function(int index);
@@ -49,6 +51,7 @@ abstract final class AppNavigator {
     _mainTabSelector = null;
     _mainTabRouteSelector = null;
     _shellNavigatorKey = null;
+    HydroDispatchNavigationIntent.disarm();
   }
 
   static Future<T?> open<T>(
@@ -89,6 +92,40 @@ abstract final class AppNavigator {
     );
   }
 
+  static bool _isHydroDispatchMapIntent(
+    AppDestination destination,
+    Object? arguments,
+  ) {
+    if (destination == AppDestination.map &&
+        arguments is RuntimeMapCameraTarget) {
+      return arguments.source == 'hydro-ro-utility';
+    }
+    if (destination == AppDestination.contextualMap &&
+        arguments is ContextualMapEntry) {
+      return arguments.source == 'hydro-dispatch-selector' ||
+          arguments.cameraTarget?.source == 'hydro-dispatch-selector';
+    }
+    return false;
+  }
+
+  static void _armHydroDispatchMapSelection() {
+    HydroDispatchNavigationIntent.arm(
+      onSelected: (plantId, plantName) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final navigationContext = _shellNavigatorKey?.currentContext;
+          if (navigationContext == null) return;
+          unawaited(
+            open<void>(
+              navigationContext,
+              AppDestination.hydropower,
+              arguments: plantName,
+            ),
+          );
+        });
+      },
+    );
+  }
+
   static Future<T?> _open<T>(
     BuildContext context,
     AppDestination destination, {
@@ -106,6 +143,14 @@ abstract final class AppNavigator {
         },
       ),
     );
+
+    if (_isHydroDispatchMapIntent(destination, arguments)) {
+      _armHydroDispatchMapSelection();
+    } else if (destination == AppDestination.map ||
+        destination == AppDestination.contextualMap) {
+      HydroDispatchNavigationIntent.disarm();
+    }
+
     // Contextual map routes are aliases into the one persistent Mapbox runtime
     // whenever the authenticated shell is available. The pushed wrapper stays
     // as a safe fallback for isolated/deep-link contexts outside that shell.

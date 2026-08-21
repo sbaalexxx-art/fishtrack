@@ -41,6 +41,10 @@ class HydroIntelligenceViewData {
     required this.unknownMessage,
     this.contextLabel,
     this.metadataLabel,
+    this.forecastProbabilityLabel,
+    this.forecastWindowLabel,
+    this.forecastConfidenceLabel,
+    this.forecastEvidenceLabel,
     this.statusColor,
     this.evidenceLabel,
     this.sourceLabel,
@@ -57,6 +61,10 @@ class HydroIntelligenceViewData {
   final String typeLabel;
   final String? contextLabel;
   final String? metadataLabel;
+  final String? forecastProbabilityLabel;
+  final String? forecastWindowLabel;
+  final String? forecastConfidenceLabel;
+  final String? forecastEvidenceLabel;
   final IconData icon;
   final Color accentColor;
   final String statusLabel;
@@ -266,6 +274,18 @@ class HydroIntelligencePanel extends StatelessWidget {
                       available: data.hasOperationalStatus,
                       color: effectiveStatusColor,
                     ),
+                    if (data.forecastProbabilityLabel?.isNotEmpty == true &&
+                        data.forecastWindowLabel?.isNotEmpty ==
+                            true) ...<Widget>[
+                      const SizedBox(height: 8),
+                      _DispatchForecastSummary(
+                        probability: data.forecastProbabilityLabel!,
+                        window: data.forecastWindowLabel!,
+                        confidence: data.forecastConfidenceLabel,
+                        evidence: data.forecastEvidenceLabel,
+                        color: data.accentColor,
+                      ),
+                    ],
                     if (data.evidenceLabel?.isNotEmpty == true ||
                         data.freshnessLabel?.isNotEmpty == true) ...<Widget>[
                       const SizedBox(height: 8),
@@ -475,6 +495,136 @@ class HydroIntelligencePanel extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DispatchForecastSummary extends StatelessWidget {
+  const _DispatchForecastSummary({
+    required this.probability,
+    required this.window,
+    required this.color,
+    this.confidence,
+    this.evidence,
+  });
+
+  final String probability;
+  final String window;
+  final String? confidence;
+  final String? evidence;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRomanian =
+        Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
+    return Container(
+      key: const ValueKey('hydro-panel-dispatch-summary'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            color.withValues(alpha: .16),
+            const Color(0xFF0A1920).withValues(alpha: .96),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: .42)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  isRomanian
+                      ? 'PROBABILITATE DE UZINARE'
+                      : 'GENERATION PROBABILITY',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .55,
+                  ),
+                ),
+              ),
+              if (evidence?.isNotEmpty == true)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(color: color.withValues(alpha: .35)),
+                  ),
+                  child: Text(
+                    evidence!,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              Text(
+                probability,
+                style: const TextStyle(
+                  color: Color(0xFFF6FBFD),
+                  fontSize: 29,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -.6,
+                ),
+              ),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Text(
+                    isRomanian ? 'Interval estimat' : 'Estimated window',
+                    style: const TextStyle(
+                      color: Color(0xFF91A8B5),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    window,
+                    style: const TextStyle(
+                      color: Color(0xFFF6FBFD),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (confidence?.isNotEmpty == true) ...<Widget>[
+            const SizedBox(height: 7),
+            Text(
+              confidence!,
+              style: const TextStyle(
+                color: Color(0xFF9FB4BE),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
