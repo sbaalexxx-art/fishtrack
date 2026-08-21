@@ -1,13 +1,16 @@
 name: P4D Flutter Gate
 
 on:
+  push:
+    branches:
+      - feature/hydro-dispatch-olt-p4d-recovery
   pull_request:
     branches:
       - recovery/figma-production-integration
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   hydro-mobile-contract:
@@ -15,15 +18,8 @@ jobs:
     timeout-minutes: 40
 
     steps:
-      - name: Checkout feature branch
+      - name: Checkout
         uses: actions/checkout@v6
-        with:
-          ref: feature/hydro-dispatch-olt-p4d-recovery
-
-      - name: Apply one-shot Hydro Map probability patch
-        run: |
-          python3 tool/ci/apply_hydro_map_probability_patch.py
-          python3 tool/ci/fix_hydro_map_probability_widget_test.py
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -34,18 +30,6 @@ jobs:
 
       - name: Resolve dependencies
         run: flutter pub get
-
-      - name: Format patched Hydro Map surface
-        run: >-
-          dart format
-          lib/screens/map_page.dart
-          lib/widgets/fluviai/hydro_intelligence_panel.dart
-          lib/services/hydro_dispatch_service.dart
-          lib/features/hydro_dispatch/presentation/hydro_dispatch_presentation.dart
-          test/hydro_dispatch_mobile_contract_test.dart
-
-      - name: Verify clean patch diff
-        run: git diff --check
 
       - name: Verify P4D formatting
         run: >-
@@ -125,23 +109,6 @@ jobs:
         run: >-
           flutter build apk --debug --no-pub
           --dart-define=MAPBOX_ACCESS_TOKEN="$MAPBOX_ACCESS_TOKEN"
-
-      - name: Commit validated Hydro Map probability wiring
-        run: |
-          if git diff --quiet; then
-            echo "Hydro Map probability wiring already present; nothing to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            lib/screens/map_page.dart \
-            lib/widgets/fluviai/hydro_intelligence_panel.dart \
-            lib/services/hydro_dispatch_service.dart \
-            lib/features/hydro_dispatch/presentation/hydro_dispatch_presentation.dart \
-            test/hydro_dispatch_mobile_contract_test.dart
-          git commit -m "feat(hydro-map): surface safe dispatch probability on map"
-          git push origin HEAD:feature/hydro-dispatch-olt-p4d-recovery
 
       - name: Upload Samsung QA APK
         uses: actions/upload-artifact@v4
