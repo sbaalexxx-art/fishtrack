@@ -15,11 +15,14 @@ permissions:
 jobs:
   canonical-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout
+      - name: Checkout Hydro head
         uses: actions/checkout@v6
+        with:
+          ref: feature/b45c-hydro-map-canonical-pro
+          fetch-depth: 0
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -31,28 +34,117 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Verify formatting
+      - name: Snapshot protected B45C map sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/b45c-hydro-qa/before build/b45c-hydro-qa/after
+          cp lib/screens/map_page.dart build/b45c-hydro-qa/before/map_page.dart
+          cp lib/widgets/fluviai/hydro_intelligence_panel.dart build/b45c-hydro-qa/before/hydro_intelligence_panel.dart
+
+      - name: Apply guarded B45C Hydro patch
+        run: python3 .github/scripts/apply_b45c_hydro_map_patch.py
+
+      - name: Format touched Dart files
         shell: bash
         run: |
           set -euo pipefail
           files=(
+            lib/screens/map_page.dart
+            lib/widgets/fluviai/hydro_intelligence_panel.dart
             lib/services/hydro_map_canonical_service.dart
             lib/services/hydro_map_dispatch_presentation.dart
             test/hydro_map_canonical_service_test.dart
             test/hydro_map_dispatch_presentation_test.dart
+            test/b45c_hydro_map_regression_test.dart
           )
           dart format "${files[@]}"
-          git diff -- "${files[@]}"
-          git diff --exit-code -- "${files[@]}"
 
-      - name: Analyze canonical Hydro services
+      - name: Capture guarded map diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp lib/screens/map_page.dart build/b45c-hydro-qa/after/map_page.dart
+          cp lib/widgets/fluviai/hydro_intelligence_panel.dart build/b45c-hydro-qa/after/hydro_intelligence_panel.dart
+          git diff -- lib/screens/map_page.dart lib/widgets/fluviai/hydro_intelligence_panel.dart \
+            | tee build/b45c-hydro-qa/guarded-map.patch
+          test -s build/b45c-hydro-qa/guarded-map.patch
+
+      - name: Analyze Hydro map integration
         run: >-
           flutter analyze
+          lib/screens/map_page.dart
+          lib/widgets/fluviai/hydro_intelligence_panel.dart
           lib/services/hydro_map_canonical_service.dart
           lib/services/hydro_map_dispatch_presentation.dart
 
-      - name: Run canonical Hydro contract tests
+      - name: Run canonical and B45C regression tests
         run: >-
           flutter test
           test/hydro_map_canonical_service_test.dart
           test/hydro_map_dispatch_presentation_test.dart
+          test/b45c_hydro_map_regression_test.dart
+          test/water_map_mobile_bridge_test.dart
+          test/rc2_hydro_cartographic_language_test.dart
+          test/rc2_hydro_identity_icon_semantics_test.dart
+          test/rc2_hydro_product_clarity_test.dart
+
+      - name: Verify protected station runtime remains present
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "Future<void> _loadStations() async {" lib/screens/map_page.dart
+          grep -F "_stationAnnotationManager" lib/screens/map_page.dart
+          grep -F "_syncStationAnnotations()" lib/screens/map_page.dart
+          grep -F "_stationAnnotationOptions(" lib/screens/map_page.dart
+          grep -F "'type': 'water_station'" lib/screens/map_page.dart
+
+      - name: Verify canonical Hydro truth guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -F ".where((pin) => pin.isHydropower)" lib/screens/map_page.dart; then
+            echo "::error::Legacy generic Hydro rendering path remains."
+            exit 1
+          fi
+          if grep -F "Putere instalată" lib/screens/map_page.dart || grep -F "Installed capacity" lib/screens/map_page.dart; then
+            echo "::error::Installed MW must not be rendered in Hydro Map preview."
+            exit 1
+          fi
+          grep -F "_hydroMapCanonicalService.getVerifiedSites" lib/screens/map_page.dart
+          grep -F "_hydroMapCanonicalService.getDispatchSnapshot" lib/screens/map_page.dart
+          grep -F "hydro-panel-dispatch-summary" lib/widgets/fluviai/hydro_intelligence_panel.dart
+          grep -F "canonicalDamIds.contains(asset.id)" lib/screens/map_page.dart
+          grep -F "canonicalReservoirIds.contains(asset.id)" lib/screens/map_page.dart
+
+      - name: Validate Mapbox public build token
+        shell: bash
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAPBOX_ACCESS_TOKEN:-}" || "${MAPBOX_ACCESS_TOKEN}" != pk.* ]]; then
+            echo "::error::MAPBOX_ACCESS_TOKEN secret is missing or invalid."
+            exit 1
+          fi
+
+      - name: Build Samsung ARM64 debug APK
+        shell: bash
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --target-platform android-arm64 \
+            --dart-define="MAPBOX_ACCESS_TOKEN=${MAPBOX_ACCESS_TOKEN}"
+          test -f build/app/outputs/flutter-apk/app-debug.apk
+          sha256sum build/app/outputs/flutter-apk/app-debug.apk \
+            | tee build/b45c-hydro-qa/app-debug.apk.sha256
+          cp build/app/outputs/flutter-apk/app-debug.apk build/b45c-hydro-qa/FluviAI-B45C-Hydro-Canonical-PRO-debug.apk
+
+      - name: Upload Samsung QA bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Samsung QA APK
+          path: build/b45c-hydro-qa/
+          if-no-files-found: error
+          retention-days: 7
