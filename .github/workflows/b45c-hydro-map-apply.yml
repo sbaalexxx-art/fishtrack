@@ -13,7 +13,7 @@ jobs:
   apply-and-validate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
 
     steps:
       - name: Checkout feature branch
@@ -88,6 +88,39 @@ jobs:
           fi
           grep -F "_hydroMapCanonicalService.getVerifiedSites" lib/screens/map_page.dart
           grep -F "hydro-panel-dispatch-summary" lib/widgets/fluviai/hydro_intelligence_panel.dart
+
+      - name: Validate Mapbox public build token
+        shell: bash
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAPBOX_ACCESS_TOKEN:-}" || "${MAPBOX_ACCESS_TOKEN}" != pk.* ]]; then
+            echo "::error::MAPBOX_ACCESS_TOKEN secret is missing or is not a public pk token."
+            exit 1
+          fi
+
+      - name: Build Samsung ARM64 debug APK
+        shell: bash
+        env:
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --target-platform android-arm64 \
+            --dart-define="MAPBOX_ACCESS_TOKEN=${MAPBOX_ACCESS_TOKEN}"
+          test -f build/app/outputs/flutter-apk/app-debug.apk
+          sha256sum build/app/outputs/flutter-apk/app-debug.apk \
+            | tee build/app/outputs/flutter-apk/app-debug.apk.sha256
+
+      - name: Upload Samsung QA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Samsung QA APK
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/app/outputs/flutter-apk/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Commit validated integration only
         shell: bash
