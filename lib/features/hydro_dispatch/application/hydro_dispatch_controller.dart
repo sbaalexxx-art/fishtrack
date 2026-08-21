@@ -105,8 +105,13 @@ class _HydroLoadResult<T> {
   bool get failed => error != null;
 }
 
+/// Serializes Hydro refreshes while guaranteeing that the most recently
+/// selected plant wins. A slow request for plant A can never suppress a later
+/// tap on plant B or publish A as B's data.
 class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
   Future<HydroDispatchMobileState>? _activeRefresh;
+  String? _requestedPlantId;
+  bool _requestedForce = false;
 
   HydroDispatchService get _service => ref.read(hydroDispatchServiceProvider);
   HydroDispatchCache get _cache => ref.read(hydroDispatchCacheProvider);
@@ -127,22 +132,45 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
       return Future<HydroDispatchMobileState>.value(state);
     }
 
-    final active = _activeRefresh;
-    if (active != null) return active;
-
     if (!force &&
+        _activeRefresh == null &&
         state.plantId == normalized &&
         state.refreshedAt != null &&
         DateTime.now().difference(state.refreshedAt!).inMinutes < 5) {
       return Future<HydroDispatchMobileState>.value(state);
     }
 
+    // Always record the latest intent. Repeated taps on the same plant simply
+    // coalesce; a different plant replaces the queued intent.
+    _requestedPlantId = normalized;
+    _requestedForce = _requestedForce || force;
+
+    final active = _activeRefresh;
+    if (active != null) return active;
+
     late final Future<HydroDispatchMobileState> request;
-    request = _refresh(normalized).whenComplete(() {
+    request = _drainRefreshQueue().whenComplete(() {
       if (identical(_activeRefresh, request)) _activeRefresh = null;
     });
     _activeRefresh = request;
     return request;
+  }
+
+  Future<HydroDispatchMobileState> _drainRefreshQueue() async {
+    while (_requestedPlantId case final plantId?) {
+      final force = _requestedForce;
+      _requestedPlantId = null;
+      _requestedForce = false;
+
+      if (!force &&
+          state.plantId == plantId &&
+          state.refreshedAt != null &&
+          DateTime.now().difference(state.refreshedAt!).inMinutes < 5) {
+        continue;
+      }
+      await _refresh(plantId);
+    }
+    return state;
   }
 
   Future<HydroDispatchMobileState> retry() async {
@@ -441,6 +469,8 @@ class HydroDispatchMobileController extends Notifier<HydroDispatchMobileState> {
   }
 
   void clear() {
+    _requestedPlantId = null;
+    _requestedForce = false;
     _activeRefresh = null;
     state = const HydroDispatchMobileState();
   }
