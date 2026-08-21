@@ -79,8 +79,8 @@ map_text = replace_once(
 # Clear forecast state whenever the B45C selection clears its Hydro state.
 null_anchor = "_previewHydropowerState = null;"
 null_count = map_text.count(null_anchor)
-if null_count != 7:
-    raise SystemExit(f'ABORT stale-state guard: expected 7 Hydro clears, found {null_count}')
+if null_count != 8:
+    raise SystemExit(f'ABORT stale-state guard: expected 8 Hydro clears, found {null_count}')
 map_text = map_text.replace(
     null_anchor,
     null_anchor + "\n      _previewHydroDispatchSnapshot = null;",
@@ -269,7 +269,6 @@ load_function = r'''  Future<void> _loadWaterAssetsForCenter(
           'canonicalHydroSites': canonicalSites.length,
           'suppressedHydroDams': canonicalDamIds.length,
           'suppressedHydroReservoirs': canonicalReservoirIds.length,
-          'genericHydropowerIgnored': pins.where((pin) => pin.isHydropower).length,
         },
       );
       await _syncWaterAssetAnnotations();
