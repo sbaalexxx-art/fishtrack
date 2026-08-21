@@ -1,0 +1,41 @@
+name: B45C Hydro Canonical Gate
+
+on:
+  push:
+    branches:
+      - feature/b45c-hydro-map-canonical-pro
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify formatting
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib/services/hydro_map_canonical_service.dart
+          test/hydro_map_canonical_service_test.dart
+
+      - name: Analyze canonical Hydro service
+        run: flutter analyze lib/services/hydro_map_canonical_service.dart
+
+      - name: Run canonical Hydro contract tests
+        run: flutter test test/hydro_map_canonical_service_test.dart
