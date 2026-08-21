@@ -19,7 +19,10 @@ enum AppNotificationType {
   favoriteStationUpdate('favorite_station_update'),
   weatherAlert('weather_alert'),
   reportVerificationChanged('report_verification_changed'),
-  catchLiked('catch_liked');
+  catchLiked('catch_liked'),
+  hydroDispatchForecast('hydro_dispatch_forecast'),
+  hydroDispatchWindowApproaching('hydro_dispatch_window_approaching'),
+  hydroDispatchObserved('hydro_dispatch_observed');
 
   const AppNotificationType(this.databaseValue);
   final String databaseValue;
@@ -657,6 +660,10 @@ class NotificationService {
         AppNotificationType.waterStateObserved =>
           NotificationCategory.waterAlerts,
         AppNotificationType.weatherAlert => NotificationCategory.weatherAlerts,
+        AppNotificationType.hydroDispatchForecast ||
+        AppNotificationType.hydroDispatchWindowApproaching ||
+        AppNotificationType.hydroDispatchObserved =>
+          NotificationCategory.hydroDispatch,
         AppNotificationType.newReportNearFavoriteStation ||
         AppNotificationType.reportVerificationChanged =>
           NotificationCategory.communityReports,

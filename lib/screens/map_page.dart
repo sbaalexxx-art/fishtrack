@@ -29,6 +29,7 @@ import '../models/water_river.dart';
 import '../services/community_service.dart';
 import '../services/favorite_stations_service.dart';
 import '../services/hydro_map_canonical_service.dart';
+import '../services/hydro_dispatch_alert_service.dart';
 import '../services/hydro_map_dispatch_presentation.dart';
 import '../services/location_service.dart';
 import '../services/water_service.dart';
@@ -314,6 +315,8 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   final WaterAssetService _waterAssetService = const WaterAssetService();
   final HydroMapCanonicalService _hydroMapCanonicalService =
       const HydroMapCanonicalService();
+  final HydroDispatchAlertService _hydroDispatchAlertService =
+      const HydroDispatchAlertService();
   final SavedItemsService _savedItemsService = const SavedItemsService();
   final CommunityService _communityService = const CommunityService();
   FavoriteStationsService get _favoriteStationsService =>
@@ -4390,12 +4393,35 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   bool get _hasValidHydroWaterContext => _previewStation != null;
 
   bool get _hasHydroAlertTarget {
+    if (_previewHydropowerPin != null) return true;
     if (_previewStation != null || _previewWaterAsset != null) return true;
     if (_previewRiver case final river?) return river.waterBodyId != null;
     return false;
   }
 
   Future<void> _openHydroAlert() async {
+    if (_previewHydropowerPin case final plant?) {
+      try {
+        await _hydroDispatchAlertService.enableDefaultAlerts(plant.entityId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Localizations.localeOf(context).languageCode.toLowerCase() == 'ro'
+                  ? 'Alerte Hydro activate pentru ${plant.name}: probabilitate ≥70%, fereastră estimată și observații.'
+                  : 'Hydro alerts enabled for ${plant.name}: probability ≥70%, estimated window and observations.',
+            ),
+          ),
+        );
+      } on HydroDispatchAlertException catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+
     Object? arguments;
     if (_previewStation case final station?) {
       arguments = station;

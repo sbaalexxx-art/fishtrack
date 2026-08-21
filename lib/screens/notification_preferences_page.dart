@@ -255,6 +255,7 @@ class _NotificationPreferencesPageState
       NotificationCategory.reputationTrust => l10n.notificationReputationTrust,
       NotificationCategory.achievements => l10n.notificationAchievements,
       NotificationCategory.catchActivity => l10n.notificationCatchActivity,
+      NotificationCategory.hydroDispatch => 'Hydro Dispatch',
     };
   }
 
