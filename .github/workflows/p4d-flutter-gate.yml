@@ -31,12 +31,21 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Diagnose P4D formatting
-        run: |
-          dart format lib/features/hydro_dispatch/data/hydro_dispatch_olt_catalog_service.dart
-          echo '=== FORMAT DIFF ==='
-          git diff -- lib/features/hydro_dispatch/data/hydro_dispatch_olt_catalog_service.dart
-          exit 1
+      - name: Verify P4D formatting
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib/features/hydro_dispatch
+          lib/services/hydro_dispatch_geofence_service.dart
+          lib/services/hydro_dispatch_service.dart
+          lib/features/figma_complete/presentation/figma_destination_router.dart
+          lib/core/navigation/app_navigator.dart
+          lib/core/navigation/hydro_dispatch_navigation_intent.dart
+          lib/core/context/selected_context.dart
+          lib/screens/main_navigation.dart
+          lib/services/saved_items_service.dart
+          test/hydro_dispatch_mobile_contract_test.dart
+          test/hydro_dispatch_cache_test.dart
+          test/hydro_dispatch_navigation_intent_test.dart
 
       - name: Analyze Hydro Dispatch integration
         run: flutter analyze lib/features/hydro_dispatch
