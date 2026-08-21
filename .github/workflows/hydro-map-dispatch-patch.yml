@@ -1,0 +1,204 @@
+name: Hydro Map Dispatch Patch
+
+on:
+  push:
+    branches:
+      - feature/hydro-dispatch-olt-p4d-recovery
+    paths:
+      - .github/workflows/hydro-map-dispatch-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/hydro-dispatch-olt-p4d-recovery
+          fetch-depth: 1
+
+      - name: Apply audited Hydro Map dispatch wiring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('lib/screens/map_page.dart')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'ABORT {label}: expected exactly 1 match, got {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "import '../core/water/water_history_analysis.dart';\nimport '../l10n/l10n.dart';",
+              "import '../core/water/water_history_analysis.dart';\nimport '../features/hydro_dispatch/presentation/hydro_dispatch_presentation.dart';\nimport '../l10n/l10n.dart';",
+              'dispatch presentation import',
+          )
+          replace_once(
+              "import '../services/favorite_stations_service.dart';\nimport '../services/location_service.dart';",
+              "import '../services/favorite_stations_service.dart';\nimport '../services/hydro_dispatch_service.dart';\nimport '../services/location_service.dart';",
+              'dispatch service import',
+          )
+          replace_once(
+              "  final WaterAssetService _waterAssetService = const WaterAssetService();\n  final SavedItemsService _savedItemsService = const SavedItemsService();",
+              "  final WaterAssetService _waterAssetService = const WaterAssetService();\n  final HydroDispatchService _hydroDispatchService =\n      const HydroDispatchService();\n  final SavedItemsService _savedItemsService = const SavedItemsService();",
+              'dispatch service field',
+          )
+          replace_once(
+              "  WaterMapPin? _previewHydropowerPin;\n  HydropowerPlantState? _previewHydropowerState;\n  HydroOverlayPreferences _hydroPreferences = const HydroOverlayPreferences();",
+              "  WaterMapPin? _previewHydropowerPin;\n  HydropowerPlantState? _previewHydropowerState;\n  HydroDispatchDayForecast? _previewHydroDispatchToday;\n  HydroOverlayPreferences _hydroPreferences = const HydroOverlayPreferences();",
+              'dispatch preview state',
+          )
+          replace_once(
+              "      _previewHydropowerPin = selected;\n      _previewHydropowerState = null;\n      _isLoadingHydroSelection = true;",
+              "      _previewHydropowerPin = selected;\n      _previewHydropowerState = null;\n      _previewHydroDispatchToday = null;\n      _isLoadingHydroSelection = true;",
+              'clear dispatch on plant tap',
+          )
+
+          old_refresh = '''  Future<void> _refreshHydropowerPreview(WaterMapPin pin) async {
+    try {
+      final state = await _waterAssetService.getHydropowerPlantState(
+        pin.entityId,
+      );
+      if (!mounted || _previewHydropowerPin?.entityId != pin.entityId) return;
+      setState(() => _previewHydropowerState = state);
+      if (state != null) {
+        ref
+            .read(selectedContextProvider.notifier)
+            .select(
+              SelectedContext(
+                countryCode: state.countryCode ?? pin.countryCode,
+                locationName: state.name,
+                latitude: state.latitude ?? pin.latitude,
+                longitude: state.longitude ?? pin.longitude,
+                waterId: state.waterBodyId ?? pin.waterBodyId,
+                waterName: pin.riverName,
+                riverName: pin.riverName,
+                damId: state.damId,
+                reservoirId: state.reservoirId,
+                hydropowerPlantId: state.plantId,
+                source: state.evidenceSource,
+                observedAt: state.evidenceObservedAt,
+              ),
+            );
+      }
+    } on Exception {
+      // The map-pin state remains the truthful fallback when detail refresh fails.
+    } finally {
+      if (mounted && _previewHydropowerPin?.entityId == pin.entityId) {
+        setState(() => _isLoadingHydroSelection = false);
+      }
+    }
+  }
+'''
+          new_refresh = '''  Future<void> _refreshHydropowerPreview(WaterMapPin pin) async {
+    final stateFuture = _waterAssetService.getHydropowerPlantState(pin.entityId);
+    final dispatchFuture = _hydroDispatchService.getTodayTomorrow(pin.entityId);
+
+    HydropowerPlantState? state;
+    HydroDispatchDayForecast? today;
+    try {
+      state = await stateFuture;
+    } on Exception {
+      // The map-pin state remains the truthful operational fallback.
+    }
+    try {
+      final forecasts = await dispatchFuture;
+      for (final forecast in forecasts) {
+        if (forecast.dayOffset == 0) {
+          today = forecast;
+          break;
+        }
+      }
+    } on Exception {
+      // Dispatch prediction is optional and never replaces operational truth.
+    }
+
+    if (!mounted || _previewHydropowerPin?.entityId != pin.entityId) return;
+    setState(() {
+      _previewHydropowerState = state;
+      _previewHydroDispatchToday = today;
+      _isLoadingHydroSelection = false;
+    });
+    if (state != null) {
+      ref
+          .read(selectedContextProvider.notifier)
+          .select(
+            SelectedContext(
+              countryCode: state.countryCode ?? pin.countryCode,
+              locationName: state.name,
+              latitude: state.latitude ?? pin.latitude,
+              longitude: state.longitude ?? pin.longitude,
+              waterId: state.waterBodyId ?? pin.waterBodyId,
+              waterName: pin.riverName,
+              riverName: pin.riverName,
+              damId: state.damId,
+              reservoirId: state.reservoirId,
+              hydropowerPlantId: state.plantId,
+              source: state.evidenceSource,
+              observedAt: state.evidenceObservedAt,
+            ),
+          );
+    }
+  }
+'''
+          replace_once(old_refresh, new_refresh, 'hydropower preview refresh')
+
+          replace_once(
+              "      final evidenceClass = state?.evidenceClass ?? plant.evidenceClass;\n      final hasOperationalEvidence =",
+              "      final evidenceClass = state?.evidenceClass ?? plant.evidenceClass;\n      final dispatch = _previewHydroDispatchToday;\n      final dispatchPresentation = HydroDispatchPresentation.day(\n        dispatch,\n        isRomanian: isRomanian,\n      );\n      final hasDispatchForecast = dispatch?.isAvailable == true;\n      final hasOperationalEvidence =",
+              'dispatch panel presentation',
+          )
+          replace_once(
+              "      final data = <HydroIntelligenceDatum>[\n        if (plant.riverName?.isNotEmpty == true)",
+              "      final data = <HydroIntelligenceDatum>[\n        if (hasDispatchForecast)\n          HydroIntelligenceDatum(\n            label: isRomanian\n                ? 'Probabilitate de uzinare · ESTIMATED'\n                : 'Generation probability · ESTIMATED',\n            value: dispatchPresentation.probabilityLabel,\n            icon: Icons.bolt_rounded,\n          ),\n        if (hasDispatchForecast)\n          HydroIntelligenceDatum(\n            label: isRomanian ? 'Interval estimat' : 'Estimated window',\n            value: dispatchPresentation.windowLabel,\n            icon: Icons.schedule_rounded,\n          ),\n        if (hasDispatchForecast)\n          HydroIntelligenceDatum(\n            label: isRomanian ? 'Încredere prognoză' : 'Forecast confidence',\n            value: dispatchPresentation.confidenceLabel,\n            icon: Icons.insights_rounded,\n          ),\n        if (plant.riverName?.isNotEmpty == true)",
+              'dispatch panel data',
+          )
+          old_mw = '''        if (state?.installedPowerMw case final power?)
+          HydroIntelligenceDatum(
+            label: isRomanian ? 'Putere instalată' : 'Installed capacity',
+            value: '${_formatMetricValue(power)} MW',
+            icon: Icons.bolt_rounded,
+          ),
+'''
+          replace_once(old_mw, '', 'remove installed MW from map mini-card')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: stable
+          cache: true
+
+      - name: Format and sanity check
+        run: |
+          dart format lib/screens/map_page.dart
+          git diff --check
+          grep -F "Probabilitate de uzinare · ESTIMATED" lib/screens/map_page.dart
+          grep -F "_hydroDispatchService.getTodayTomorrow(pin.entityId)" lib/screens/map_page.dart
+          if grep -Fq "label: isRomanian ? 'Putere instalată' : 'Installed capacity'" lib/screens/map_page.dart; then
+            echo '::error::Installed MW is still exposed in Hydro Map mini-card.'
+            exit 1
+          fi
+
+      - name: Commit audited patch
+        run: |
+          if git diff --quiet -- lib/screens/map_page.dart; then
+            echo '::error::No map patch was produced.'
+            exit 1
+          fi
+          git config user.name 'FluviAI CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/screens/map_page.dart
+          git commit -m 'feat(hydro-map): show dispatch probability on selected plant'
+          git push origin HEAD:feature/hydro-dispatch-olt-p4d-recovery
