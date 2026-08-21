@@ -57,8 +57,19 @@ abstract final class FigmaDestinationRouter {
       label: arguments is String ? arguments : null,
     ),
     AppDestination.hydropower => HydroDispatchCanonicalRoute(
-      plantLabel: arguments is String ? arguments : null,
-      child: FigmaHydropowerPage(label: arguments is String ? arguments : null),
+      plant: arguments is WaterMapPin ? arguments : null,
+      plantLabel: arguments is WaterMapPin
+          ? arguments.name
+          : arguments is String
+          ? arguments
+          : null,
+      child: FigmaHydropowerPage(
+        label: arguments is WaterMapPin
+            ? arguments.name
+            : arguments is String
+            ? arguments
+            : null,
+      ),
     ),
     AppDestination.weather => WeatherPage(
       initialWeather: arguments is WeatherHomeResult ? arguments : null,
