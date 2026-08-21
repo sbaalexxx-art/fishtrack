@@ -3,6 +3,72 @@ import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+class HydroMapDispatchSnapshot {
+  const HydroMapDispatchSnapshot({
+    required this.plantId,
+    required this.name,
+    required this.availabilityStatus,
+    required this.confidence,
+    required this.evidenceClass,
+    required this.observedState,
+    required this.observedFreshness,
+    required this.observedReportCount,
+    this.damId,
+    this.reservoirId,
+    this.windowStart,
+    this.windowEnd,
+    this.windowProbability,
+    this.peakProbability,
+    this.updatedAt,
+    this.observedConfidence,
+  });
+
+  factory HydroMapDispatchSnapshot.fromJson(Map<String, dynamic> json) =>
+      HydroMapDispatchSnapshot(
+        plantId: json['plant_id']?.toString() ?? '',
+        damId: _text(json['dam_id']),
+        reservoirId: _text(json['reservoir_id']),
+        name: json['name']?.toString() ?? '',
+        availabilityStatus:
+            json['availability_status']?.toString() ?? 'UNAVAILABLE',
+        windowStart: _dateTime(json['window_start']),
+        windowEnd: _dateTime(json['window_end']),
+        windowProbability: _double(json['window_probability']),
+        peakProbability: _double(json['peak_probability']),
+        confidence: json['confidence']?.toString() ?? 'unknown',
+        evidenceClass: json['evidence_class']?.toString() ?? 'UNKNOWN',
+        updatedAt: _dateTime(json['updated_at']),
+        observedState: json['observed_state']?.toString() ?? 'unknown',
+        observedConfidence: _double(json['observed_confidence']),
+        observedFreshness:
+            json['observed_freshness']?.toString() ?? 'unavailable',
+        observedReportCount: _int(json['observed_report_count']) ?? 0,
+      );
+
+  final String plantId;
+  final String? damId;
+  final String? reservoirId;
+  final String name;
+  final String availabilityStatus;
+  final DateTime? windowStart;
+  final DateTime? windowEnd;
+  final double? windowProbability;
+  final double? peakProbability;
+  final String confidence;
+  final String evidenceClass;
+  final DateTime? updatedAt;
+  final String observedState;
+  final double? observedConfidence;
+  final String observedFreshness;
+  final int observedReportCount;
+
+  bool get isAvailable =>
+      availabilityStatus == 'AVAILABLE' &&
+      windowStart != null &&
+      windowEnd != null &&
+      windowProbability != null;
+}
+
 class HydroDispatchDayForecast {
   const HydroDispatchDayForecast({
     required this.nodeOrder,
@@ -287,6 +353,21 @@ class HydroDispatchService {
 
   final SupabaseClient? _client;
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
+
+  Future<HydroMapDispatchSnapshot?> getMapDispatchSnapshot(String plantId) =>
+      _guard(() async {
+        final response = await _supabase.rpc(
+          'get_hydro_map_dispatch_overlay_v1',
+        );
+        if (response is! List) return null;
+        for (final row in response.whereType<Map>()) {
+          final snapshot = HydroMapDispatchSnapshot.fromJson(
+            Map<String, dynamic>.from(row),
+          );
+          if (snapshot.plantId == plantId) return snapshot;
+        }
+        return null;
+      });
 
   Future<List<HydroDispatchDayForecast>> getTodayTomorrow(String plantId) =>
       _guard(() async {

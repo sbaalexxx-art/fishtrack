@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:fishtrack/features/hydro_dispatch/presentation/hydro_dispatch_presentation.dart';
+import 'package:fishtrack/widgets/fluviai/hydro_intelligence_panel.dart';
 import 'package:fishtrack/services/hydro_dispatch_geofence_service.dart';
 import 'package:fishtrack/services/hydro_dispatch_service.dart';
 import 'package:fishtrack/services/saved_items_service.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -259,5 +263,93 @@ void main() {
       expect(geofence.isAmbiguous, isTrue);
       expect(geofence.nearestGapKm, 0.0);
     });
+
+    test('Hydro Map safe snapshot preserves forecast truth', () {
+      final snapshot = HydroMapDispatchSnapshot.fromJson(<String, dynamic>{
+        'plant_id': '11111111-1111-1111-1111-111111111111',
+        'dam_id': '22222222-2222-2222-2222-222222222222',
+        'reservoir_id': '33333333-3333-3333-3333-333333333333',
+        'name': 'Frunzaru',
+        'availability_status': 'AVAILABLE',
+        'window_start': '2026-08-21T15:15:00Z',
+        'window_end': '2026-08-21T20:45:00Z',
+        'window_probability': 0.742,
+        'peak_probability': 0.801,
+        'confidence': 'medium',
+        'evidence_class': 'ESTIMATED',
+        'updated_at': '2026-08-21T11:00:00Z',
+        'observed_state': 'unknown',
+        'observed_freshness': 'unavailable',
+        'observed_report_count': 0,
+        'model_version': 'must-not-be-needed-by-map',
+        'installed_power_mw': 99.9,
+        'market_price': 123.45,
+      });
+
+      expect(snapshot.isAvailable, isTrue);
+      expect(snapshot.windowProbability, closeTo(.742, .000001));
+      expect(snapshot.damId, '22222222-2222-2222-2222-222222222222');
+      final view = HydroDispatchPresentation.mapSnapshot(
+        snapshot,
+        isRomanian: true,
+      );
+      expect(view.probabilityLabel, '74.2%');
+      expect(view.windowLabel, '18:15–23:45');
+      expect(view.evidenceLabel, 'ESTIMATED');
+      expect(view.confidenceLabel, 'încredere moderată');
+    });
+
+    testWidgets('Hydro panel surfaces forecast before expansion', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('ro'),
+          home: Scaffold(
+            body: HydroIntelligencePanel(
+              data: const HydroIntelligenceViewData(
+                name: 'Frunzaru',
+                typeLabel: 'Baraj',
+                icon: Icons.bolt_rounded,
+                accentColor: Color(0xFF12D8D6),
+                statusLabel: 'Necunoscut',
+                statusTitle: 'Stare de funcționare',
+                unavailableLabel: 'Indisponibil',
+                unknownMessage: 'Necunoscut',
+                forecastProbabilityLabel: '74.2%',
+                forecastWindowLabel: '18:15–23:45',
+                forecastConfidenceLabel: 'încredere moderată',
+                forecastEvidenceLabel: 'ESTIMATED',
+              ),
+              expanded: false,
+              detailsLabel: 'Detalii',
+              graphLabel: 'Grafic',
+              askLabel: 'Întreabă Fluvi',
+              sourceLabel: 'Sursă',
+              updatedLabel: 'Actualizat',
+              onToggleExpanded: _noop,
+              onClose: _noop,
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('hydro-panel-dispatch-summary')),
+        findsOneWidget,
+      );
+      expect(find.text('74.2%'), findsOneWidget);
+      expect(find.text('18:15–23:45'), findsOneWidget);
+      expect(find.text('ESTIMATED'), findsOneWidget);
+    });
+
+    test('Hydro Map mini-card does not request or render installed MW', () {
+      final source = File('lib/screens/map_page.dart').readAsStringSync();
+      expect(source, contains('getMapDispatchSnapshot'));
+      expect(source, isNot(contains('state?.installedPowerMw')));
+      expect(source, isNot(contains("label: isRomanian ? 'Putere instalată'")));
+    });
   });
 }
+
+void _noop() {}

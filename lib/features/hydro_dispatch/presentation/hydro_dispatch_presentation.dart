@@ -77,6 +77,38 @@ abstract final class HydroDispatchPresentation {
     );
   }
 
+  static HydroDispatchDayPresentation mapSnapshot(
+    HydroMapDispatchSnapshot? snapshot, {
+    required bool isRomanian,
+  }) {
+    if (snapshot == null || !snapshot.isAvailable) {
+      return HydroDispatchDayPresentation(
+        dayLabel: isRomanian ? 'Azi' : 'Today',
+        statusLabel: isRomanian ? 'Date indisponibile' : 'Data unavailable',
+        probabilityLabel: '—',
+        windowLabel: '—',
+        evidenceLabel: snapshot?.evidenceClass ?? 'UNKNOWN',
+        confidenceLabel: _confidence(
+          snapshot?.confidence ?? 'unknown',
+          isRomanian,
+        ),
+        available: false,
+      );
+    }
+    return HydroDispatchDayPresentation(
+      dayLabel: isRomanian ? 'Azi' : 'Today',
+      statusLabel: isRomanian
+          ? 'Probabilitate uzinare'
+          : 'Generation probability',
+      probabilityLabel: _percent(snapshot.windowProbability),
+      windowLabel:
+          '${_romaniaTime(snapshot.windowStart)}–${_romaniaTime(snapshot.windowEnd)}',
+      evidenceLabel: snapshot.evidenceClass,
+      confidenceLabel: _confidence(snapshot.confidence, isRomanian),
+      available: true,
+    );
+  }
+
   static String aiExplanation(
     HydroDispatchAiContext? context, {
     required bool isRomanian,
