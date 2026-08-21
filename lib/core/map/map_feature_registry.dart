@@ -81,7 +81,11 @@ class MapFeatureRegistry {
   static const Color branch = Color(0xFF26C6DA);
   static const Color dam = Color(0xFFFF9B54);
   static const Color reservoir = Color(0xFF43D9CC);
-  static const Color hydropower = Color(0xFFFFC857);
+
+  /// Canonical Hydro identity. Keep Hydro in the FluviAI water family and
+  /// never use violet/purple for this paid operational layer.
+  static const Color hydropower = Color(0xFF12D8D6);
+
   static const Color fishingPlace = Color(0xFFFFB74D);
   static const Color catchEntry = Color(0xFF66BB6A);
   static const Color communityReport = Color(0xFFB78CFF);
