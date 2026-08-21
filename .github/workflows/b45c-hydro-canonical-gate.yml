@@ -42,6 +42,23 @@ jobs:
           cp lib/screens/map_page.dart build/b45c-hydro-qa/before/map_page.dart
           cp lib/widgets/fluviai/hydro_intelligence_panel.dart build/b45c-hydro-qa/before/hydro_intelligence_panel.dart
 
+      - name: Reconcile verified B45C Hydro clear guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply_b45c_hydro_map_patch.py')
+          text = path.read_text(encoding='utf-8')
+          old = "if null_count != 7:\n    raise SystemExit(f'ABORT stale-state guard: expected 7 Hydro clears, found {null_count}')"
+          new = "if null_count != 8:\n    raise SystemExit(f'ABORT stale-state guard: expected 8 Hydro clears, found {null_count}')"
+          if text.count(old) != 1:
+              raise SystemExit('ABORT guard repair: expected exactly one legacy 7-clear guard')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          grep -F "if null_count != 8:" .github/scripts/apply_b45c_hydro_map_patch.py
+          cp .github/scripts/apply_b45c_hydro_map_patch.py build/b45c-hydro-qa/after/apply_b45c_hydro_map_patch.py
+
       - name: Apply guarded B45C Hydro patch
         run: python3 .github/scripts/apply_b45c_hydro_map_patch.py
 
