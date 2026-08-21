@@ -12,21 +12,27 @@ void main() {
       'lib/features/hydro_dispatch/presentation/hydro_dispatch_functional_dock.dart',
     ).readAsStringSync();
 
-    test('updates Hydro presentation in both zoom directions without network churn', () {
-      expect(mapPage, contains('onCameraChange: _handleMapCameraChange'));
-      expect(
-        mapPage,
-        contains('onCameraChangeListener: widget.onCameraChange'),
-      );
-      expect(
-        mapPage,
-        contains('_handleMapCameraChange(mapbox.CameraChangedEventData data)'),
-      );
-      expect(mapPage, contains('_hydroCameraPresentationBucket(_cameraZoom)'));
-      expect(mapPage, contains('_hydroCameraPresentationBucket(zoom)'));
-      expect(mapPage, contains('Network/data refresh stays on'));
-      expect(mapPage, contains('await _refreshWaterAssetsAtCamera();'));
-    });
+    test(
+      'updates Hydro presentation in both zoom directions without network churn',
+      () {
+        expect(mapPage, contains('onCameraChange: _handleMapCameraChange'));
+        expect(
+          mapPage,
+          contains('onCameraChangeListener: widget.onCameraChange'),
+        );
+        expect(
+          mapPage,
+          contains('_handleMapCameraChange(mapbox.CameraChangedEventData data)'),
+        );
+        expect(
+          mapPage,
+          contains('_hydroCameraPresentationBucket(_cameraZoom)'),
+        );
+        expect(mapPage, contains('_hydroCameraPresentationBucket(zoom)'));
+        expect(mapPage, contains('Network/data refresh stays on'));
+        expect(mapPage, contains('await _refreshWaterAssetsAtCamera();'));
+      },
+    );
 
     test('does not retain the legacy 11.4 Hydro visibility gate', () {
       final start = mapPage.indexOf(
@@ -51,7 +57,7 @@ void main() {
       expect(registry, isNot(contains('Color(0xFF7C6CFF)')));
       expect(
         mapPage,
-        contains("fluviai-hydropower-$operation-r$reportBadge-v3"),
+        contains(r'fluviai-hydropower-$operation-r$reportBadge-v3'),
       );
       expect(
         mapPage,
