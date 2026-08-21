@@ -98,6 +98,13 @@ jobs:
           grep -F "'p_notify_window_approaching': true" lib/services/hydro_dispatch_alert_service.dart
           grep -F "'p_notify_observed_activity': true" lib/services/hydro_dispatch_alert_service.dart
 
+      - name: Normalize legacy map regression test in QA workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format test/b45c_hydro_map_regression_test.dart
+          git diff -- test/b45c_hydro_map_regression_test.dart
+
       - name: Format check canonical and mobile runtime files
         run: >-
           dart format --output=none --set-exit-if-changed
