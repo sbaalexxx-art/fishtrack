@@ -2731,7 +2731,9 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       final operationColor = saved
           ? MapFeatureRegistry.favorite
           : _hydropowerOperationColor(pin.operationState);
-      final haloColor = selected ? MapFeatureRegistry.hydropower : operationColor;
+      final haloColor = selected
+          ? MapFeatureRegistry.hydropower
+          : operationColor;
       if (selected ||
           saved ||
           pin.operationState != 'UNKNOWN' ||
