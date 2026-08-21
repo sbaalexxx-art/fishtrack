@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/b45c-hydro-map-canonical-pro
+  pull_request:
+    branches:
+      - recovery/b45c-product-owner-pass
   workflow_dispatch:
 
 permissions:
