@@ -42,21 +42,34 @@ jobs:
           cp lib/screens/map_page.dart build/b45c-hydro-qa/before/map_page.dart
           cp lib/widgets/fluviai/hydro_intelligence_panel.dart build/b45c-hydro-qa/before/hydro_intelligence_panel.dart
 
-      - name: Reconcile verified B45C Hydro clear guard
+      - name: Normalize verified B45C Hydro patch guards
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+
           path = Path('.github/scripts/apply_b45c_hydro_map_patch.py')
           text = path.read_text(encoding='utf-8')
-          old = "if null_count != 7:\n    raise SystemExit(f'ABORT stale-state guard: expected 7 Hydro clears, found {null_count}')"
-          new = "if null_count != 8:\n    raise SystemExit(f'ABORT stale-state guard: expected 8 Hydro clears, found {null_count}')"
-          if text.count(old) != 1:
-              raise SystemExit('ABORT guard repair: expected exactly one legacy 7-clear guard')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          legacy_guard = "if null_count != 7:\n    raise SystemExit(f'ABORT stale-state guard: expected 7 Hydro clears, found {null_count}')"
+          verified_guard = "if null_count != 8:\n    raise SystemExit(f'ABORT stale-state guard: expected 8 Hydro clears, found {null_count}')"
+          if legacy_guard in text:
+              text = text.replace(legacy_guard, verified_guard, 1)
+          elif verified_guard not in text:
+              raise SystemExit('ABORT guard normalization: neither verified nor legacy clear guard found')
+
+          legacy_log = "          'genericHydropowerIgnored': pins.where((pin) => pin.isHydropower).length,\n"
+          if legacy_log in text:
+              text = text.replace(legacy_log, '', 1)
+
+          path.write_text(text, encoding='utf-8')
           PY
           grep -F "if null_count != 8:" .github/scripts/apply_b45c_hydro_map_patch.py
+          if grep -F "genericHydropowerIgnored" .github/scripts/apply_b45c_hydro_map_patch.py; then
+            echo "::error::Legacy generic Hydro diagnostic path still exists in patch generator."
+            exit 1
+          fi
           cp .github/scripts/apply_b45c_hydro_map_patch.py build/b45c-hydro-qa/after/apply_b45c_hydro_map_patch.py
 
       - name: Apply guarded B45C Hydro patch
