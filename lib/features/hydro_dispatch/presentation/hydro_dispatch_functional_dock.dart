@@ -26,7 +26,7 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
   static const _card = Color(0xFF102029);
   static const _cardStrong = Color(0xFF132831);
   static const _border = Color(0xFF28434D);
-  static const _cyan = Color(0xFF43D9CC);
+  static const _cyan = Color(0xFFE8C878);
   static const _white = Color(0xFFF6F9FB);
   static const _secondary = Color(0xFFA7BBC5);
   static const _muted = Color(0xFF78909C);
@@ -234,23 +234,19 @@ class HydroDispatchFunctionalDock extends StatelessWidget {
                     color: _amber,
                   ),
                 if (state.usingPersistedCache) const SizedBox(height: 9),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: _DayCard(
-                        data: today,
-                        primary: true,
-                        isRomanian: isRomanian,
-                      ),
+                    _DayCard(
+                      data: today,
+                      primary: true,
+                      isRomanian: isRomanian,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _DayCard(
-                        data: tomorrow,
-                        primary: false,
-                        isRomanian: isRomanian,
-                      ),
+                    const SizedBox(height: 10),
+                    _DayCard(
+                      data: tomorrow,
+                      primary: false,
+                      isRomanian: isRomanian,
                     ),
                   ],
                 ),

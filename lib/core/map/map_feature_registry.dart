@@ -92,7 +92,7 @@ class MapFeatureRegistry {
   static const Color branch = Color(0xFF26C6DA);
   static const Color dam = Color(0xFF8FA7B3);
   static const Color reservoir = Color(0xFF43D9CC);
-  static const Color hydropower = Color(0xFF7C6CFF);
+  static const Color hydropower = Color(0xFFE8C878);
   static const Color fishingPlace = Color(0xFFFFB74D);
   static const Color catchEntry = Color(0xFF66BB6A);
   static const Color communityReport = Color(0xFFB78CFF);

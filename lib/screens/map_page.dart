@@ -1375,6 +1375,35 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
     return 420;
   }
 
+  int _hydroCameraPresentationBucket(double zoom) {
+    if (zoom < 5.6) return 0;
+    if (zoom < 6.4) return 1;
+    if (zoom < 7.4) return 2;
+    if (zoom < 7.6) return 3;
+    if (zoom < 8.2) return 4;
+    if (zoom < 9.0) return 5;
+    if (zoom < 9.2) return 6;
+    if (zoom < 10.2) return 7;
+    if (zoom < 10.8) return 8;
+    return 9;
+  }
+
+  void _handleMapCameraChange(mapbox.CameraChangedEventData data) {
+    if (!mounted) return;
+    final zoom = data.cameraState.zoom;
+    if (!zoom.isFinite) return;
+    final previousBucket = _hydroCameraPresentationBucket(_cameraZoom);
+    final nextBucket = _hydroCameraPresentationBucket(zoom);
+    _cameraZoom = zoom;
+    if (previousBucket == nextBucket) return;
+
+    // Camera motion updates presentation only. Network/data refresh stays on
+    // MapIdle, so pinch zoom remains responsive and never floods Supabase.
+    unawaited(_syncStationAnnotations());
+    unawaited(_syncWaterAssetAnnotations());
+    unawaited(_syncHydropowerAnnotations());
+  }
+
   Future<void> _handleMapIdle(mapbox.MapIdleEventData _) async {
     final mapboxMap = _mapboxMap;
     if (mapboxMap != null) {
@@ -2634,13 +2663,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
     return _hydropowerPins
         .where((plant) {
           final key = 'hydropower:${plant.entityId}';
-          final priority =
-              _cameraZoom >= 11.4 ||
-              _previewHydropowerPin?.entityId == plant.entityId ||
-              _savedWaterAssetKeys.contains(key) ||
-              plant.hasOperationalData ||
-              plant.communityReportCount > 0;
-          return priority && densityKeys.contains(key);
+          return densityKeys.contains(key);
         })
         .toList(growable: false);
   }
@@ -2708,6 +2731,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
       final operationColor = saved
           ? MapFeatureRegistry.favorite
           : _hydropowerOperationColor(pin.operationState);
+      final haloColor = selected ? MapFeatureRegistry.hydropower : operationColor;
       if (selected ||
           saved ||
           pin.operationState != 'UNKNOWN' ||
@@ -2727,11 +2751,13 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
                 ? 17
                 : 19,
             circleColor: _mapboxColor(
-              operationColor.withValues(alpha: selected ? .22 : .12),
+              haloColor.withValues(alpha: selected ? .28 : .12),
             ),
             circleOpacity: 1,
             circleStrokeColor: _mapboxColor(
-              selected ? Colors.white : operationColor.withValues(alpha: .78),
+              selected
+                  ? MapFeatureRegistry.hydropower
+                  : operationColor.withValues(alpha: .78),
             ),
             circleStrokeWidth: selected ? 2.2 : 1.4,
             circleSortKey: selected ? 28 : 21,
@@ -2790,7 +2816,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   ) async {
     final operation = pin.operationState.toLowerCase();
     final reportBadge = pin.communityReportCount.clamp(0, 9);
-    final imageId = 'fluviai-hydropower-$operation-r$reportBadge-v2';
+    final imageId = 'fluviai-hydropower-$operation-r$reportBadge-v3';
     if (_registeredWaterAssetStyleImageIds.contains(imageId)) return imageId;
     try {
       final bytes = await FluviMapPinSystem.rasterize(
@@ -4508,6 +4534,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
                   initialCenter: initialCenter,
                   onMapCreated: _onMapCreated,
                   onStyleLoaded: _onStyleLoaded,
+                  onCameraChange: _handleMapCameraChange,
                   onMapIdle: _handleMapIdle,
                   onMapTap: _handleHydroMapTap,
                 ),
@@ -6553,6 +6580,7 @@ class MapboxMapView extends StatefulWidget {
     required this.initialCenter,
     required this.onMapCreated,
     required this.onStyleLoaded,
+    required this.onCameraChange,
     required this.onMapIdle,
     required this.onMapTap,
   });
@@ -6561,6 +6589,7 @@ class MapboxMapView extends StatefulWidget {
   final LatLng? initialCenter;
   final ValueChanged<mapbox.MapboxMap> onMapCreated;
   final ValueChanged<mapbox.StyleLoadedEventData> onStyleLoaded;
+  final ValueChanged<mapbox.CameraChangedEventData> onCameraChange;
   final ValueChanged<mapbox.MapIdleEventData> onMapIdle;
   final ValueChanged<mapbox.MapContentGestureContext> onMapTap;
 
@@ -6595,6 +6624,7 @@ class _MapboxMapViewState extends State<MapboxMapView> {
       viewport: _initialViewport,
       onMapCreated: widget.onMapCreated,
       onStyleLoadedListener: widget.onStyleLoaded,
+      onCameraChangeListener: widget.onCameraChange,
       onMapIdleListener: widget.onMapIdle,
       // ignore: deprecated_member_use
       onTapListener: widget.onMapTap,
