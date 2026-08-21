@@ -21,7 +21,9 @@ jobs:
           ref: feature/hydro-dispatch-olt-p4d-recovery
 
       - name: Apply one-shot Hydro Map probability patch
-        run: python3 tool/ci/apply_hydro_map_probability_patch.py
+        run: |
+          python3 tool/ci/apply_hydro_map_probability_patch.py
+          python3 tool/ci/fix_hydro_map_probability_widget_test.py
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
