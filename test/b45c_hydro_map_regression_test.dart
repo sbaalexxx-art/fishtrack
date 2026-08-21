@@ -17,21 +17,21 @@ void main() {
       expect(mapSource, contains("'type': 'water_station'"));
     });
 
-    test('uses canonical verified Hydro sites instead of generic Hydro pins', () {
-      expect(mapSource, contains('HydroMapCanonicalService'));
-      expect(
-        mapSource,
-        contains('_hydroMapCanonicalService.getVerifiedSites'),
-      );
-      expect(
-        mapSource,
-        isNot(contains('.where((pin) => pin.isHydropower)')),
-      );
-      expect(mapSource, contains('canonicalDamIds.contains(asset.id)'));
-      expect(mapSource, contains('canonicalReservoirIds.contains(asset.id)'));
-      expect(mapSource, contains("payload['dam_id']"));
-      expect(mapSource, contains("payload['reservoir_id']"));
-    });
+    test(
+      'uses canonical verified Hydro sites instead of generic Hydro pins',
+      () {
+        expect(mapSource, contains('HydroMapCanonicalService'));
+        expect(
+          mapSource,
+          contains('_hydroMapCanonicalService.getVerifiedSites'),
+        );
+        expect(mapSource, isNot(contains('.where((pin) => pin.isHydropower)')));
+        expect(mapSource, contains('canonicalDamIds.contains(asset.id)'));
+        expect(mapSource, contains('canonicalReservoirIds.contains(asset.id)'));
+        expect(mapSource, contains("payload['dam_id']"));
+        expect(mapSource, contains("payload['reservoir_id']"));
+      },
+    );
 
     test('Hydro map preview never requests or renders installed MW', () {
       expect(
