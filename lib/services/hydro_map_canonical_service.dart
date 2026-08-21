@@ -67,28 +67,28 @@ class HydroCanonicalMapSite {
       longitude.isFinite;
 
   WaterMapPin toWaterMapPin() => WaterMapPin(
-        entityType: 'hydro_plant',
-        entityId: plantId!,
-        canonicalKey: siteKey,
-        name: displayName,
-        riverName: riverName,
-        countryCode: countryCode,
-        latitude: latitude,
-        longitude: longitude,
-        waterBodyId: waterBodyId,
-        operationState: 'UNKNOWN',
-        evidenceClass: 'UNKNOWN',
-        stateSource: 'canonical_hydro_map',
-        priority: dispatchAvailable ? 100 : 90,
-        hasOperationalData: false,
-        statePayload: <String, Object?>{
-          if (damId != null) 'dam_id': damId,
-          if (reservoirId != null) 'reservoir_id': reservoirId,
-          if (anchorType != null) 'anchor_type': anchorType,
-          'hydropower_verified': hydropowerVerified,
-          'dispatch_available': dispatchAvailable,
-        },
-      );
+    entityType: 'hydro_plant',
+    entityId: plantId!,
+    canonicalKey: siteKey,
+    name: displayName,
+    riverName: riverName,
+    countryCode: countryCode,
+    latitude: latitude,
+    longitude: longitude,
+    waterBodyId: waterBodyId,
+    operationState: 'UNKNOWN',
+    evidenceClass: 'UNKNOWN',
+    stateSource: 'canonical_hydro_map',
+    priority: dispatchAvailable ? 100 : 90,
+    hasOperationalData: false,
+    statePayload: <String, Object?>{
+      if (damId != null) 'dam_id': damId,
+      if (reservoirId != null) 'reservoir_id': reservoirId,
+      if (anchorType != null) 'anchor_type': anchorType,
+      'hydropower_verified': hydropowerVerified,
+      'dispatch_available': dispatchAvailable,
+    },
+  );
 }
 
 class HydroMapDispatchSnapshot {
@@ -166,32 +166,30 @@ class HydroMapCanonicalService {
   Future<List<HydroCanonicalMapSite>> getVerifiedSites({
     String countryCode = 'RO',
   }) => _guard(() async {
-        final response = await _supabase.rpc(
-          'get_hydro_map_sites_v1',
-          params: <String, Object?>{
-            'p_country_code': countryCode.trim().toUpperCase(),
-            'p_include_unresolved': false,
-            'p_limit': 250,
-          },
-        );
-        if (response is! List) return const <HydroCanonicalMapSite>[];
-        return response
-            .whereType<Map>()
-            .map(
-              (row) => HydroCanonicalMapSite.fromJson(
-                Map<String, dynamic>.from(row),
-              ),
-            )
-            .where((site) => site.isVerifiedPin)
-            .toList(growable: false);
-      });
+    final response = await _supabase.rpc(
+      'get_hydro_map_sites_v1',
+      params: <String, Object?>{
+        'p_country_code': countryCode.trim().toUpperCase(),
+        'p_include_unresolved': false,
+        'p_limit': 250,
+      },
+    );
+    if (response is! List) return const <HydroCanonicalMapSite>[];
+    return response
+        .whereType<Map>()
+        .map(
+          (row) =>
+              HydroCanonicalMapSite.fromJson(Map<String, dynamic>.from(row)),
+        )
+        .where((site) => site.isVerifiedPin)
+        .toList(growable: false);
+  });
 
   Future<List<WaterMapPin>> getVerifiedPins({
     String countryCode = 'RO',
-  }) async =>
-      (await getVerifiedSites(countryCode: countryCode))
-          .map((site) => site.toWaterMapPin())
-          .toList(growable: false);
+  }) async => (await getVerifiedSites(
+    countryCode: countryCode,
+  )).map((site) => site.toWaterMapPin()).toList(growable: false);
 
   Future<HydroMapDispatchSnapshot?> getDispatchSnapshot(String plantId) =>
       _guard(() async {
