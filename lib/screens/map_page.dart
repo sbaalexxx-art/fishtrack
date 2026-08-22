@@ -3185,6 +3185,12 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   Future<void> _openSearch() =>
       AppNavigator.open<void>(context, AppDestination.search);
 
+  Future<void> _openAskFluvi() => AppNavigator.open<void>(
+    context,
+    AppDestination.askFluvi,
+    arguments: ref.read(canonicalFluviContextProvider),
+  );
+
   bool get _canChangeMapStyle =>
       _cameraCoordinator.isReady &&
       _hasLoadedInitialStyle &&
@@ -3890,6 +3896,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
 
     final plant = _previewHydropowerPin;
     if (plant != null) {
+      final state = _previewHydropowerState;
       final snapshot = _previewHydroDispatchSnapshot;
       final forecast = HydroMapDispatchPresenter.present(
         snapshot,
@@ -3949,7 +3956,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
         confidenceLabel: hasObservedOperation && observedConfidence > 0
             ? _confidenceExplanation(observedConfidence)
             : null,
-        relationships: _hydropowerRelationships(plant, null),
+        relationships: _hydropowerRelationships(plant, state),
         unknownMessage: l10n.hydroUnknownState,
         data: data,
         loading: _isLoadingHydroSelection,
@@ -4769,16 +4776,8 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
                       semanticLabel: isRomanian
                           ? 'Întreabă Fluvi'
                           : 'Ask Fluvi',
-                      onTap: () => AppNavigator.open<void>(
-                        context,
-                        AppDestination.askFluvi,
-                      ),
-                      child: _MapAskFluviButton(
-                        onTap: () => AppNavigator.open<void>(
-                          context,
-                          AppDestination.askFluvi,
-                        ),
-                      ),
+                      onTap: _openAskFluvi,
+                      child: _MapAskFluviButton(onTap: _openAskFluvi),
                     ),
                   ),
                 ],
@@ -4865,10 +4864,7 @@ class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
                       onGraph: _previewStation == null
                           ? null
                           : () => _openStation(_previewStation!),
-                      onAsk: () => AppNavigator.open<void>(
-                        context,
-                        AppDestination.askFluvi,
-                      ),
+                      onAsk: _openAskFluvi,
                     ),
                   ),
                 if (!_effectiveHydroPreferences.enabled &&

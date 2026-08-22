@@ -1,4 +1,5 @@
 import '../../../core/context/environmental_context.dart';
+import '../../../core/context/selected_context.dart';
 import '../../../models/station.dart';
 import '../../../services/community_service.dart';
 import '../../../services/fishing_score_service.dart';
@@ -24,6 +25,7 @@ class CommercialHomeSnapshot {
     this.selectionMode,
     this.currentLocation,
     this.environmentalContext,
+    this.resolvedContext,
     this.waterStatus = CommercialHomeDomainStatus.available,
     this.weatherStatus = CommercialHomeDomainStatus.available,
     this.scoreStatus = CommercialHomeDomainStatus.available,
@@ -39,6 +41,7 @@ class CommercialHomeSnapshot {
   final WaterStationSelectionMode? selectionMode;
   final CurrentDeviceLocation? currentLocation;
   final EnvironmentalContext? environmentalContext;
+  final FluviResolvedContext? resolvedContext;
   final CommercialHomeDomainStatus waterStatus;
   final CommercialHomeDomainStatus weatherStatus;
   final CommercialHomeDomainStatus scoreStatus;
@@ -66,11 +69,19 @@ abstract interface class ProgressiveCommercialHomeDataSource {
   });
 }
 
+abstract interface class ContextAwareCommercialHomeDataSource {
+  Future<CommercialHomeSnapshot> loadForContext(
+    FluviResolvedContext context, {
+    bool forceRefresh = false,
+  });
+}
+
 class LiveCommercialHomeDataSource
     implements
         CommercialHomeDataSource,
         CurrentLocationAwareCommercialHomeDataSource,
-        ProgressiveCommercialHomeDataSource {
+        ProgressiveCommercialHomeDataSource,
+        ContextAwareCommercialHomeDataSource {
   LiveCommercialHomeDataSource({
     WaterService? waterService,
     WeatherService? weatherService,
@@ -133,6 +144,172 @@ class LiveCommercialHomeDataSource
     onUpdate: onUpdate,
   );
 
+  @override
+  Future<CommercialHomeSnapshot> loadForContext(
+    FluviResolvedContext resolvedContext, {
+    bool forceRefresh = false,
+  }) async {
+    final latitude = resolvedContext.latitude;
+    final longitude = resolvedContext.longitude;
+    final hasCoordinates = resolvedContext.hasUsableCoordinates;
+
+    Station? station;
+    if (resolvedContext.stationId case final stationId?) {
+      station = await _safe(_waterService.stationForContextId(stationId));
+    } else if (resolvedContext.source ==
+            FluviResolvedContextSource.physicalGps &&
+        hasCoordinates) {
+      station = await _safe(
+        _waterService.resolveNearestStationForContext(
+          latitude: latitude!,
+          longitude: longitude!,
+        ),
+      );
+    }
+
+    WaterHomeCachedSnapshot? persisted;
+    if (!forceRefresh && station != null) {
+      persisted = await _safe(_waterService.restorePersistedHomeSnapshot());
+    }
+    final persistedForStation =
+        station != null && persisted?.station.id == station.id
+        ? persisted
+        : null;
+    WaterUiResult? water = station == null
+        ? null
+        : _waterService.cachedWaterUiResult(station, limit: 72) ??
+              persistedForStation?.result;
+    WeatherHomeResult? weather;
+    List<CommunityPost> communityPosts = const <CommunityPost>[];
+    var communityEvidenceAvailable = false;
+    var catchesEvidenceAvailable = false;
+    var waterStatus = station == null
+        ? CommercialHomeDomainStatus.unavailable
+        : water == null
+        ? CommercialHomeDomainStatus.loading
+        : CommercialHomeDomainStatus.available;
+    var weatherStatus = hasCoordinates
+        ? CommercialHomeDomainStatus.loading
+        : CommercialHomeDomainStatus.unavailable;
+    var communityStatus = hasCoordinates
+        ? CommercialHomeDomainStatus.loading
+        : CommercialHomeDomainStatus.unavailable;
+
+    Future<void> loadWater() async {
+      if (station == null) return;
+      try {
+        water = await _waterService.getWaterUiResult(
+          station,
+          limit: 72,
+          forceRefresh: forceRefresh,
+        );
+        waterStatus = CommercialHomeDomainStatus.available;
+      } on Exception {
+        waterStatus = water == null
+            ? CommercialHomeDomainStatus.error
+            : CommercialHomeDomainStatus.available;
+      }
+    }
+
+    Future<void> loadWeather() async {
+      if (!hasCoordinates) return;
+      try {
+        weather = await _weatherService.getHomeWeatherResultForLocation(
+          latitude: latitude!,
+          longitude: longitude!,
+          forceRefresh: forceRefresh,
+        );
+        weatherStatus = weather?.data == null
+            ? CommercialHomeDomainStatus.unavailable
+            : CommercialHomeDomainStatus.available;
+      } on Exception {
+        weatherStatus = CommercialHomeDomainStatus.error;
+      }
+    }
+
+    Future<void> loadCommunity() async {
+      if (!hasCoordinates) return;
+      try {
+        final globalPosts = await _communityService.getFeed(
+          forceRefresh: forceRefresh,
+        );
+        communityPosts = filterFishingScoreLocalPosts(
+          globalPosts,
+          latitude: latitude!,
+          longitude: longitude!,
+        );
+        communityEvidenceAvailable = communityPosts.any(
+          (post) => post.isActiveReport,
+        );
+        catchesEvidenceAvailable = communityPosts.any(
+          (post) => post.type == CommunityPostType.catchPost,
+        );
+        communityStatus = CommercialHomeDomainStatus.available;
+      } on Exception {
+        communityStatus = CommercialHomeDomainStatus.error;
+      }
+    }
+
+    await Future.wait<void>([loadWater(), loadWeather(), loadCommunity()]);
+
+    FishingScoreResult? score;
+    var scoreStatus = CommercialHomeDomainStatus.loading;
+    try {
+      final scoreService = _scoreService;
+      if (scoreService is FishingScoreService) {
+        score = scoreService.calculateFrom(
+          weather: weather?.data,
+          station: station,
+          history: water?.history ?? const [],
+          posts: communityPosts,
+          weatherAvailable: weather?.data != null,
+          weatherStale: weather?.isStale == true,
+          waterAvailable:
+              station?.hasWaterLevel == true &&
+              water?.latestReading?.stationId == station?.id,
+          waterStale: water?.isStale == true,
+          communityAvailable: communityEvidenceAvailable,
+          catchesAvailable: catchesEvidenceAvailable,
+          localTime: DateTime.now(),
+          latitude: hasCoordinates ? latitude : null,
+          longitude: hasCoordinates ? longitude : null,
+        );
+      } else if (hasCoordinates &&
+          scoreService is LocationAwareFishingDecisionProvider) {
+        final locationAwareScoreService =
+            scoreService as LocationAwareFishingDecisionProvider;
+        score = await locationAwareScoreService.calculateForLocation(
+          latitude: latitude!,
+          longitude: longitude!,
+          localStation: station,
+          forceRefresh: forceRefresh,
+        );
+      } else {
+        score = const FishingScoreResult.notEnough();
+      }
+      scoreStatus = score.hasEnoughData
+          ? CommercialHomeDomainStatus.available
+          : CommercialHomeDomainStatus.unavailable;
+    } on Exception {
+      scoreStatus = CommercialHomeDomainStatus.error;
+    }
+
+    return CommercialHomeSnapshot(
+      station: station,
+      water: water,
+      weather: weather,
+      score: score,
+      communityPosts: communityPosts,
+      loadedAt: DateTime.now(),
+      environmentalContext: resolvedContext.environmentalContext,
+      resolvedContext: resolvedContext,
+      waterStatus: waterStatus,
+      weatherStatus: weatherStatus,
+      scoreStatus: scoreStatus,
+      communityStatus: communityStatus,
+    );
+  }
+
   Future<CommercialHomeSnapshot> _loadResolvedLocation(
     CurrentDeviceLocation? location, {
     required bool forceRefresh,
@@ -180,6 +357,12 @@ class LiveCommercialHomeDataSource
             stationName: pinnedStation.name,
             waterName: pinnedStation.river,
           );
+    final resolvedContext = pinnedStation == null
+        ? resolveFluviContext(selected: null, physicalLocation: location)
+        : resolveFluviContext(
+            selected: SelectedContext.fromStation(pinnedStation),
+            physicalLocation: null,
+          );
     final persistedForStation =
         station != null && persisted?.station.id == station.id
         ? persisted
@@ -199,6 +382,8 @@ class LiveCommercialHomeDataSource
     var weatherStatus = CommercialHomeDomainStatus.loading;
     var scoreStatus = CommercialHomeDomainStatus.loading;
     var communityStatus = CommercialHomeDomainStatus.loading;
+    var communityEvidenceAvailable = false;
+    var catchesEvidenceAvailable = false;
 
     CommercialHomeSnapshot snapshot() => CommercialHomeSnapshot(
       station: station,
@@ -210,6 +395,7 @@ class LiveCommercialHomeDataSource
       selectionMode: selection?.mode,
       currentLocation: location,
       environmentalContext: context,
+      resolvedContext: resolvedContext,
       waterStatus: waterStatus,
       weatherStatus: weatherStatus,
       scoreStatus: scoreStatus,
@@ -219,15 +405,16 @@ class LiveCommercialHomeDataSource
     publish();
 
     final localScoreStation =
-        station != null &&
-            location != null &&
-            WaterService.isStationWithinHomeRadius(
-              station,
-              latitude: location.latitude,
-              longitude: location.longitude,
-            )
-        ? station
-        : null;
+        pinnedStation ??
+        (station != null &&
+                location != null &&
+                WaterService.isStationWithinHomeRadius(
+                  station,
+                  latitude: location.latitude,
+                  longitude: location.longitude,
+                )
+            ? station
+            : null);
 
     Future<void> loadWater() async {
       if (station == null) return;
@@ -264,19 +451,24 @@ class LiveCommercialHomeDataSource
 
     Future<void> loadScore() async {
       try {
-        final weatherData = weather?.data;
         final scoreService = _scoreService;
-        if (scoreService is FishingScoreService && weatherData != null) {
+        if (scoreService is FishingScoreService) {
           score = scoreService.calculateFrom(
-            weather: weatherData,
-            station: station,
+            weather: weather?.data,
+            station: localScoreStation,
             history: water?.history ?? const [],
             posts: communityPosts,
-            communityAvailable:
-                communityStatus == CommercialHomeDomainStatus.available,
-            catchesAvailable:
-                communityStatus == CommercialHomeDomainStatus.available,
+            weatherAvailable: weather?.data != null,
+            weatherStale: weather?.isStale == true,
+            waterAvailable:
+                localScoreStation?.hasWaterLevel == true &&
+                water?.latestReading?.stationId == localScoreStation?.id,
+            waterStale: water?.isStale == true,
+            communityAvailable: communityEvidenceAvailable,
+            catchesAvailable: catchesEvidenceAvailable,
             localTime: DateTime.now(),
+            latitude: context.latitude,
+            longitude: context.longitude,
           );
         } else {
           score = _scoreService is LocationAwareFishingDecisionProvider
@@ -305,8 +497,19 @@ class LiveCommercialHomeDataSource
 
     Future<void> loadCommunity() async {
       try {
-        communityPosts = await _communityService.getFeed(
+        final globalPosts = await _communityService.getFeed(
           forceRefresh: forceRefresh,
+        );
+        communityPosts = filterFishingScoreLocalPosts(
+          globalPosts,
+          latitude: context.latitude,
+          longitude: context.longitude,
+        );
+        communityEvidenceAvailable = communityPosts.any(
+          (post) => post.isActiveReport,
+        );
+        catchesEvidenceAvailable = communityPosts.any(
+          (post) => post.type == CommunityPostType.catchPost,
         );
         communityStatus = CommercialHomeDomainStatus.available;
       } on Exception {

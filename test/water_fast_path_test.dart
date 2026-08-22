@@ -1662,6 +1662,56 @@ void main() {
     expect(await progressive.moveNext(), isFalse);
   });
 
+  test('last-known-good Water never crosses station identity', () async {
+    final now = _now();
+    final repository = _PerStationWaterRepository();
+    final service = WaterService(repository: repository);
+    final stationA = _homeStation(
+      'station-a',
+      'Station A',
+      44,
+      22,
+      hasReading: false,
+    );
+    final stationB = _homeStation(
+      'station-b',
+      'Station B',
+      45,
+      23,
+      hasReading: false,
+    );
+
+    final aFuture = service.getWaterUiResult(stationA, limit: 71);
+    repository.complete(
+      'station-a',
+      _result([
+        _reading(
+          stationId: 'station-a',
+          value: 535,
+          timestamp: now.subtract(const Duration(minutes: 5)),
+          source: WaterLevelSource.afdj,
+        ),
+      ]),
+    );
+    expect((await aFuture).latestReading?.stationId, 'station-a');
+
+    final bFuture = service.getWaterUiResult(stationB, limit: 71);
+    repository.complete(
+      'station-b',
+      const WaterHistoryResult(
+        status: WaterHistoryResultStatus.providerError,
+        readings: <WaterLevel>[],
+        source: null,
+        hadProviderError: true,
+        safeDiagnosticMessage: 'Provider request failed',
+      ),
+    );
+    final bResult = await bFuture;
+
+    expect(bResult.status, WaterUiStatus.providerError);
+    expect(bResult.latestReading, isNull);
+  });
+
   test('same measurement emits changed status source and trend', () async {
     final now = _now();
     final station = _stationWithoutReading();

@@ -9,16 +9,19 @@ const _reservoirMigrationPath =
 const _relationMigrationPath =
     'supabase/migrations/20260728120200_import_romania_dam_reservoir_relations.sql';
 
+String _normalizeNewlines(String value) =>
+    value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+
 void main() {
   late List<String> migrationSql;
   late String sql;
 
   setUpAll(() async {
-    migrationSql = await Future.wait([
+    migrationSql = (await Future.wait([
       File(_damMigrationPath).readAsString(),
       File(_reservoirMigrationPath).readAsString(),
       File(_relationMigrationPath).readAsString(),
-    ]);
+    ])).map(_normalizeNewlines).toList(growable: false);
     sql = migrationSql.join('\n\n');
   });
   test('records the exact approved W4B artifacts', () {

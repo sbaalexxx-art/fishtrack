@@ -91,11 +91,12 @@ class FluviDeterministicAnswerService {
     final water = snapshot.water;
     final latest = water?.latestReading;
     if (latest == null) {
-      return const FluviAnswer(
+      final label = _contextLabel(snapshot);
+      return FluviAnswer(
         text:
-            'Nu am o observație Water reală pentru contextul curent. Nu pot estima nivelul fără date.',
+            'Pentru $label nu am o observație Water reală. Nu pot estima nivelul fără date.',
         confidence: 0,
-        sources: ['Water'],
+        sources: const ['Water'],
         hasEnoughData: false,
       );
     }
@@ -127,18 +128,19 @@ class FluviDeterministicAnswerService {
     final result = snapshot.weather;
     final weather = result?.data;
     if (weather == null) {
-      return const FluviAnswer(
+      return FluviAnswer(
         text:
-            'Nu am date meteo reale pentru contextul curent. Nu voi completa prognoza din presupuneri.',
+            'Pentru ${_contextLabel(snapshot)} nu am date meteo reale. Nu voi completa prognoza din presupuneri.',
         confidence: 0,
-        sources: ['Weather'],
+        sources: const ['Weather'],
         hasEnoughData: false,
       );
     }
     final stale = result?.isStale == true;
+    final label = _contextLabel(snapshot);
     return FluviAnswer(
       text:
-          'Acum sunt ${weather.temperature.toStringAsFixed(0)}°C, ${weather.condition.toLowerCase()}, '
+          'Pentru $label sunt acum ${weather.temperature.toStringAsFixed(0)}°C, ${weather.condition.toLowerCase()}, '
           'vânt ${weather.windSpeed.toStringAsFixed(0)} km/h și rafale până la ${weather.windGusts.toStringAsFixed(0)} km/h. '
           'Probabilitatea de precipitații este ${weather.precipitationProbability.toStringAsFixed(0)}%. '
           '${stale ? 'Datele sunt cache/vechi, deci folosește-le cu prudență.' : 'Datele provin din providerul meteo runtime al aplicației.'}',
@@ -154,8 +156,8 @@ class FluviDeterministicAnswerService {
       final missing = score?.missingFactors.take(3).join(', ');
       return FluviAnswer(
         text: missing == null || missing.isEmpty
-            ? 'Nu sunt suficiente intrări reale pentru un FluviScore. Nu voi inventa o recomandare.'
-            : 'Nu sunt suficiente intrări pentru FluviScore. Lipsesc: $missing.',
+            ? 'Pentru ${_contextLabel(snapshot)} nu sunt suficiente intrări reale pentru un FluviScore. Nu voi inventa o recomandare.'
+            : 'Pentru ${_contextLabel(snapshot)} nu sunt suficiente intrări pentru FluviScore. Lipsesc: $missing.',
         confidence: 0,
         sources: const ['FluviScore deterministic'],
         hasEnoughData: false,
@@ -164,7 +166,7 @@ class FluviDeterministicAnswerService {
     final positives = score.positiveFactors.take(2).join('; ');
     final negatives = score.negativeFactors.take(2).join('; ');
     final explanation = <String>[
-      'FluviScore este ${score.score!.round()}/100, cu încredere ${score.confidence}%.',
+      'Pentru ${_contextLabel(snapshot)}, FluviScore este ${score.score!.round()}/100, cu încredere ${score.confidence}%.',
       score.recommendation,
       'Fereastra indicată: ${score.bestTime}.',
       if (positives.isNotEmpty) 'Factori favorabili: $positives.',
@@ -191,17 +193,17 @@ class FluviDeterministicAnswerService {
     final activeReports = posts.where((post) => post.isActiveReport).length;
     final catches = posts.where((post) => post.type.name == 'catchPost').length;
     if (posts.isEmpty) {
-      return const FluviAnswer(
+      return FluviAnswer(
         text:
-            'Nu am activitate Community reală disponibilă pentru contextul curent. Nu voi simula rapoarte sau capturi.',
+            'Pentru ${_contextLabel(snapshot)} nu am activitate Community reală disponibilă. Nu voi simula rapoarte sau capturi.',
         confidence: 0,
-        sources: ['Community'],
+        sources: const ['Community'],
         hasEnoughData: false,
       );
     }
     return FluviAnswer(
       text:
-          'În contextul încărcat sunt $activeReports rapoarte active și $catches capturi publice disponibile. '
+          'Pentru ${_contextLabel(snapshot)} sunt $activeReports rapoarte active și $catches capturi publice locale disponibile. '
           'Am exclus elementele marcate suspecte; locațiile private nu sunt folosite pentru explicație.',
       confidence: 80,
       sources: const ['Community / Supabase'],
@@ -216,17 +218,23 @@ class FluviDeterministicAnswerService {
     if (water.hasEnoughData) return water;
     final weather = _weatherAnswer(snapshot);
     if (weather.hasEnoughData) return weather;
-    return const FluviAnswer(
+    return FluviAnswer(
       text:
-          'Nu am suficiente date reale în contextul curent pentru un răspuns sigur. Deschide Water/Weather sau permite locația și încearcă din nou.',
+          'Pentru ${_contextLabel(snapshot)} nu am suficiente date reale pentru un răspuns sigur. Deschide Water/Weather sau permite locația și încearcă din nou.',
       confidence: 0,
-      sources: [],
+      sources: const [],
       hasEnoughData: false,
     );
   }
 
   static bool _containsAny(String input, List<String> needles) =>
       needles.any(input.contains);
+
+  static String _contextLabel(CommercialHomeSnapshot snapshot) =>
+      snapshot.resolvedContext?.primaryLabel ??
+      snapshot.station?.name ??
+      snapshot.environmentalContext?.primaryLabel ??
+      'contextul curent';
 
   static String _signed(double value) =>
       value > 0 ? '+${value.toStringAsFixed(0)}' : value.toStringAsFixed(0);

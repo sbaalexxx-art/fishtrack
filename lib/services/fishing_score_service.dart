@@ -165,8 +165,10 @@ class FishingScoreService
     List<WaterLevel> history = const [];
     List<CommunityPost> posts = const [];
     var weatherAvailable = true;
+    var weatherStale = false;
     var waterAvailable = station?.hasWaterLevel == true;
     var communityAvailable = true;
+    var catchesAvailable = true;
 
     if (waterAvailable && station != null) {
       try {
@@ -180,11 +182,14 @@ class FishingScoreService
       }
     }
     try {
-      weather = (await _weatherService.getHomeWeatherResultForLocation(
-        latitude: latitude,
-        longitude: longitude,
-        forceRefresh: forceRefresh,
-      )).data;
+      final weatherResult = await _weatherService
+          .getHomeWeatherResultForLocation(
+            latitude: latitude,
+            longitude: longitude,
+            forceRefresh: forceRefresh,
+          );
+      weather = weatherResult.data;
+      weatherStale = weatherResult.isStale;
       weatherAvailable = weather != null;
     } on Exception catch (error, stackTrace) {
       weatherAvailable = false;
@@ -196,8 +201,13 @@ class FishingScoreService
         latitude: latitude,
         longitude: longitude,
       );
+      communityAvailable = posts.any((post) => post.isActiveReport);
+      catchesAvailable = posts.any(
+        (post) => post.type == CommunityPostType.catchPost,
+      );
     } on Exception catch (error, stackTrace) {
       communityAvailable = false;
+      catchesAvailable = false;
       _logMissing('community reports and catches', error, stackTrace);
     }
 
@@ -212,10 +222,15 @@ class FishingScoreService
       weatherAvailable: weatherAvailable,
       waterAvailable: waterAvailable,
       communityAvailable: communityAvailable,
-      catchesAvailable: communityAvailable,
+      catchesAvailable: catchesAvailable,
       localTime: DateTime.now(),
       latitude: latitude,
       longitude: longitude,
+      weatherStale: weatherStale,
+      waterStale: station == null
+          ? false
+          : DateTime.now().difference(station.lastUpdate.toLocal()).abs() >
+                const Duration(hours: 36),
     );
   }
 
@@ -228,8 +243,10 @@ class FishingScoreService
     List<WaterLevel> history = const [];
     List<CommunityPost> posts = const [];
     var weatherAvailable = true;
+    var weatherStale = false;
     var waterAvailable = true;
     var communityAvailable = true;
+    var catchesAvailable = true;
 
     try {
       station = await _waterService.getNearestStation(
@@ -252,18 +269,34 @@ class FishingScoreService
       }
     }
     try {
-      weather = await _weatherService.getCurrentWeather(
+      final weatherResult = await _weatherService.getCurrentWeatherResult(
         fallbackStation: station,
         forceRefresh: forceRefresh,
       );
+      weather = weatherResult.value;
+      weatherStale = weatherResult.isStaleFallback;
     } on Exception catch (error, stackTrace) {
       weatherAvailable = false;
       _logMissing('weather', error, stackTrace);
     }
     try {
-      posts = await _communityService.getFeed(forceRefresh: forceRefresh);
+      final globalPosts = await _communityService.getFeed(
+        forceRefresh: forceRefresh,
+      );
+      posts = station == null
+          ? const <CommunityPost>[]
+          : filterFishingScoreLocalPosts(
+              globalPosts,
+              latitude: station.latitude,
+              longitude: station.longitude,
+            );
+      communityAvailable = posts.any((post) => post.isActiveReport);
+      catchesAvailable = posts.any(
+        (post) => post.type == CommunityPostType.catchPost,
+      );
     } on Exception catch (error, stackTrace) {
       communityAvailable = false;
+      catchesAvailable = false;
       _logMissing('community reports and catches', error, stackTrace);
     }
 
@@ -279,29 +312,44 @@ class FishingScoreService
       weatherAvailable: weatherAvailable && weather != null,
       waterAvailable: waterAvailable,
       communityAvailable: communityAvailable,
-      catchesAvailable: communityAvailable,
+      catchesAvailable: catchesAvailable,
       localTime: DateTime.now(),
+      weatherStale: weatherStale,
+      waterStale: station == null
+          ? false
+          : DateTime.now().difference(station.lastUpdate.toLocal()).abs() >
+                const Duration(hours: 36),
     );
   }
 
   FishingScoreResult calculateFrom({
-    required WeatherData weather,
+    WeatherData? weather,
     Station? station,
     List<WaterLevel> history = const [],
     List<CommunityPost> posts = const [],
-    bool communityAvailable = true,
-    bool catchesAvailable = true,
+    bool weatherAvailable = true,
+    bool weatherStale = false,
+    bool? waterAvailable,
+    bool waterStale = false,
+    bool communityAvailable = false,
+    bool catchesAvailable = false,
     required DateTime localTime,
+    double? latitude,
+    double? longitude,
   }) => _calculate(
     weather: weather,
     station: station,
     history: history,
     posts: posts,
-    weatherAvailable: true,
-    waterAvailable: station?.hasWaterLevel == true,
+    weatherAvailable: weatherAvailable && weather != null,
+    waterAvailable: waterAvailable ?? station?.hasWaterLevel == true,
     communityAvailable: communityAvailable,
     catchesAvailable: catchesAvailable,
     localTime: localTime,
+    latitude: latitude,
+    longitude: longitude,
+    weatherStale: weatherStale,
+    waterStale: waterStale,
   );
 
   FishingScoreResult _calculate({
@@ -314,6 +362,8 @@ class FishingScoreService
     required bool communityAvailable,
     required bool catchesAvailable,
     required DateTime localTime,
+    required bool weatherStale,
+    required bool waterStale,
     double? latitude,
     double? longitude,
   }) {
@@ -327,12 +377,19 @@ class FishingScoreService
     );
     if (weatherAvailable && weather != null) {
       factors.addAll(_weatherFactors(weather));
+      if (weatherStale) {
+        factors.add(const _Factor(-3, 'Weather data is stale'));
+        missing.add('Weather data is stale and confidence is reduced.');
+      }
     } else {
       missing.add('Score calculated without live weather data.');
     }
 
     if (waterAvailable && station != null) {
       factors.addAll(_waterFactors(station, history, localTime));
+      if (waterStale) {
+        missing.add('Water data is stale and confidence is reduced.');
+      }
       if (history.length < 2) {
         missing.add('Water history is insufficient for a verified trend.');
       }
@@ -365,13 +422,10 @@ class FishingScoreService
       developer.log(message, name: 'AIFishMap.FishingScore');
     }
     final confidence =
-        <bool>[
-          weatherAvailable,
-          waterAvailable,
-          communityAvailable,
-          catchesAvailable,
-        ].where((available) => available).length *
-        25;
+        (weatherAvailable ? (weatherStale ? 12 : 25) : 0) +
+        (waterAvailable ? (waterStale ? 12 : 25) : 0) +
+        (communityAvailable ? 25 : 0) +
+        (catchesAvailable ? 25 : 0);
     if (confidence == 0) return const FishingScoreResult.notEnough();
 
     final score =

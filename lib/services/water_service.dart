@@ -363,6 +363,40 @@ class WaterService {
     );
   }
 
+  /// Resolves Water only from the supplied context coordinates. Persisted
+  /// Water preferences are deliberately ignored so they cannot leak into an
+  /// unrelated Ask Fluvi or FluviScore context.
+  Future<Station?> resolveNearestStationForContext({
+    required double latitude,
+    required double longitude,
+  }) async {
+    final stations = orderCanonicalStations(await getStations());
+    final nearest = rankCanonicalStations(
+      stations,
+      latitude: latitude,
+      longitude: longitude,
+    ).firstOrNull;
+    if (nearest == null ||
+        !isStationWithinHomeRadius(
+          nearest,
+          latitude: latitude,
+          longitude: longitude,
+        )) {
+      return null;
+    }
+    return nearest;
+  }
+
+  /// Resolves an explicit station identity without falling back to a
+  /// different station, a persisted preference, or catalog order.
+  Future<Station?> stationForContextId(String stationId) async {
+    final normalized = stationId.trim();
+    if (normalized.isEmpty) return null;
+    return (await getStations())
+        .where((station) => station.id == normalized)
+        .firstOrNull;
+  }
+
   static bool isStationWithinHomeRadius(
     Station station, {
     required double latitude,
@@ -768,6 +802,7 @@ class WaterService {
       'id': station.id,
       'name': station.name,
       'river': station.river,
+      'country_code': station.countryCode,
       'latitude': station.latitude,
       'longitude': station.longitude,
       'level': latest.value,

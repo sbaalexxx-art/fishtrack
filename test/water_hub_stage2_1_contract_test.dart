@@ -10,13 +10,13 @@ void main() {
 
     for (final label in <String>[
       'Automat',
-      'DunÄƒre',
-      'RÃ¢uri',
+      'Dunăre',
+      'Râuri',
       'Baraje hidro',
       'Favorite',
       'Rezumat',
-      'TendinÈ›Äƒ',
-      'StaÈ›ii',
+      'Tendință',
+      'Stații',
       'Alerte',
     ]) {
       expect(source, contains("'$label'"));

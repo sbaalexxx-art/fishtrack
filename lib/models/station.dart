@@ -8,6 +8,7 @@ class Station {
   final String id;
   final String name;
   final String river;
+  final String? countryCode;
   final double level;
   final WaterTrend trend;
   final double latitude;
@@ -36,6 +37,7 @@ class Station {
     required this.id,
     required this.name,
     required this.river,
+    this.countryCode,
     required this.level,
     required this.trend,
     required this.latitude,
@@ -62,6 +64,7 @@ class Station {
     final id = _stringValue(json['id']);
     final name = _stringValue(json['name']);
     final river = _stringValue(json['river']) ?? '';
+    final countryCode = _stringValue(json['country_code'])?.toUpperCase();
     final latitude = _doubleValue(json['latitude']);
     final longitude = _doubleValue(json['longitude']);
 
@@ -97,6 +100,7 @@ class Station {
       id: id,
       name: name,
       river: river,
+      countryCode: countryCode,
       // Existing consumers are non-nullable and always gate dynamic fields on
       // hasWaterLevel/hasKnownTrend. NaN is deliberately ineligible as a real
       // reading, unlike a fabricated 0 cm value.

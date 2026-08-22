@@ -1168,6 +1168,9 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
     if (category == _WaterHubCategory.automatic) {
       await _waterService.setAutomatic();
       if (!mounted) return;
+      ProviderScope.containerOf(
+        context,
+      ).read(selectedContextProvider.notifier).clearWaterContext();
       setState(() {
         _category = category;
         _selectedStation = null;
@@ -2442,9 +2445,15 @@ class FigmaWeatherHubPage extends StatelessWidget {
 }
 
 class FigmaFluviHubPage extends StatelessWidget {
-  const FigmaFluviHubPage({super.key, this.initialStation, this.dataSource});
+  const FigmaFluviHubPage({
+    super.key,
+    this.initialStation,
+    this.initialContext,
+    this.dataSource,
+  });
 
   final Station? initialStation;
+  final FluviResolvedContext? initialContext;
   final CommercialHomeDataSource? dataSource;
 
   @override
@@ -2464,6 +2473,7 @@ class FigmaFluviHubPage extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: FigmaRuntimeSnapshotBuilder(
         station: initialStation,
+        resolvedContext: initialContext,
         dataSource: dataSource,
         builder: (context, snapshot, refresh) {
           final score = snapshot?.score;
@@ -2528,6 +2538,7 @@ class FigmaFluviHubPage extends StatelessWidget {
                       onTap: () => AppNavigator.open(
                         context,
                         AppDestination.askFluvi,
+                        arguments: snapshot?.resolvedContext ?? initialContext,
                         dataSource: dataSource,
                       ),
                     ),
@@ -2741,9 +2752,10 @@ class FigmaFluviHubPage extends StatelessWidget {
 }
 
 class FigmaAskFluviPage extends ConsumerStatefulWidget {
-  const FigmaAskFluviPage({super.key, this.dataSource});
+  const FigmaAskFluviPage({super.key, this.dataSource, this.initialContext});
 
   final CommercialHomeDataSource? dataSource;
+  final FluviResolvedContext? initialContext;
 
   @override
   ConsumerState<FigmaAskFluviPage> createState() => _FigmaAskFluviPageState();
@@ -2756,6 +2768,8 @@ class _FigmaAskFluviPageState extends ConsumerState<FigmaAskFluviPage> {
   FluviAnswer? _answer;
   bool _loading = false;
   String? _error;
+  String? _answerContextKey;
+  int _requestGeneration = 0;
 
   @override
   void initState() {
@@ -2769,7 +2783,19 @@ class _FigmaAskFluviPageState extends ConsumerState<FigmaAskFluviPage> {
     super.dispose();
   }
 
-  Future<CommercialHomeSnapshot> _loadCanonicalSnapshot() async {
+  FluviResolvedContext? _effectiveContext() =>
+      widget.initialContext ?? ref.read(canonicalFluviContextProvider);
+
+  Future<CommercialHomeSnapshot> _loadCanonicalSnapshot(
+    FluviResolvedContext? resolvedContext,
+  ) async {
+    final contextAwareSource =
+        _dataSource is ContextAwareCommercialHomeDataSource
+        ? _dataSource as ContextAwareCommercialHomeDataSource
+        : null;
+    if (resolvedContext != null && contextAwareSource != null) {
+      return contextAwareSource.loadForContext(resolvedContext);
+    }
     if (_dataSource
         case final CurrentLocationAwareCommercialHomeDataSource
             locationAwareSource) {
@@ -2795,23 +2821,38 @@ class _FigmaAskFluviPageState extends ConsumerState<FigmaAskFluviPage> {
     final question = _controller.text.trim();
     if (question.isEmpty || _loading) return;
     FocusScope.of(context).unfocus();
+    final resolvedContext = _effectiveContext();
+    final contextKey = resolvedContext?.contextKey ?? 'unavailable';
+    final generation = ++_requestGeneration;
     setState(() {
       _loading = true;
       _error = null;
+      _answer = null;
+      _answerContextKey = contextKey;
     });
     try {
-      final snapshot = await _loadCanonicalSnapshot();
+      final snapshot = await _loadCanonicalSnapshot(resolvedContext);
       final answer = _answerService.answer(
         question: question,
         snapshot: snapshot,
       );
-      if (!mounted) return;
+      final currentKey = _effectiveContext()?.contextKey ?? 'unavailable';
+      if (!mounted ||
+          generation != _requestGeneration ||
+          currentKey != contextKey) {
+        return;
+      }
       setState(() {
         _answer = answer;
         _loading = false;
       });
     } on Exception {
-      if (!mounted) return;
+      final currentKey = _effectiveContext()?.contextKey ?? 'unavailable';
+      if (!mounted ||
+          generation != _requestGeneration ||
+          currentKey != contextKey) {
+        return;
+      }
       setState(() {
         _loading = false;
         _error =
@@ -2822,9 +2863,29 @@ class _FigmaAskFluviPageState extends ConsumerState<FigmaAskFluviPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<FluviResolvedContext?>(canonicalFluviContextProvider, (
+      previous,
+      next,
+    ) {
+      if (widget.initialContext != null ||
+          previous?.contextKey == next?.contextKey) {
+        return;
+      }
+      _requestGeneration++;
+      if (!mounted) return;
+      setState(() {
+        _answer = null;
+        _error = null;
+        _loading = false;
+        _answerContextKey = null;
+      });
+    });
+    final resolvedContext =
+        widget.initialContext ?? ref.watch(canonicalFluviContextProvider);
     final answer = _answer;
     return FigmaCanonicalScaffold(
       key: const ValueKey('figma-ask-fluvi'),
+      subtitle: resolvedContext?.primaryLabel ?? 'Context curent indisponibil',
       title: 'Întreabă Fluvi',
       eyebrow: 'CONTEXT REAL',
       child: ListView(
@@ -2886,7 +2947,9 @@ class _FigmaAskFluviPageState extends ConsumerState<FigmaAskFluviPage> {
               onAction: _submit,
             ),
           ],
-          if (answer != null) ...[
+          if (answer != null &&
+              _answerContextKey ==
+                  (resolvedContext?.contextKey ?? 'unavailable')) ...[
             const SizedBox(height: 18),
             FigmaSurface(
               accent: answer.hasEnoughData

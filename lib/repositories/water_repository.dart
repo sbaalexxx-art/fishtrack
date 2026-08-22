@@ -813,6 +813,7 @@ class WaterRepository implements OfficialWaterDataSource {
         'id': stationId,
         'name': stationName,
         'river': riverName,
+        if (row['country_code'] != null) 'country_code': row['country_code'],
         'latitude': latitude,
         'longitude': longitude,
       };

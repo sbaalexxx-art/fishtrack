@@ -1,6 +1,7 @@
 import 'package:fishtrack/core/context/current_location.dart';
 import 'package:fishtrack/core/context/selected_context.dart';
 import 'package:fishtrack/core/map/pending_map_camera.dart';
+import 'package:fishtrack/features/commercial_home/data/commercial_home_data_source.dart';
 import 'package:fishtrack/features/commercial_home/presentation/commercial_home_page.dart';
 import 'package:fishtrack/models/station.dart';
 import 'package:fishtrack/models/weather.dart';
@@ -8,6 +9,7 @@ import 'package:fishtrack/repositories/water_repository.dart';
 import 'package:fishtrack/repositories/weather_repository.dart';
 import 'package:fishtrack/screens/map_page.dart';
 import 'package:fishtrack/services/community_service.dart';
+import 'package:fishtrack/services/fishing_score_service.dart';
 import 'package:fishtrack/services/location_service.dart';
 import 'package:fishtrack/services/water_service.dart';
 import 'package:fishtrack/services/weather_service.dart';
@@ -193,6 +195,99 @@ void main() {
     expect(selection.mode, WaterStationSelectionMode.automatic);
     expect(selection.station, isNull);
   });
+
+  test(
+    'contextual snapshot keeps UK Weather and Community local despite pinned Danube',
+    () async {
+      final water = WaterService(repository: _StationRepository([_bazias()]));
+      water.selectStation(_bazias());
+      final now = DateTime.now();
+      final localReport = _communityPost(
+        'bristol-report',
+        51.46,
+        -2.58,
+        now,
+        CommunityPostType.report,
+      );
+      final localCatch = _communityPost(
+        'bristol-catch',
+        51.45,
+        -2.59,
+        now,
+        CommunityPostType.catchPost,
+      );
+      final distantReport = _communityPost(
+        'bazias-report',
+        44.82,
+        21.39,
+        now,
+        CommunityPostType.report,
+      );
+      final weather = WeatherService(repository: _RecordingWeatherRepository());
+      final source = LiveCommercialHomeDataSource(
+        waterService: water,
+        weatherService: weather,
+        scoreService: FishingScoreService(),
+        communityService: _FixedCommunityService([
+          localReport,
+          localCatch,
+          distantReport,
+        ]),
+      );
+      final context = resolveFluviContext(
+        selected: null,
+        physicalLocation: bristol,
+      )!;
+
+      final snapshot = await source.loadForContext(context);
+
+      expect(water.selectedStation?.id, 'bazias');
+      expect(snapshot.station, isNull);
+      expect(
+        (snapshot.weather?.latitude, snapshot.weather?.longitude),
+        (51.4545, -2.5879),
+      );
+      expect(snapshot.communityPosts.map((post) => post.id), [
+        'bristol-report',
+        'bristol-catch',
+      ]);
+      expect(snapshot.score?.confidence, 75);
+      expect(snapshot.resolvedContext?.contextKey, context.contextKey);
+    },
+  );
+
+  test(
+    'selected entity without coordinates never borrows GPS or persisted Water',
+    () async {
+      final water = WaterService(repository: _StationRepository([_bazias()]));
+      water.selectStation(_bazias());
+      final source = LiveCommercialHomeDataSource(
+        waterService: water,
+        weatherService: WeatherService(
+          repository: _RecordingWeatherRepository(),
+        ),
+        scoreService: FishingScoreService(),
+        communityService: const _FixedCommunityService([]),
+      );
+      final context = resolveFluviContext(
+        selected: const SelectedContext(
+          countryCode: 'RO',
+          locationName: 'Olt',
+          riverKey: 'olt',
+          riverName: 'Olt',
+        ),
+        physicalLocation: bristol,
+      )!;
+
+      final snapshot = await source.loadForContext(context);
+
+      expect(snapshot.resolvedContext?.primaryLabel, 'Olt');
+      expect(snapshot.station, isNull);
+      expect(snapshot.weather, isNull);
+      expect(snapshot.communityPosts, isEmpty);
+      expect(snapshot.score?.hasEnoughData, isFalse);
+    },
+  );
 }
 
 class _FixedDeviceLocationSource implements DeviceLocationSource {
@@ -244,6 +339,40 @@ class _RecordingWeatherRepository extends WeatherRepository {
     );
   }
 }
+
+class _FixedCommunityService extends CommunityService {
+  const _FixedCommunityService(this.posts);
+
+  final List<CommunityPost> posts;
+
+  @override
+  Future<List<CommunityPost>> getFeed({bool forceRefresh = false}) async =>
+      posts;
+}
+
+CommunityPost _communityPost(
+  String id,
+  double latitude,
+  double longitude,
+  DateTime now,
+  CommunityPostType type,
+) => CommunityPost(
+  id: id,
+  userId: 'user',
+  type: type,
+  title: type == CommunityPostType.report ? 'Activity' : 'Pike',
+  body: 'Evidence',
+  createdAt: now.subtract(const Duration(hours: 1)),
+  authorName: 'Angler',
+  reportCategory: type == CommunityPostType.report
+      ? ReportCategory.fishActivity
+      : null,
+  latitude: latitude,
+  longitude: longitude,
+  expiresAt: type == CommunityPostType.report
+      ? now.add(const Duration(hours: 8))
+      : null,
+);
 
 Station _bazias() => Station(
   id: 'bazias',

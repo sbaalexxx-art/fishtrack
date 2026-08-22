@@ -180,8 +180,12 @@ class _CommercialHomePageState extends ConsumerState<CommercialHomePage> {
   }
 
   void _publishAutomaticStationContext(Station? station) {
-    if (station == null) return;
-    ref.read(selectedContextProvider.notifier).publishStation(station);
+    final notifier = ref.read(selectedContextProvider.notifier);
+    if (station == null) {
+      notifier.clearAutomaticStation();
+      return;
+    }
+    notifier.publishAutomaticStation(station);
   }
 
   Future<void> _openWater(CommercialHomeSnapshot? snapshot) async {
@@ -255,7 +259,10 @@ class _CommercialHomePageState extends ConsumerState<CommercialHomePage> {
               onRefresh: () => _reload(forceRefresh: true),
               onSearch: () => _openDestination(AppDestination.search),
               onLocate: _homeMapController.recenter,
-              onAskFluvi: () => _openDestination(AppDestination.askFluvi),
+              onAskFluvi: () => _openDestination(
+                AppDestination.askFluvi,
+                arguments: ref.read(canonicalFluviContextProvider),
+              ),
               onNotifications: () =>
                   _openDestination(AppDestination.notifications),
               onDeveloperMode: BuildModeService.isDeveloperVisible

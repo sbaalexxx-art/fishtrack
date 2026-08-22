@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/context/selected_context.dart';
 import '../../../core/navigation/app_destination.dart';
 import '../../commercial_home/data/commercial_home_data_source.dart';
 import '../../hydro_dispatch/presentation/hydro_dispatch_canonical_route.dart';
@@ -65,9 +66,13 @@ abstract final class FigmaDestinationRouter {
     ),
     AppDestination.fluvi => FigmaFluviHubPage(
       initialStation: arguments is Station ? arguments : null,
+      initialContext: arguments is FluviResolvedContext ? arguments : null,
       dataSource: dataSource,
     ),
-    AppDestination.askFluvi => FigmaAskFluviPage(dataSource: dataSource),
+    AppDestination.askFluvi => FigmaAskFluviPage(
+      dataSource: dataSource,
+      initialContext: arguments is FluviResolvedContext ? arguments : null,
+    ),
     AppDestination.community => const FigmaCommunityPage(),
     AppDestination.reportDetail => FigmaReportDetailsPage(
       post: arguments is CommunityPost ? arguments : null,

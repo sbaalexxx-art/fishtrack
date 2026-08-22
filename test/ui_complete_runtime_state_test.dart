@@ -1,3 +1,4 @@
+import 'package:fishtrack/core/context/selected_context.dart';
 import 'package:fishtrack/features/commercial_home/data/commercial_home_data_source.dart';
 import 'package:fishtrack/features/figma_complete/presentation/figma_environment_pages.dart';
 import 'package:fishtrack/l10n/app_localizations.dart';
@@ -121,6 +122,35 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'runtime snapshot builder gives explicit station context precedence',
+    (tester) async {
+      final station = Station(
+        id: 'station-b',
+        name: 'Station B',
+        river: 'Dunărea',
+        countryCode: 'RO',
+        level: 100,
+        trend: WaterTrend.stable,
+        latitude: 45,
+        longitude: 23,
+        lastUpdate: DateTime.now(),
+        hasWaterLevel: true,
+      );
+      final source = _ContextRecordingDataSource();
+
+      await tester.pumpWidget(
+        _app(FigmaFluviHubPage(initialStation: station, dataSource: source)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(source.genericLoads, 0);
+      expect(source.contexts.single.stationId, 'station-b');
+      expect(source.contexts.single.primaryLabel, 'Station B');
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Widget _app(Widget home) => ProviderScope(
@@ -159,4 +189,40 @@ class _StaticWaterDataSource implements CommercialHomeDataSource {
   @override
   Future<CommercialHomeSnapshot> load({bool forceRefresh = false}) async =>
       snapshot;
+}
+
+class _ContextRecordingDataSource
+    implements CommercialHomeDataSource, ContextAwareCommercialHomeDataSource {
+  final contexts = <FluviResolvedContext>[];
+  var genericLoads = 0;
+
+  @override
+  Stream<Station> get stationSelections => const Stream.empty();
+
+  @override
+  Future<CommercialHomeSnapshot> load({bool forceRefresh = false}) async {
+    genericLoads++;
+    throw StateError('Generic load must not replace explicit context.');
+  }
+
+  @override
+  Future<CommercialHomeSnapshot> loadForContext(
+    FluviResolvedContext context, {
+    bool forceRefresh = false,
+  }) async {
+    contexts.add(context);
+    return CommercialHomeSnapshot(
+      station: null,
+      water: null,
+      weather: null,
+      score: null,
+      communityPosts: const [],
+      loadedAt: DateTime.now(),
+      resolvedContext: context,
+      waterStatus: CommercialHomeDomainStatus.unavailable,
+      weatherStatus: CommercialHomeDomainStatus.unavailable,
+      scoreStatus: CommercialHomeDomainStatus.unavailable,
+      communityStatus: CommercialHomeDomainStatus.unavailable,
+    );
+  }
 }

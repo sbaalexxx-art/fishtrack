@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/context/current_location.dart';
+import '../../../core/context/selected_context.dart';
 import '../../../core/runtime/app_runtime.dart';
 import '../../../models/station.dart';
 import '../../commercial_home/data/commercial_home_data_source.dart';
@@ -15,6 +16,7 @@ class FigmaRuntimeSnapshotBuilder extends ConsumerStatefulWidget {
     required this.builder,
     this.dataSource,
     this.station,
+    this.resolvedContext,
     this.loadingLabel,
   });
 
@@ -26,6 +28,7 @@ class FigmaRuntimeSnapshotBuilder extends ConsumerStatefulWidget {
   builder;
   final CommercialHomeDataSource? dataSource;
   final Station? station;
+  final FluviResolvedContext? resolvedContext;
   final String? loadingLabel;
 
   @override
@@ -56,7 +59,10 @@ class _FigmaRuntimeSnapshotBuilderState
       widget.dataSource,
     );
     final stationChanged = oldWidget.station?.id != widget.station?.id;
-    if (!customSourceChanged && !stationChanged) return;
+    final contextChanged =
+        oldWidget.resolvedContext?.contextKey !=
+        widget.resolvedContext?.contextKey;
+    if (!customSourceChanged && !stationChanged && !contextChanged) return;
     _configureDataSource();
   }
 
@@ -88,7 +94,25 @@ class _FigmaRuntimeSnapshotBuilderState
     try {
       CommercialHomeSnapshot snapshot;
 
-      if (_dataSource
+      final explicitContext =
+          widget.resolvedContext ??
+          (widget.station == null
+              ? null
+              : resolveFluviContext(
+                  selected: SelectedContext.fromStation(widget.station!),
+                  physicalLocation: null,
+                ));
+
+      final contextAwareSource =
+          _dataSource is ContextAwareCommercialHomeDataSource
+          ? _dataSource as ContextAwareCommercialHomeDataSource
+          : null;
+      if (explicitContext != null && contextAwareSource != null) {
+        snapshot = await contextAwareSource.loadForContext(
+          explicitContext,
+          forceRefresh: forceRefresh,
+        );
+      } else if (_dataSource
           case final CurrentLocationAwareCommercialHomeDataSource
               locationAwareSource) {
         final languageCode =

@@ -191,6 +191,13 @@ class _FigmaFavoritesPageState extends State<FigmaFavoritesPage> {
     }
   }
 
+  Future<void> _openFavoriteStation(Station station) async {
+    ProviderScope.containerOf(context, listen: false)
+        .read(selectedContextProvider.notifier)
+        .selectFavorite(SelectedContext.fromStation(station));
+    await AppNavigator.open(context, AppDestination.water, arguments: station);
+  }
+
   Future<void> _openSaved(SavedItem item) async {
     if (item.type == 'river') {
       try {
@@ -408,6 +415,7 @@ class _FigmaFavoritesPageState extends State<FigmaFavoritesPage> {
                   for (var index = 0; index < stations.length; index++) ...[
                     _FavoriteStationCard(
                       station: stations[index],
+                      onOpen: () => _openFavoriteStation(stations[index]),
                       onRemove: () => _remove(stations[index]),
                     ),
                     if (index != stations.length - 1)
@@ -511,9 +519,14 @@ class _FigmaSavedItemCard extends StatelessWidget {
 }
 
 class _FavoriteStationCard extends StatelessWidget {
-  const _FavoriteStationCard({required this.station, required this.onRemove});
+  const _FavoriteStationCard({
+    required this.station,
+    required this.onOpen,
+    required this.onRemove,
+  });
 
   final Station station;
+  final VoidCallback onOpen;
   final VoidCallback onRemove;
 
   @override
@@ -527,8 +540,7 @@ class _FavoriteStationCard extends StatelessWidget {
             WaterTrend.stable => FigmaFluviTokens.green,
           };
     return FigmaSurface(
-      onTap: () =>
-          AppNavigator.open(context, AppDestination.water, arguments: station),
+      onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
