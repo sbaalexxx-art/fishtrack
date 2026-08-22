@@ -1082,14 +1082,90 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resetPassword => 'Reset password';
 
   @override
-  String get welcomeBack => 'Welcome back';
+  String get welcomeBack => 'Welcome back!';
+
+  @override
+  String get authHeroTitle => 'Where passion meets the waterline.';
+
+  @override
+  String get authHeroTitleAccent => 'waterline';
+
+  @override
+  String get authHeroSubtitle =>
+      'Real data. Better decisions. Memorable catches.';
+
+  @override
+  String get continueWithEmail => 'Continue with email';
+
+  @override
+  String get authPrivacyNote => 'Your data stays secure. No spam.';
+
+  @override
+  String get authFooterTagline => 'Created for anglers. By anglers.';
+
+  @override
+  String get authBack => 'Back';
+
+  @override
+  String get authCreateAccountSubtitle =>
+      'Save catches, favourites and personal alerts.';
+
+  @override
+  String get authLoginValidation =>
+      'Enter your email and a password of at least 6 characters.';
+
+  @override
+  String get authRegisterValidation =>
+      'Enter your name, email and a password of at least 6 characters.';
+
+  @override
+  String get authEnterAccountEmail => 'Enter your account email.';
+
+  @override
+  String get authAccountCreated =>
+      'Your account was created. Check your email if confirmation is required.';
+
+  @override
+  String get authShowPassword => 'Show password';
+
+  @override
+  String get authHidePassword => 'Hide password';
+
+  @override
+  String get authProcessing => 'Processing…';
+
+  @override
+  String get authSignIn => 'Sign in';
+
+  @override
+  String get authSecurity => 'Security';
+
+  @override
+  String get authRecoveryTitle => 'Account recovery';
+
+  @override
+  String get authChooseNewPassword => 'Choose a new password';
+
+  @override
+  String get authRecoverySessionMessage =>
+      'The recovery link opened a protected session.';
+
+  @override
+  String get authPasswordMinimumSix =>
+      'The password must contain at least 6 characters.';
+
+  @override
+  String get authPasswordUpdated => 'Your password was updated.';
+
+  @override
+  String get authUpdatingPassword => 'Updating…';
 
   @override
   String get recoveryInstructionsHint =>
       'We will send recovery instructions to your email.';
 
   @override
-  String get signInToContinue => 'Sign in to continue to FluviAI.';
+  String get signInToContinue => 'Sign in to continue';
 
   @override
   String get passwordsDoNotMatch => 'Passwords do not match';

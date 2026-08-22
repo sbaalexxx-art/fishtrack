@@ -57,6 +57,7 @@ flutter:
   assets:
     - assets/branding/fluviai_logo.png
     - assets/branding/fluviai_wordmark.png
+    - assets/images/auth/fluviai_login_hero.webp
     - assets/licenses/fonts/Geist-OFL.txt
     - assets/licenses/fonts/IBM-Plex-Mono-OFL.txt
   fonts:

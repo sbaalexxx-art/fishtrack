@@ -1085,14 +1085,90 @@ class AppLocalizationsRo extends AppLocalizations {
   String get resetPassword => 'Resetează parola';
 
   @override
-  String get welcomeBack => 'Bine ai revenit';
+  String get welcomeBack => 'Bine ai revenit!';
+
+  @override
+  String get authHeroTitle => 'Acolo unde pasiunea întâlnește firul apei.';
+
+  @override
+  String get authHeroTitleAccent => 'apei';
+
+  @override
+  String get authHeroSubtitle =>
+      'Date reale. Decizii mai bune. Capturi memorabile.';
+
+  @override
+  String get continueWithEmail => 'Continuă cu e-mail';
+
+  @override
+  String get authPrivacyNote => 'Datele tale sunt în siguranță. Fără spam.';
+
+  @override
+  String get authFooterTagline => 'Creat pentru pescari. De pescari.';
+
+  @override
+  String get authBack => 'Înapoi';
+
+  @override
+  String get authCreateAccountSubtitle =>
+      'Salvează capturi, favorite și alerte personale.';
+
+  @override
+  String get authLoginValidation =>
+      'Completează e-mailul și o parolă de minimum 6 caractere.';
+
+  @override
+  String get authRegisterValidation =>
+      'Completează numele, e-mailul și o parolă de minimum 6 caractere.';
+
+  @override
+  String get authEnterAccountEmail => 'Introdu e-mailul contului.';
+
+  @override
+  String get authAccountCreated =>
+      'Contul a fost creat. Verifică e-mailul dacă este necesară confirmarea.';
+
+  @override
+  String get authShowPassword => 'Afișează parola';
+
+  @override
+  String get authHidePassword => 'Ascunde parola';
+
+  @override
+  String get authProcessing => 'Se procesează…';
+
+  @override
+  String get authSignIn => 'Autentificare';
+
+  @override
+  String get authSecurity => 'Securitate';
+
+  @override
+  String get authRecoveryTitle => 'Recuperare cont';
+
+  @override
+  String get authChooseNewPassword => 'Alege o parolă nouă';
+
+  @override
+  String get authRecoverySessionMessage =>
+      'Linkul de recuperare a deschis o sesiune protejată.';
+
+  @override
+  String get authPasswordMinimumSix =>
+      'Parola trebuie să aibă minimum 6 caractere.';
+
+  @override
+  String get authPasswordUpdated => 'Parola a fost actualizată.';
+
+  @override
+  String get authUpdatingPassword => 'Se actualizează…';
 
   @override
   String get recoveryInstructionsHint =>
       'Vom trimite instrucțiunile de recuperare la adresa ta de e-mail.';
 
   @override
-  String get signInToContinue => 'Autentifică-te pentru a continua în FluviAI.';
+  String get signInToContinue => 'Conectează-te pentru a continua';
 
   @override
   String get passwordsDoNotMatch => 'Parolele nu coincid';

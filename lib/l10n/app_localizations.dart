@@ -2057,8 +2057,146 @@ abstract class AppLocalizations {
   /// No description provided for @welcomeBack.
   ///
   /// In ro, this message translates to:
-  /// **'Bine ai revenit'**
+  /// **'Bine ai revenit!'**
   String get welcomeBack;
+
+  /// No description provided for @authHeroTitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Acolo unde pasiunea întâlnește firul apei.'**
+  String get authHeroTitle;
+
+  /// No description provided for @authHeroTitleAccent.
+  ///
+  /// In ro, this message translates to:
+  /// **'apei'**
+  String get authHeroTitleAccent;
+
+  /// No description provided for @authHeroSubtitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Date reale. Decizii mai bune. Capturi memorabile.'**
+  String get authHeroSubtitle;
+
+  /// No description provided for @continueWithEmail.
+  ///
+  /// In ro, this message translates to:
+  /// **'Continuă cu e-mail'**
+  String get continueWithEmail;
+
+  /// No description provided for @authPrivacyNote.
+  ///
+  /// In ro, this message translates to:
+  /// **'Datele tale sunt în siguranță. Fără spam.'**
+  String get authPrivacyNote;
+
+  /// No description provided for @authFooterTagline.
+  ///
+  /// In ro, this message translates to:
+  /// **'Creat pentru pescari. De pescari.'**
+  String get authFooterTagline;
+
+  /// No description provided for @authBack.
+  ///
+  /// In ro, this message translates to:
+  /// **'Înapoi'**
+  String get authBack;
+
+  /// No description provided for @authCreateAccountSubtitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Salvează capturi, favorite și alerte personale.'**
+  String get authCreateAccountSubtitle;
+
+  /// No description provided for @authLoginValidation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Completează e-mailul și o parolă de minimum 6 caractere.'**
+  String get authLoginValidation;
+
+  /// No description provided for @authRegisterValidation.
+  ///
+  /// In ro, this message translates to:
+  /// **'Completează numele, e-mailul și o parolă de minimum 6 caractere.'**
+  String get authRegisterValidation;
+
+  /// No description provided for @authEnterAccountEmail.
+  ///
+  /// In ro, this message translates to:
+  /// **'Introdu e-mailul contului.'**
+  String get authEnterAccountEmail;
+
+  /// No description provided for @authAccountCreated.
+  ///
+  /// In ro, this message translates to:
+  /// **'Contul a fost creat. Verifică e-mailul dacă este necesară confirmarea.'**
+  String get authAccountCreated;
+
+  /// No description provided for @authShowPassword.
+  ///
+  /// In ro, this message translates to:
+  /// **'Afișează parola'**
+  String get authShowPassword;
+
+  /// No description provided for @authHidePassword.
+  ///
+  /// In ro, this message translates to:
+  /// **'Ascunde parola'**
+  String get authHidePassword;
+
+  /// No description provided for @authProcessing.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se procesează…'**
+  String get authProcessing;
+
+  /// No description provided for @authSignIn.
+  ///
+  /// In ro, this message translates to:
+  /// **'Autentificare'**
+  String get authSignIn;
+
+  /// No description provided for @authSecurity.
+  ///
+  /// In ro, this message translates to:
+  /// **'Securitate'**
+  String get authSecurity;
+
+  /// No description provided for @authRecoveryTitle.
+  ///
+  /// In ro, this message translates to:
+  /// **'Recuperare cont'**
+  String get authRecoveryTitle;
+
+  /// No description provided for @authChooseNewPassword.
+  ///
+  /// In ro, this message translates to:
+  /// **'Alege o parolă nouă'**
+  String get authChooseNewPassword;
+
+  /// No description provided for @authRecoverySessionMessage.
+  ///
+  /// In ro, this message translates to:
+  /// **'Linkul de recuperare a deschis o sesiune protejată.'**
+  String get authRecoverySessionMessage;
+
+  /// No description provided for @authPasswordMinimumSix.
+  ///
+  /// In ro, this message translates to:
+  /// **'Parola trebuie să aibă minimum 6 caractere.'**
+  String get authPasswordMinimumSix;
+
+  /// No description provided for @authPasswordUpdated.
+  ///
+  /// In ro, this message translates to:
+  /// **'Parola a fost actualizată.'**
+  String get authPasswordUpdated;
+
+  /// No description provided for @authUpdatingPassword.
+  ///
+  /// In ro, this message translates to:
+  /// **'Se actualizează…'**
+  String get authUpdatingPassword;
 
   /// No description provided for @recoveryInstructionsHint.
   ///
@@ -2069,7 +2207,7 @@ abstract class AppLocalizations {
   /// No description provided for @signInToContinue.
   ///
   /// In ro, this message translates to:
-  /// **'Autentifică-te pentru a continua în FluviAI.'**
+  /// **'Conectează-te pentru a continua'**
   String get signInToContinue;
 
   /// No description provided for @passwordsDoNotMatch.
