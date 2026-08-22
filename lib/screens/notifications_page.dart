@@ -238,6 +238,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     AppNotificationType.weatherAlert => Icons.cloud_outlined,
     AppNotificationType.reportVerificationChanged => Icons.fact_check_outlined,
     AppNotificationType.catchLiked => Icons.favorite_border_rounded,
+    AppNotificationType.hydroDispatchForecast ||
+    AppNotificationType.hydroDispatchWindowApproaching ||
+    AppNotificationType.hydroDispatchObserved => Icons.bolt_rounded,
   };
 
   static Color _color(NotificationPriority priority) => switch (priority) {
