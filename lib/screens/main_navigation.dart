@@ -58,12 +58,14 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
   bool _fullMapInitialized = false;
   bool _shellNavigationVisible = true;
   bool _contentCanPop = false;
+  AppDestination? _activeShellDestination;
+  final List<int> _programmaticMainTabCallers = <int>[];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    AppNavigator.attachMainTabRouteSelector(_selectPage);
+    AppNavigator.attachMainTabRouteSelector(_openProgrammaticMainTab);
     AppNavigator.attachShellNavigator(_contentNavigatorKey);
     _shellNavigatorObserver = _ShellNavigatorObserver(
       onRouteChanged: _handleShellRouteChanged,
@@ -175,15 +177,51 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
               ? true
               : _shellNavigationVisible
         : destinationShowsShellNavigation(destination.destination);
+    final activeDestination = destination?.destination;
     if (!mounted ||
         (visible == _shellNavigationVisible &&
-            contentCanPop == _contentCanPop)) {
+            contentCanPop == _contentCanPop &&
+            activeDestination == _activeShellDestination)) {
       return;
     }
     setState(() {
       _shellNavigationVisible = visible;
       _contentCanPop = contentCanPop;
+      _activeShellDestination = activeDestination;
     });
+  }
+
+  void _handleBottomNavigationSelect(int index) {
+    _programmaticMainTabCallers.clear();
+    if (index != 3) {
+      _selectPage(index);
+      return;
+    }
+    if (_activeShellDestination == AppDestination.fluvi) return;
+    unawaited(
+      AppNavigator.open<void>(
+        context,
+        AppDestination.fluvi,
+        dataSource: widget.homeDataSource,
+      ),
+    );
+  }
+
+  void _openProgrammaticMainTab(int index, {Object? arguments}) {
+    if (index == 0) {
+      _programmaticMainTabCallers.clear();
+    } else if (index != _selectedIndex &&
+        (_programmaticMainTabCallers.isEmpty ||
+            _programmaticMainTabCallers.last != _selectedIndex)) {
+      _programmaticMainTabCallers.add(_selectedIndex);
+    }
+    _selectPage(index, arguments: arguments);
+  }
+
+  void _returnToProgrammaticCaller() {
+    if (_programmaticMainTabCallers.isEmpty) return;
+    final caller = _programmaticMainTabCallers.removeLast();
+    _selectPage(caller);
   }
 
   void _selectPage(int index, {Object? arguments}) {
@@ -374,7 +412,10 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
         routeIsCurrent && !keyboardIsOpen && _shellNavigationVisible;
 
     return PopScope<Object?>(
-      canPop: !_contentCanPop && !isFullMapSelected,
+      canPop:
+          !_contentCanPop &&
+          !isFullMapSelected &&
+          _programmaticMainTabCallers.isEmpty,
       onPopInvokedWithResult: (didPop, result) {
         logMapRuntime(
           'shell.system-back',
@@ -387,6 +428,8 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
         if (didPop) return;
         if (_contentCanPop) {
           _contentNavigatorKey.currentState?.pop();
+        } else if (_programmaticMainTabCallers.isNotEmpty) {
+          _returnToProgrammaticCaller();
         } else if (isFullMapSelected) {
           _selectPage(0);
         }
@@ -407,8 +450,12 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
         ),
         bottomNavigationBar: showBottomNavigation
             ? FluviAIBottomNavigationBar(
-                selectedIndex: _selectedIndex,
-                onSelect: _selectPage,
+                selectedIndex: _activeShellDestination == AppDestination.fluvi
+                    ? 3
+                    : _selectedIndex == 3
+                    ? null
+                    : _selectedIndex,
+                onSelect: _handleBottomNavigationSelect,
                 onAdd: _openAddMenu,
               )
             : null,

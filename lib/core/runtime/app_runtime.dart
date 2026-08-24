@@ -32,11 +32,15 @@ class AppRuntimeController extends Notifier<AppRuntimeState> {
   @override
   AppRuntimeState build() => const AppRuntimeState();
 
-  /// Starts the authenticated application session exactly once.
+  /// Starts the session and revalidates stale GPS for later consumers.
   Future<AppRuntimeState> start({required String languageCode}) {
     final active = _activeRequest;
     if (active != null) return active;
-    if (state.hasStarted) return Future<AppRuntimeState>.value(state);
+    if (state.hasStarted) {
+      return Future<AppRuntimeState>.microtask(
+        () => refreshIfStale(languageCode: languageCode),
+      );
+    }
     return _runLocationRefresh(languageCode: languageCode, force: false);
   }
 

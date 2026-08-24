@@ -175,6 +175,7 @@ bool destinationShowsShellNavigation(AppDestination destination) =>
       AppDestination.home ||
       AppDestination.map ||
       AppDestination.activity ||
-      AppDestination.utilities => true,
+      AppDestination.utilities ||
+      AppDestination.fluvi => true,
       _ => false,
     };

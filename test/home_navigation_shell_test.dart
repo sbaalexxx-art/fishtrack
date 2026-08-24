@@ -77,7 +77,7 @@ void main() {
     expect(savePlaceRequests, 1);
   });
 
-  testWidgets('More menu exposes the approved utility destinations', (
+  testWidgets('More menu has five deduplicated expandable families', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(500, 2400);
@@ -87,28 +87,35 @@ void main() {
 
     await tester.pumpWidget(localized(child: const HomeSideMenu()));
 
+    for (var index = 0; index < 5; index++) {
+      expect(find.byKey(ValueKey('burger-family-$index')), findsOneWidget);
+    }
     for (final label in const [
-      'My catches',
-      'My waters & saved places',
-      'Fishing journal',
-      'My reports',
-      'Search',
-      'Notifications',
-      'Alerts & notifications',
-      'Water hub',
-      'Weather & solunar',
-      'Fluvi Hub',
-      'Ask Fluvi',
-      'Fishing permit',
-      'Regulations & sizes',
-      'Safety',
-      'Profile',
-      'Account & security',
-      'Premium',
-      'Settings',
-      'Help & FAQ',
-      'Send feedback',
-      'Contact us',
+      'My waters',
+      'Tools',
+      'Rules & safety',
+      'Account & app',
+      'Help & legal',
+    ]) {
+      expect(find.text(label), findsOneWidget);
+    }
+
+    await tester.tap(find.byKey(const ValueKey('burger-family-3')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('more-profile')), findsOneWidget);
+    expect(find.text('Profile'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('drawer-identity-header')),
+        matching: find.byType(InkWell),
+      ),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('burger-family-4')));
+    await tester.pump();
+    for (final label in const [
+      'Help, feedback & contact',
       'Privacy',
       'Terms',
       'Licences',
@@ -118,13 +125,16 @@ void main() {
       expect(find.text(label), findsOneWidget);
     }
 
-    for (final primaryLabel in const [
-      'Home',
-      'Map',
-      'Community',
-      'Add catch',
+    for (final duplicateKey in const [
+      'more-water',
+      'more-weather',
+      'more-map',
+      'more-fluvi',
+      'more-activity',
+      'more-askFluvi',
+      'more-toolkit',
     ]) {
-      expect(find.text(primaryLabel), findsNothing);
+      expect(find.byKey(ValueKey(duplicateKey)), findsNothing);
     }
     expect(find.text('Developer mode'), findsNothing);
     expect(tester.takeException(), isNull);

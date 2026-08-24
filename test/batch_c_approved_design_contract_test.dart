@@ -26,9 +26,13 @@ void main() {
 
     expect(utilities, contains("ValueKey('utilities-hub-page')"));
     expect(utilities, contains('FluviExploreCatalog.grouped'));
-    expect(utilities, contains("ValueKey('utilities-category-strip')"));
+    expect(utilities, contains("ValueKey('utilities-section-\$sectionKey')"));
+    expect(
+      utilities,
+      contains("ValueKey('utilities-section-toggle-\$sectionKey')"),
+    );
     expect(utilities, contains("ValueKey('utilities-search-field')"));
-    expect(utilities, contains("ValueKey('utilities-notifications-action')"));
+    expect(utilities, isNot(contains('GridView')));
 
     expect(community, contains("ValueKey('figma-community-page')"));
     expect(community, contains("ValueKey('figma-add-catch')"));

@@ -3,18 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/context/selected_context.dart';
 import '../../../core/context/current_location.dart';
+import '../../../core/context/selected_context.dart';
 import '../../../core/map/pending_map_camera.dart';
 import '../../../core/navigation/app_destination.dart';
 import '../../../core/navigation/app_navigator.dart';
+import '../../../core/navigation/water_entry.dart';
 import '../../../core/theme/fluviai_commercial_tokens.dart';
 import '../../../core/utility/fluviai_explore_catalog.dart';
 import '../../../core/utility/fluviai_utility_registry.dart';
 import '../../../features/commercial_home/data/commercial_home_data_source.dart';
-import '../../../l10n/l10n.dart';
-import '../../../models/station.dart';
-import '../../../services/water_service.dart';
+import '../../../screens/weather_page.dart';
 
 class FluviAIUtilitiesHubPage extends ConsumerStatefulWidget {
   const FluviAIUtilitiesHubPage({
@@ -34,9 +33,9 @@ class FluviAIUtilitiesHubPage extends ConsumerStatefulWidget {
 class _FluviAIUtilitiesHubPageState
     extends ConsumerState<FluviAIUtilitiesHubPage> {
   final TextEditingController _searchController = TextEditingController();
-  final WaterService _waterService = WaterService();
   String _query = '';
-  FluviExploreSection? _selectedSection;
+  FluviExploreSection? _expandedSection =
+      FluviExploreCatalog.sectionOrder.first;
 
   @override
   void dispose() {
@@ -44,71 +43,39 @@ class _FluviAIUtilitiesHubPageState
     super.dispose();
   }
 
-  Station? _stationArgument(SelectedContext? selected) {
-    final stationId = selected?.stationId;
-    final latitude = selected?.latitude;
-    final longitude = selected?.longitude;
-    if (stationId == null || latitude == null || longitude == null) return null;
-
-    final selectedStation = _waterService.selectedStation;
-    if (selectedStation?.id == stationId) return selectedStation;
-    final automaticStation = _waterService.lastAutomaticStation;
-    if (automaticStation?.id == stationId) return automaticStation;
-
-    return Station(
-      id: stationId,
-      name: selected?.stationName ?? selected?.primaryLabel ?? stationId,
-      river: selected?.riverName ?? selected?.waterName ?? '',
-      level: double.nan,
-      trend: WaterTrend.stable,
-      latitude: latitude,
-      longitude: longitude,
-      lastUpdate: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-      hasWaterLevel: false,
-      hasKnownTrend: false,
-      waterLevelSource: selected?.source ?? 'Selected context',
-    );
-  }
-
   void _open(FluviUtilityDefinition utility) {
-    if (const <String>{
-      'map.access',
-      'journal.bite-effort',
-      'safety.ready-to-fish',
-      'safety.check-in',
-      'fluvi.vision',
-    }.contains(utility.id)) {
-      unawaited(_showUnavailable(utility));
-      return;
-    }
-    if (utility.id == 'catches.add') {
-      unawaited(AppNavigator.open<bool>(context, AppDestination.addCatch));
-      return;
-    }
     if (utility.id == 'water.hydro-pulse') {
       unawaited(_openHydroRomania());
       return;
     }
-    if (utility.destination == AppDestination.home) {
-      widget.onSelectMainTab(0);
+    if (utility.id == 'water.stations') {
+      unawaited(
+        AppNavigator.open<void>(
+          context,
+          AppDestination.water,
+          arguments: const WaterHubRequest(
+            initialSection: WaterHubSection.danube,
+          ),
+          dataSource: widget.dataSource,
+        ),
+      );
       return;
     }
-
-    final station = _stationArgument(ref.read(selectedContextProvider));
-    if (utility.destination == AppDestination.map && station == null) {
-      widget.onSelectMainTab(1);
+    if (utility.id == 'weather.solunar') {
+      unawaited(
+        AppNavigator.open<void>(
+          context,
+          AppDestination.weather,
+          arguments: WeatherPageSection.solunar,
+          dataSource: widget.dataSource,
+        ),
+      );
       return;
     }
-    final carriesStation =
-        utility.destination == AppDestination.map ||
-        utility.destination == AppDestination.water ||
-        utility.destination == AppDestination.weather ||
-        utility.destination == AppDestination.fluvi;
     unawaited(
       AppNavigator.open<void>(
         context,
         utility.destination,
-        arguments: carriesStation ? station : null,
         dataSource: widget.dataSource,
       ),
     );
@@ -138,78 +105,40 @@ class _FluviAIUtilitiesHubPageState
     );
   }
 
-  Future<void> _showUnavailable(FluviUtilityDefinition utility) {
-    final isRomanian =
-        Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
-    return showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(utility.title(isRomanian)),
-        content: Text(context.l10n.exploreUnavailableMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(context.l10n.close),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _sectionTitle(BuildContext context, FluviExploreSection section) =>
+  String _sectionTitle(bool isRomanian, FluviExploreSection section) =>
       switch (section) {
-        FluviExploreSection.conditionsAndWater =>
-          context.l10n.exploreConditionsAndWater,
-        FluviExploreSection.fluviIntelligence =>
-          context.l10n.exploreFluviIntelligence,
-        FluviExploreSection.activity => context.l10n.exploreActivity,
-        FluviExploreSection.saved => context.l10n.exploreSaved,
-        FluviExploreSection.rulesAndSafety =>
-          context.l10n.exploreRulesAndSafety,
-        FluviExploreSection.accountAndApp => context.l10n.exploreAccountAndApp,
+        FluviExploreSection.waterTools =>
+          isRomanian ? 'Apă & hidrologie' : 'Water & hydrology',
+        FluviExploreSection.weatherAndLight =>
+          isRomanian ? 'Vreme & lumină' : 'Weather & light',
+        FluviExploreSection.discoveryAndAssistance =>
+          isRomanian ? 'Căutare & asistență' : 'Search & assistance',
       };
 
   IconData _sectionIcon(FluviExploreSection section) => switch (section) {
-    FluviExploreSection.conditionsAndWater => Icons.water_rounded,
-    FluviExploreSection.fluviIntelligence => Icons.auto_awesome_rounded,
-    FluviExploreSection.activity => Icons.timeline_rounded,
-    FluviExploreSection.saved => Icons.bookmark_rounded,
-    FluviExploreSection.rulesAndSafety => Icons.health_and_safety_rounded,
-    FluviExploreSection.accountAndApp => Icons.tune_rounded,
+    FluviExploreSection.waterTools => Icons.water_outlined,
+    FluviExploreSection.weatherAndLight => Icons.wb_twilight_outlined,
+    FluviExploreSection.discoveryAndAssistance => Icons.travel_explore_rounded,
   };
-
-  Color _sectionAccent(BuildContext context, FluviExploreSection section) =>
-      switch (section) {
-        FluviExploreSection.conditionsAndWater =>
-          FluviAICommercialTokens.brandFocus,
-        FluviExploreSection.fluviIntelligence =>
-          FluviAICommercialTokens.premium,
-        FluviExploreSection.activity => FluviAICommercialTokens.waterStable,
-        FluviExploreSection.saved => const Color(0xFF67B8FF),
-        FluviExploreSection.rulesAndSafety => FluviAICommercialTokens.warning,
-        FluviExploreSection.accountAndApp => FluviAIThemeColors.of(
-          context,
-        ).textSecondary,
-      };
 
   @override
   Widget build(BuildContext context) {
     final isRomanian =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
     final accessTier = ref.watch(fluviAccessTierProvider);
+    final colors = FluviAIThemeColors.of(context);
     final grouped = FluviExploreCatalog.grouped(
-      FluviUtilityRegistry.definitions,
+      FluviExploreCatalog.visibleDefinitions,
     );
-    final searchResults = _query.trim().isEmpty
-        ? const <FluviUtilityDefinition>[]
-        : FluviUtilityRegistry.search(_query, isRomanian: isRomanian);
-    final visibleSections = _selectedSection == null
-        ? FluviExploreCatalog.sectionOrder
-        : <FluviExploreSection>[_selectedSection!];
+    final searchResults = FluviExploreCatalog.searchVisible(
+      _query,
+      isRomanian: isRomanian,
+    );
+    final searching = _query.trim().isNotEmpty;
 
     return Material(
       key: const ValueKey('utilities-hub-page'),
-      color: FluviAIThemeColors.of(context).background,
+      color: colors.background,
       child: SafeArea(
         bottom: false,
         child: CustomScrollView(
@@ -217,26 +146,20 @@ class _FluviAIUtilitiesHubPageState
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           slivers: [
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
               sliver: SliverToBoxAdapter(
-                child: _ExploreHeader(
-                  title: context.l10n.exploreTitle,
-                  subtitle: context.l10n.exploreSubtitle,
-                  notificationTooltip: context.l10n.notifications,
-                  onNotifications: () => AppNavigator.open<void>(
-                    context,
-                    AppDestination.notifications,
-                  ),
-                ),
+                child: _UtilitiesHeader(isRomanian: isRomanian),
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
               sliver: SliverToBoxAdapter(
-                child: _ExploreSearchBar(
+                child: _UtilitiesSearch(
                   controller: _searchController,
-                  hint: context.l10n.exploreSearchHint,
                   query: _query,
+                  hint: isRomanian
+                      ? 'Caută o unealtă...'
+                      : 'Search for a tool...',
                   onChanged: (value) => setState(() => _query = value),
                   onClear: () {
                     _searchController.clear();
@@ -245,67 +168,23 @@ class _FluviAIUtilitiesHubPageState
                 ),
               ),
             ),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 52,
-                child: ListView.separated(
-                  key: const ValueKey('utilities-category-strip'),
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: FluviExploreCatalog.sectionOrder.length + 1,
-                  separatorBuilder: (_, _) => const SizedBox(width: 7),
-                  itemBuilder: (context, index) {
-                    final section = index == 0
-                        ? null
-                        : FluviExploreCatalog.sectionOrder[index - 1];
-                    return _ExploreFilterChip(
-                      key: ValueKey(
-                        section == null
-                            ? 'utilities-filter-all'
-                            : 'utilities-filter-${section.name}',
-                      ),
-                      label: section == null
-                          ? context.l10n.exploreAll
-                          : _sectionTitle(context, section),
-                      icon: section == null
-                          ? Icons.apps_rounded
-                          : _sectionIcon(section),
-                      selected: _selectedSection == section,
-                      onTap: () => setState(() => _selectedSection = section),
-                    );
-                  },
-                ),
-              ),
-            ),
-            if (_query.trim().isNotEmpty) ...[
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                sliver: SliverToBoxAdapter(
-                  child: _ExploreSectionHeader(
-                    title: context.l10n.exploreResults,
-                    count: searchResults.length,
-                    icon: Icons.search_rounded,
-                    accent: FluviAICommercialTokens.brandFocus,
-                  ),
-                ),
-              ),
+            if (searching)
               if (searchResults.isEmpty)
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  sliver: SliverToBoxAdapter(
-                    child: _ExploreEmpty(
-                      title: context.l10n.exploreNoResultsTitle,
-                      message: context.l10n.exploreNoResultsMessage,
-                    ),
-                  ),
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _EmptySearch(isRomanian: isRomanian),
                 )
               else
                 SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   sliver: SliverList.separated(
                     itemCount: searchResults.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 7),
-                    itemBuilder: (context, index) => _ExploreResultTile(
+                    separatorBuilder: (_, _) =>
+                        Divider(height: 1, color: colors.borderSoft),
+                    itemBuilder: (context, index) => _ToolRow(
+                      key: ValueKey(
+                        'utility-search-${searchResults[index].id}',
+                      ),
                       utility: searchResults[index],
                       isRomanian: isRomanian,
                       showPremium:
@@ -315,34 +194,35 @@ class _FluviAIUtilitiesHubPageState
                       onTap: () => _open(searchResults[index]),
                     ),
                   ),
-                ),
-            ] else
-              SliverList.builder(
-                itemCount: visibleSections.length,
-                itemBuilder: (context, index) {
-                  final section = visibleSections[index];
-                  final definitions = grouped[section]!;
-                  return Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      index == 0 ? 14 : 20,
-                      16,
-                      0,
-                    ),
-                    child: _ExploreSectionBlock(
+                )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverList.separated(
+                  itemCount: FluviExploreCatalog.sectionOrder.length,
+                  separatorBuilder: (_, _) =>
+                      Divider(height: 1, color: colors.borderSoft),
+                  itemBuilder: (context, index) {
+                    final section = FluviExploreCatalog.sectionOrder[index];
+                    final definitions = grouped[section]!;
+                    final expanded = _expandedSection == section;
+                    return _ToolSection(
                       sectionKey: section.name,
-                      title: _sectionTitle(context, section),
+                      title: _sectionTitle(isRomanian, section),
                       icon: _sectionIcon(section),
-                      accent: _sectionAccent(context, section),
                       definitions: definitions,
+                      expanded: expanded,
                       isRomanian: isRomanian,
                       accessTier: accessTier,
+                      onToggle: () => setState(() {
+                        _expandedSection = expanded ? null : section;
+                      }),
                       onOpen: _open,
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            const SliverToBoxAdapter(child: SizedBox(height: 92)),
+            const SliverToBoxAdapter(child: SizedBox(height: 96)),
           ],
         ),
       ),
@@ -350,73 +230,35 @@ class _FluviAIUtilitiesHubPageState
   }
 }
 
-class _ExploreHeader extends StatelessWidget {
-  const _ExploreHeader({
-    required this.title,
-    required this.subtitle,
-    required this.notificationTooltip,
-    required this.onNotifications,
-  });
+class _UtilitiesHeader extends StatelessWidget {
+  const _UtilitiesHeader({required this.isRomanian});
 
-  final String title;
-  final String subtitle;
-  final String notificationTooltip;
-  final VoidCallback onNotifications;
+  final bool isRomanian;
 
   @override
   Widget build(BuildContext context) {
     final colors = FluviAIThemeColors.of(context);
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 19,
-                  height: 1.15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.textSecondary,
-                  fontSize: 10.5,
-                  height: 1.3,
-                ),
-              ),
-            ],
+        Text(
+          isRomanian ? 'Instrumente' : 'Tools',
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontSize: 22,
+            height: 1.15,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(width: 12),
-        Tooltip(
-          message: notificationTooltip,
-          child: SizedBox.square(
-            dimension: 44,
-            child: Material(
-              key: const ValueKey('utilities-notifications-action'),
-              color: colors.surfaceRaised,
-              borderRadius: BorderRadius.circular(14),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: onNotifications,
-                child: Icon(
-                  Icons.notifications_none_rounded,
-                  color: colors.textPrimary,
-                  size: 20,
-                ),
-              ),
-            ),
+        const SizedBox(height: 5),
+        Text(
+          isRomanian
+              ? 'Unelte distincte, fără scurtături duplicate.'
+              : 'Distinct tools without duplicate launchers.',
+          style: TextStyle(
+            color: colors.textSecondary,
+            fontSize: 12,
+            height: 1.35,
           ),
         ),
       ],
@@ -424,345 +266,162 @@ class _ExploreHeader extends StatelessWidget {
   }
 }
 
-class _ExploreSearchBar extends StatelessWidget {
-  const _ExploreSearchBar({
+class _UtilitiesSearch extends StatelessWidget {
+  const _UtilitiesSearch({
     required this.controller,
-    required this.hint,
     required this.query,
+    required this.hint,
     required this.onChanged,
     required this.onClear,
   });
 
   final TextEditingController controller;
-  final String hint;
   final String query;
+  final String hint;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     final colors = FluviAIThemeColors.of(context);
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(15),
-      side: BorderSide(color: colors.border),
-    );
-
-    return Material(
+    return Container(
       key: const ValueKey('utilities-search-surface'),
-      color: colors.surfaceRaised,
-      shape: shape,
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: 46,
-        child: TextField(
-          key: const ValueKey('utilities-search-field'),
-          controller: controller,
-          onChanged: onChanged,
-          style: TextStyle(color: colors.textPrimary, fontSize: 12),
-          decoration: InputDecoration(
-            filled: false,
-            fillColor: Colors.transparent,
-            prefixIcon: Icon(
-              Icons.search_rounded,
-              color: colors.textSecondary,
-              size: 21,
-            ),
-            suffixIcon: query.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: MaterialLocalizations.of(
-                      context,
-                    ).deleteButtonTooltip,
-                    onPressed: onClear,
-                    icon: const Icon(Icons.close_rounded, size: 17),
-                  ),
-            isDense: true,
-            hintText: hint,
-            hintStyle: TextStyle(color: colors.textSecondary, fontSize: 12),
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-          ),
-        ),
+      constraints: const BoxConstraints(minHeight: 48),
+      decoration: BoxDecoration(
+        color: colors.backgroundRaised,
+        border: Border.all(color: colors.border),
+        borderRadius: BorderRadius.circular(10),
       ),
-    );
-  }
-}
-
-class _ExploreFilterChip extends StatelessWidget {
-  const _ExploreFilterChip({
-    super.key,
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = FluviAIThemeColors.of(context);
-    final selectedForeground = Theme.of(context).brightness == Brightness.dark
-        ? FluviAICommercialTokens.brandFocus
-        : FluviAICommercialTokens.accentDeep;
-    return Material(
-      color: selected
-          ? FluviAICommercialTokens.brandFocus.withValues(alpha: .16)
-          : colors.surfaceRaised,
-      borderRadius: BorderRadius.circular(999),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 40),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected
-                  ? FluviAICommercialTokens.brandFocus.withValues(alpha: .55)
-                  : colors.borderSoft,
-            ),
+      child: TextField(
+        key: const ValueKey('utilities-search-field'),
+        controller: controller,
+        onChanged: onChanged,
+        style: TextStyle(color: colors.textPrimary, fontSize: 14),
+        decoration: InputDecoration(
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: colors.textSecondary,
+            size: 21,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 15,
-                color: selected ? selectedForeground : colors.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? selectedForeground : colors.textSecondary,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
+          suffixIcon: query.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: MaterialLocalizations.of(
+                    context,
+                  ).deleteButtonTooltip,
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close_rounded, size: 18),
                 ),
-              ),
-            ],
-          ),
+          hintText: hint,
+          hintStyle: TextStyle(color: colors.textMuted, fontSize: 14),
+          isDense: true,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
         ),
       ),
     );
   }
 }
 
-class _ExploreSectionBlock extends StatelessWidget {
-  const _ExploreSectionBlock({
+class _ToolSection extends StatelessWidget {
+  const _ToolSection({
     required this.sectionKey,
     required this.title,
     required this.icon,
-    required this.accent,
     required this.definitions,
+    required this.expanded,
     required this.isRomanian,
     required this.accessTier,
+    required this.onToggle,
     required this.onOpen,
   });
 
   final String sectionKey;
   final String title;
   final IconData icon;
-  final Color accent;
   final List<FluviUtilityDefinition> definitions;
+  final bool expanded;
   final bool isRomanian;
   final FluviAccessTier accessTier;
+  final VoidCallback onToggle;
   final ValueChanged<FluviUtilityDefinition> onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final largeText = MediaQuery.textScalerOf(context).scale(1) >= 1.5;
-    final columns = largeText ? 1 : 2;
-    final rows = (definitions.length / columns).ceil();
-    final extent = largeText ? 82.0 : 68.0;
+    final colors = FluviAIThemeColors.of(context);
+    final accent = Theme.of(context).colorScheme.primary;
     return Column(
       key: ValueKey('utilities-section-$sectionKey'),
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ExploreSectionHeader(
-          title: title,
-          count: definitions.length,
-          icon: icon,
-          accent: accent,
-        ),
-        const SizedBox(height: 9),
-        SizedBox(
-          height: rows * extent + (rows - 1) * 7,
-          child: GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              crossAxisSpacing: 7,
-              mainAxisSpacing: 7,
-              mainAxisExtent: extent,
-            ),
-            itemCount: definitions.length,
-            itemBuilder: (context, index) {
-              final utility = definitions[index];
-              return _CompactUtilityTile(
-                utility: utility,
-                isRomanian: isRomanian,
-                accent: accent,
-                showPremium:
-                    accessTier != FluviAccessTier.premium &&
-                    utility.entitlement != FluviEntitlementPolicy.free,
-                onTap: () => onOpen(utility),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ExploreSectionHeader extends StatelessWidget {
-  const _ExploreSectionHeader({
-    required this.title,
-    required this.count,
-    required this.icon,
-    required this.accent,
-  });
-
-  final String title;
-  final int count;
-  final IconData icon;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = FluviAIThemeColors.of(context);
-    return Row(
-      children: [
-        Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: .12),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: accent, size: 17),
-        ),
-        const SizedBox(width: 9),
-        Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: colors.surfaceRaised,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            count.toString(),
-            style: TextStyle(
-              color: colors.textMuted,
-              fontFamily: FluviAICommercialTokens.monoFontFamily,
-              fontSize: 9,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CompactUtilityTile extends StatelessWidget {
-  const _CompactUtilityTile({
-    required this.utility,
-    required this.isRomanian,
-    required this.accent,
-    required this.showPremium,
-    required this.onTap,
-  });
-
-  final FluviUtilityDefinition utility;
-  final bool isRomanian;
-  final Color accent;
-  final bool showPremium;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = FluviAIThemeColors.of(context);
-    return Material(
-      key: ValueKey('utility-${utility.id}'),
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: Ink(
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: colors.borderSoft),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-            child: Row(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: .10),
-                    borderRadius: BorderRadius.circular(11),
+        Semantics(
+          button: true,
+          expanded: expanded,
+          child: InkWell(
+            key: ValueKey('utilities-section-toggle-$sectionKey'),
+            onTap: onToggle,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 56),
+              child: Row(
+                children: [
+                  Icon(
+                    icon,
+                    color: expanded ? accent : colors.textSecondary,
+                    size: 21,
                   ),
-                  child: Icon(utility.icon, color: accent, size: 18),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    utility.title(isRomanian),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 10.5,
-                      height: 1.15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (showPremium)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 3),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Text(
-                      'PRO',
+                      title,
                       style: TextStyle(
-                        color: FluviAICommercialTokens.premium,
-                        fontFamily: FluviAICommercialTokens.monoFontFamily,
-                        fontSize: 7.5,
-                        fontWeight: FontWeight.w700,
+                        color: colors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-              ],
+                  Text(
+                    definitions.length.toString(),
+                    style: TextStyle(color: colors.textMuted, fontSize: 11),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    color: colors.textSecondary,
+                    size: 22,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
+        if (expanded)
+          for (var index = 0; index < definitions.length; index++) ...[
+            if (index > 0)
+              Padding(
+                padding: const EdgeInsets.only(left: 44),
+                child: Divider(height: 1, color: colors.borderSoft),
+              ),
+            _ToolRow(
+              key: ValueKey('utility-${definitions[index].id}'),
+              utility: definitions[index],
+              isRomanian: isRomanian,
+              showPremium:
+                  accessTier != FluviAccessTier.premium &&
+                  definitions[index].entitlement != FluviEntitlementPolicy.free,
+              onTap: () => onOpen(definitions[index]),
+            ),
+          ],
+      ],
     );
   }
 }
 
-class _ExploreResultTile extends StatelessWidget {
-  const _ExploreResultTile({
+class _ToolRow extends StatelessWidget {
+  const _ToolRow({
+    super.key,
     required this.utility,
     required this.isRomanian,
     required this.showPremium,
@@ -777,77 +436,65 @@ class _ExploreResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = FluviAIThemeColors.of(context);
-    return Material(
-      key: ValueKey('utility-search-${utility.id}'),
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: Ink(
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: colors.borderSoft),
-        ),
-        child: InkWell(
-          onTap: onTap,
+    final accent = Theme.of(context).colorScheme.primary;
+    return Semantics(
+      button: true,
+      label: utility.title(isRomanian),
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 60),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.only(left: 8),
             child: Row(
               children: [
-                Icon(
-                  utility.icon,
-                  color: FluviAICommercialTokens.brandFocus,
-                  size: 20,
-                ),
-                const SizedBox(width: 11),
+                Icon(utility.icon, color: accent, size: 20),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              utility.title(isRomanian),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: colors.textPrimary,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          if (showPremium)
-                            const Text(
-                              'PRO',
-                              style: TextStyle(
-                                color: FluviAICommercialTokens.premium,
-                                fontFamily:
-                                    FluviAICommercialTokens.monoFontFamily,
-                                fontSize: 8,
-                              ),
-                            ),
-                        ],
+                      Text(
+                        utility.title(isRomanian),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
                       Text(
                         utility.subtitle(isRomanian),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: colors.textMuted,
-                          fontSize: 9.5,
+                          color: colors.textSecondary,
+                          fontSize: 10.5,
                         ),
                       ),
                     ],
                   ),
                 ),
+                if (showPremium) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    'PRO',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.tertiary,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .3,
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 8),
                 Icon(
                   Icons.chevron_right_rounded,
                   color: colors.textMuted,
-                  size: 18,
+                  size: 20,
                 ),
               ],
             ),
@@ -858,40 +505,39 @@ class _ExploreResultTile extends StatelessWidget {
   }
 }
 
-class _ExploreEmpty extends StatelessWidget {
-  const _ExploreEmpty({required this.title, required this.message});
+class _EmptySearch extends StatelessWidget {
+  const _EmptySearch({required this.isRomanian});
 
-  final String title;
-  final String message;
+  final bool isRomanian;
 
   @override
   Widget build(BuildContext context) {
     final colors = FluviAIThemeColors.of(context);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.borderSoft),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.search_off_rounded, color: colors.textMuted, size: 28),
-          const SizedBox(height: 9),
-          Text(
-            title,
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontWeight: FontWeight.w600,
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded, color: colors.textMuted, size: 30),
+            const SizedBox(height: 10),
+            Text(
+              isRomanian ? 'Nicio unealtă găsită' : 'No tool found',
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: colors.textSecondary, fontSize: 10),
-          ),
-        ],
+            const SizedBox(height: 4),
+            Text(
+              isRomanian
+                  ? 'Caută în instrumentele distincte disponibile.'
+                  : 'Search the distinct tools currently available.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.textSecondary, fontSize: 11),
+            ),
+          ],
+        ),
       ),
     );
   }

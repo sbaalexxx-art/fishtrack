@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/formatters/water_freshness_formatter.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../core/theme/fluviai_commercial_tokens.dart';
 import '../../core/water/water_history_analysis.dart';
 import '../../l10n/l10n.dart';
 import '../../models/station.dart';
@@ -1213,7 +1214,7 @@ class _WaterLevelCardPremiumState extends State<WaterLevelCardPremium> {
                                                 ),
                                               )
                                             : canShowHistory
-                                            ? _WaterHistoryLineChart(
+                                            ? HomeWaterHistoryLineChart(
                                                 readings: history,
                                                 color: historyColor,
                                                 unit: waterUnit,
@@ -1524,6 +1525,74 @@ List<List<WaterLevel>> _waterHistorySegments(List<WaterLevel> readings) {
   return realWaterHistorySegments(readings);
 }
 
+@immutable
+class HomeWaterChartAxisTick {
+  const HomeWaterChartAxisTick({required this.timestamp, required this.label});
+
+  final DateTime timestamp;
+  final String label;
+}
+
+/// Selects a bounded set of real calendar-day ticks for the visible series.
+///
+/// Every reading remains in the chart. This only reduces axis annotations, so
+/// multiple observations on the same day cannot create duplicate date labels.
+List<HomeWaterChartAxisTick> selectHomeWaterChartAxisTicks(
+  List<WaterLevel> readings, {
+  required double chartWidth,
+}) {
+  if (readings.isEmpty) return const <HomeWaterChartAxisTick>[];
+  final ordered = [...readings]
+    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  final uniqueDays = <HomeWaterChartAxisTick>[];
+  DateTime? previousDay;
+
+  for (final reading in ordered) {
+    final local = reading.timestamp.toLocal();
+    final day = DateTime(local.year, local.month, local.day);
+    if (day == previousDay) continue;
+    uniqueDays.add(
+      HomeWaterChartAxisTick(
+        timestamp: reading.timestamp,
+        label:
+            '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}',
+      ),
+    );
+    previousDay = day;
+  }
+
+  if (uniqueDays.length == 1) return List.unmodifiable(uniqueDays);
+  uniqueDays[0] = HomeWaterChartAxisTick(
+    timestamp: ordered.first.timestamp,
+    label: uniqueDays.first.label,
+  );
+  uniqueDays[uniqueDays.length - 1] = HomeWaterChartAxisTick(
+    timestamp: ordered.last.timestamp,
+    label: uniqueDays.last.label,
+  );
+
+  final maximumVisible = chartWidth < 320 ? 4 : 5;
+  final visibleCount = math.min(maximumVisible, uniqueDays.length).toInt();
+  if (visibleCount == uniqueDays.length) return List.unmodifiable(uniqueDays);
+
+  return List<HomeWaterChartAxisTick>.unmodifiable([
+    for (var index = 0; index < visibleCount; index++)
+      uniqueDays[(index * (uniqueDays.length - 1) / (visibleCount - 1))
+          .round()],
+  ]);
+}
+
+double homeWaterChartAxisLabelLeft({
+  required double chartWidth,
+  required double labelWidth,
+  required double normalizedPosition,
+}) {
+  final maximumLeft = math.max(0.0, chartWidth - labelWidth);
+  final centered =
+      normalizedPosition.clamp(0.0, 1.0) * chartWidth - labelWidth / 2;
+  return centered.clamp(0.0, maximumLeft).toDouble();
+}
+
 String formatHomeWaterHistoryWindowLabel(
   List<WaterLevel> readings, {
   required bool isRo,
@@ -1537,7 +1606,9 @@ String formatHomeWaterHistoryWindowLabel(
       ? '48h'
       : absoluteSpan <= const Duration(hours: 72)
       ? '72h'
-      : '${math.max(73, (absoluteSpan.inMinutes / 60).round())}h';
+      : isRo
+      ? '${math.max(4, (absoluteSpan.inMinutes / 1440).ceil())} zile'
+      : '${math.max(4, (absoluteSpan.inMinutes / 1440).ceil())} days';
   final count = readings.length;
   final observations = isRo
       ? (count == 1 ? 'măsurare' : 'măsurători')
@@ -1553,8 +1624,13 @@ double _minimumHomeChartVisualRange(double valueRange) {
   return valueRange * 1.35;
 }
 
-class _WaterHistoryLineChart extends StatelessWidget {
-  const _WaterHistoryLineChart({
+/// Shared Home water chart for canonical real observations.
+///
+/// Curves are presentation-only. Touch tooltips resolve by timestamp back to
+/// the exact [WaterLevel] observation and gaps remain separate bar segments.
+class HomeWaterHistoryLineChart extends StatelessWidget {
+  const HomeWaterHistoryLineChart({
+    super.key,
     required this.readings,
     required this.color,
     required this.unit,
@@ -1615,147 +1691,230 @@ class _WaterHistoryLineChart extends StatelessWidget {
     final minY = valueMidpoint - (visualRange / 2);
     final maxY = valueMidpoint + (visualRange / 2);
     final latestX = spots.last.x;
+    final axisLabelColor = FluviAIThemeColors.of(context).textSecondary;
+    final axisReservedSize = math.max(
+      18.0,
+      MediaQuery.textScalerOf(context).scale(9.5) + 8,
+    );
 
-    return LineChart(
-      duration: const Duration(milliseconds: 220),
-      LineChartData(
-        minX: minX,
-        maxX: maxX,
-        minY: minY,
-        maxY: maxY,
-        clipData: const FlClipData.all(),
-        gridData: const FlGridData(show: false),
-        titlesData: const FlTitlesData(show: false),
-        borderData: FlBorderData(show: false),
-        lineTouchData: LineTouchData(
-          enabled: true,
-          handleBuiltInTouches: true,
-          touchSpotThreshold: 18,
-          getTouchedSpotIndicator: (barData, spotIndexes) => spotIndexes
-              .map(
-                (index) => TouchedSpotIndicatorData(
-                  FlLine(
-                    color: color.withValues(alpha: .26),
-                    strokeWidth: 1.2,
-                    dashArray: const [4, 3],
-                  ),
-                  FlDotData(
-                    getDotPainter: (_, _, _, _) => FlDotCirclePainter(
-                      radius: 3.4,
-                      color: color,
-                      strokeColor: Colors.white,
-                      strokeWidth: 1.2,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final chartWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final axisTicks = selectHomeWaterChartAxisTicks(
+          readings,
+          chartWidth: chartWidth,
+        );
+        const axisLabelWidth = 42.0;
+
+        return Stack(
+          children: [
+            Positioned.fill(
+              bottom: axisReservedSize,
+              child: LineChart(
+                duration: const Duration(milliseconds: 220),
+                LineChartData(
+                  minX: minX,
+                  maxX: maxX,
+                  minY: minY,
+                  maxY: maxY,
+                  clipData: const FlClipData.all(),
+                  gridData: const FlGridData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
                     ),
                   ),
-                ),
-              )
-              .toList(growable: false),
-          touchTooltipData: LineTouchTooltipData(
-            fitInsideHorizontally: true,
-            fitInsideVertically: true,
-            tooltipPadding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 6,
-            ),
-            tooltipMargin: 8,
-            tooltipBorderRadius: BorderRadius.circular(10),
-            tooltipBorder: BorderSide(
-              color: color.withValues(alpha: .28),
-              width: 1,
-            ),
-            getTooltipColor: (_) =>
-                const Color(0xFF081720).withValues(alpha: .94),
-            getTooltipItems: (touchedSpots) => touchedSpots
-                .map((spot) {
-                  final reading = readingByX[spot.x]!;
-                  final value = reading.value == reading.value.roundToDouble()
-                      ? reading.value.toStringAsFixed(0)
-                      : reading.value.toStringAsFixed(1);
-                  return LineTooltipItem(
-                    '$value $unit\n',
-                    TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      height: 1.1,
+                  borderData: FlBorderData(show: false),
+                  lineTouchData: LineTouchData(
+                    enabled: true,
+                    handleBuiltInTouches: true,
+                    touchSpotThreshold: 18,
+                    getTouchedSpotIndicator: (barData, spotIndexes) =>
+                        spotIndexes
+                            .map(
+                              (index) => TouchedSpotIndicatorData(
+                                FlLine(
+                                  color: color.withValues(alpha: .26),
+                                  strokeWidth: 1.2,
+                                  dashArray: const [4, 3],
+                                ),
+                                FlDotData(
+                                  getDotPainter: (_, _, _, _) =>
+                                      FlDotCirclePainter(
+                                        radius: 3.4,
+                                        color: color,
+                                        strokeColor: Colors.white,
+                                        strokeWidth: 1.2,
+                                      ),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                    touchTooltipData: LineTouchTooltipData(
+                      fitInsideHorizontally: true,
+                      fitInsideVertically: true,
+                      tooltipPadding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      tooltipMargin: 8,
+                      tooltipBorderRadius: BorderRadius.circular(10),
+                      tooltipBorder: BorderSide(
+                        color: color.withValues(alpha: .28),
+                        width: 1,
+                      ),
+                      getTooltipColor: (_) =>
+                          const Color(0xFF081720).withValues(alpha: .94),
+                      getTooltipItems: (touchedSpots) => touchedSpots
+                          .map((spot) {
+                            final reading = readingByX[spot.x]!;
+                            final value =
+                                reading.value == reading.value.roundToDouble()
+                                ? reading.value.toStringAsFixed(0)
+                                : reading.value.toStringAsFixed(1);
+                            final timestamp = _formatChartTimestamp(
+                              reading.timestamp.toLocal(),
+                              localeCode: localeCode,
+                              overallSpan: readings.last.timestamp.difference(
+                                readings.first.timestamp,
+                              ),
+                            );
+                            final source = reading.sourceName.trim();
+                            return LineTooltipItem(
+                              '$timestamp\n',
+                              TextStyle(
+                                color: Colors.white,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                height: 1.1,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text:
+                                      '$value $unit${source.isEmpty ? '' : '\n$source'}',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.15,
+                                  ),
+                                ),
+                              ],
+                            );
+                          })
+                          .toList(growable: false),
                     ),
-                    children: [
-                      TextSpan(
-                        text: _formatChartTimestamp(
-                          reading.timestamp.toLocal(),
-                          localeCode: localeCode,
-                          overallSpan: readings.last.timestamp.difference(
-                            readings.first.timestamp,
-                          ),
-                        ),
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w500,
-                          height: 1.15,
-                        ),
+                  ),
+                  extraLinesData: ExtraLinesData(
+                    horizontalLines: [
+                      HorizontalLine(
+                        y: valueMidpoint,
+                        color: Colors.white.withValues(alpha: .06),
+                        strokeWidth: 1,
+                        dashArray: const [4, 3],
                       ),
                     ],
-                  );
-                })
-                .toList(growable: false),
-          ),
-        ),
-        extraLinesData: ExtraLinesData(
-          horizontalLines: [
-            HorizontalLine(
-              y: valueMidpoint,
-              color: Colors.white.withValues(alpha: .06),
-              strokeWidth: 1,
-              dashArray: const [4, 3],
-            ),
-          ],
-        ),
-        lineBarsData: [
-          for (final segment in segmentSpots)
-            LineChartBarData(
-              spots: segment,
-              isCurved: segment.length >= 3,
-              curveSmoothness: .18,
-              preventCurveOverShooting: true,
-              color: color,
-              barWidth: 2.55,
-              isStrokeCapRound: true,
-              belowBarData: BarAreaData(
-                show: true,
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    color.withValues(alpha: .24),
-                    color.withValues(alpha: .015),
+                  ),
+                  lineBarsData: [
+                    for (final segment in segmentSpots)
+                      LineChartBarData(
+                        spots: segment,
+                        isCurved: segment.length >= 3,
+                        curveSmoothness: .18,
+                        preventCurveOverShooting: true,
+                        color: color,
+                        barWidth: 2.55,
+                        isStrokeCapRound: true,
+                        belowBarData: BarAreaData(
+                          show: true,
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              color.withValues(alpha: .14),
+                              color.withValues(alpha: .008),
+                            ],
+                          ),
+                        ),
+                        dotData: FlDotData(
+                          show: true,
+                          checkToShowDot: (spot, barData) =>
+                              spots.length <= 8 ||
+                              spot.x == segment.first.x ||
+                              spot.x == segment.last.x ||
+                              spot.x == latestX,
+                          getDotPainter: (spot, percent, barData, index) {
+                            final isLatest = spot.x == latestX;
+                            final isSegmentEdge =
+                                index == 0 || index == segment.length - 1;
+                            return FlDotCirclePainter(
+                              radius: isLatest
+                                  ? 3.4
+                                  : (isSegmentEdge ? 2.8 : 2.0),
+                              color: color,
+                              strokeColor: Colors.white.withValues(
+                                alpha: isLatest ? .92 : .62,
+                              ),
+                              strokeWidth: isLatest ? 1.4 : .8,
+                            );
+                          },
+                        ),
+                      ),
                   ],
                 ),
               ),
-              dotData: FlDotData(
-                show: true,
-                checkToShowDot: (spot, barData) =>
-                    spots.length <= 8 ||
-                    spot.x == segment.first.x ||
-                    spot.x == segment.last.x ||
-                    spot.x == latestX,
-                getDotPainter: (spot, percent, barData, index) {
-                  final isLatest = spot.x == latestX;
-                  final isSegmentEdge =
-                      index == 0 || index == segment.length - 1;
-                  return FlDotCirclePainter(
-                    radius: isLatest ? 3.4 : (isSegmentEdge ? 2.8 : 2.0),
-                    color: color,
-                    strokeColor: Colors.white.withValues(
-                      alpha: isLatest ? .92 : .62,
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: axisReservedSize,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  for (final tick in axisTicks)
+                    Positioned(
+                      left: homeWaterChartAxisLabelLeft(
+                        chartWidth: chartWidth,
+                        labelWidth: axisLabelWidth,
+                        normalizedPosition:
+                            (tick.timestamp.millisecondsSinceEpoch - minX) /
+                            (maxX - minX),
+                      ),
+                      width: axisLabelWidth,
+                      top: 3,
+                      child: Text(
+                        tick.label,
+                        key: ValueKey<String>(
+                          'home-water-axis-${tick.timestamp.millisecondsSinceEpoch}',
+                        ),
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: axisLabelColor,
+                          fontSize: 9.5,
+                          height: 11 / 9.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                    strokeWidth: isLatest ? 1.4 : .8,
-                  );
-                },
+                ],
               ),
             ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 

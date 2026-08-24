@@ -202,6 +202,132 @@ void main() {
     expect(container.read(appRuntimeProvider).attempts, 1);
   });
 
+  test(
+    'already-started runtime refreshes physical GPS after it becomes stale',
+    () async {
+      final source = _QueuedRuntimeLocationSource([
+        () async => _location(
+          latitude: 51.4545,
+          longitude: -2.5879,
+          observedAt: DateTime.now().subtract(
+            const Duration(minutes: 4, seconds: 59),
+          ),
+        ),
+        () async => _location(latitude: 51.4555, longitude: -2.5889),
+      ]);
+      final container = ProviderContainer(
+        overrides: [deviceLocationSourceProvider.overrideWithValue(source)],
+      );
+      addTearDown(container.dispose);
+
+      final initial = await container
+          .read(appRuntimeProvider.notifier)
+          .start(languageCode: 'en');
+      expect(initial.status, AppRuntimeStatus.ready);
+
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      expect(
+        container.read(currentLocationProvider).hasUsableLocation,
+        isFalse,
+      );
+
+      final refreshed = await container
+          .read(appRuntimeProvider.notifier)
+          .start(languageCode: 'en');
+
+      expect(refreshed.status, AppRuntimeStatus.ready);
+      expect(refreshed.attempts, 2);
+      expect(source.currentRequests, 2);
+      expect(
+        container.read(currentLocationProvider).location?.latitude,
+        51.4555,
+      );
+    },
+  );
+
+  test('later start does not refresh an already-fresh physical GPS', () async {
+    final source = _QueuedRuntimeLocationSource([
+      () async => _location(latitude: 51.4545, longitude: -2.5879),
+      () async => _location(latitude: 51.4555, longitude: -2.5889),
+    ]);
+    final container = ProviderContainer(
+      overrides: [deviceLocationSourceProvider.overrideWithValue(source)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(appRuntimeProvider.notifier).start(languageCode: 'en');
+    final reused = await container
+        .read(appRuntimeProvider.notifier)
+        .start(languageCode: 'en');
+
+    expect(reused.status, AppRuntimeStatus.ready);
+    expect(reused.attempts, 1);
+    expect(source.currentRequests, 1);
+  });
+
+  test('failed stale refresh remains truthfully unusable', () async {
+    final source = _QueuedRuntimeLocationSource([
+      () async => _location(
+        latitude: 51.4545,
+        longitude: -2.5879,
+        observedAt: DateTime.now().subtract(const Duration(minutes: 6)),
+      ),
+      () async =>
+          throw const LocationFailure(LocationFailureReason.unavailable),
+    ]);
+    final container = ProviderContainer(
+      overrides: [deviceLocationSourceProvider.overrideWithValue(source)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(appRuntimeProvider.notifier).start(languageCode: 'en');
+    final failedRefresh = await container
+        .read(appRuntimeProvider.notifier)
+        .start(languageCode: 'en');
+
+    expect(failedRefresh.status, AppRuntimeStatus.degraded);
+    expect(failedRefresh.attempts, 2);
+    expect(source.currentRequests, 2);
+    expect(
+      container.read(currentLocationProvider).status,
+      CurrentLocationStatus.unavailable,
+    );
+    expect(container.read(currentLocationProvider).hasUsableLocation, isFalse);
+  });
+
+  test('concurrent stale consumers share one refresh without a loop', () async {
+    final refresh = Completer<CurrentDeviceLocation>();
+    final source = _QueuedRuntimeLocationSource([
+      () async => _location(
+        latitude: 51.4545,
+        longitude: -2.5879,
+        observedAt: DateTime.now().subtract(const Duration(minutes: 6)),
+      ),
+      () => refresh.future,
+    ]);
+    final container = ProviderContainer(
+      overrides: [deviceLocationSourceProvider.overrideWithValue(source)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(appRuntimeProvider.notifier).start(languageCode: 'en');
+    final first = container
+        .read(appRuntimeProvider.notifier)
+        .start(languageCode: 'en');
+    final second = container
+        .read(appRuntimeProvider.notifier)
+        .start(languageCode: 'en');
+
+    await Future<void>.delayed(Duration.zero);
+    expect(source.currentRequests, 2);
+    refresh.complete(_location(latitude: 51.4555, longitude: -2.5889));
+    await Future.wait([first, second]);
+
+    await container.read(appRuntimeProvider.notifier).start(languageCode: 'en');
+    expect(source.currentRequests, 2);
+    expect(container.read(appRuntimeProvider).attempts, 2);
+  });
+
   testWidgets('failed dependency shows a recoverable startup surface', (
     tester,
   ) async {
@@ -230,11 +356,12 @@ void main() {
 CurrentDeviceLocation _location({
   required double latitude,
   required double longitude,
+  DateTime? observedAt,
 }) => CurrentDeviceLocation(
   latitude: latitude,
   longitude: longitude,
   accuracyMeters: 8,
-  observedAt: DateTime.now(),
+  observedAt: observedAt ?? DateTime.now(),
 );
 
 Station _station() => Station(
@@ -291,6 +418,24 @@ class _ProgressiveRuntimeLocationSource
     CurrentDeviceLocation location, {
     required String languageCode,
   }) => _localityFuture;
+}
+
+class _QueuedRuntimeLocationSource implements DeviceLocationSource {
+  _QueuedRuntimeLocationSource(this._responses);
+
+  final List<Future<CurrentDeviceLocation> Function()> _responses;
+  int currentRequests = 0;
+
+  @override
+  Future<CurrentDeviceLocation> getCurrentDeviceLocation({
+    required String languageCode,
+  }) {
+    final responseIndex = currentRequests++;
+    if (responseIndex >= _responses.length) {
+      throw StateError('Unexpected GPS request ${responseIndex + 1}.');
+    }
+    return _responses[responseIndex]();
+  }
 }
 
 class _RuntimeHomeDataSource implements CommercialHomeDataSource {

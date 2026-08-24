@@ -75,18 +75,24 @@ void main() {
       expect(source, isNot(contains('class _HourlyRail')));
     });
 
-    test('Home Weather is a living Bento card without geometry redesign', () {
+    test('Home Weather is condition-first and integrated into the canvas', () {
       final source = File(
         'lib/features/commercial_home/presentation/commercial_home_page.dart',
       ).readAsStringSync();
 
       expect(source, contains("ValueKey('commercial-weather-card')"));
       expect(source, contains('class _BentoWeatherCard'));
-      expect(source, contains('weatherAtmosphereGradient('));
+      expect(source, contains('homeWeatherAtmosphereGradient('));
       expect(source, contains('WeatherAtmosphereBackdrop('));
+      expect(source, contains("'home-living-weather-atmosphere'"));
       expect(source, contains('weatherVisualIcon('));
-      expect(source, contains("data.windSpeed.round()} km/h"));
-      expect(source, contains('fit: BoxFit.scaleDown'));
+      expect(source, contains('weatherVisualAccent('));
+      expect(source, contains("'home-weather-wind'"));
+      expect(source, contains("'home-weather-pressure'"));
+      expect(source, contains("'home-weather-precipitation'"));
+      expect(source, contains("'home-weather-hourly-strip'"));
+      expect(source, contains('data.hourlyForecast'));
+      expect(source, contains('intensity: .52'));
       expect(source, contains('snapshot?.weather'));
       expect(source, contains('onOpenWeather'));
     });

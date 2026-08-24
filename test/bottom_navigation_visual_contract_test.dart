@@ -6,13 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('approved bottom navigation tokens match the Bento contract', () {
-    expect(FluviAICommercialTokens.bottomNavigationVisualHeight, 60);
-    expect(FluviAICommercialTokens.bottomNavigationHorizontalMargin, 16);
-    expect(FluviAICommercialTokens.bottomNavigationRadius, 20);
+    expect(FluviAICommercialTokens.bottomNavigationVisualHeight, 56);
+    expect(FluviAICommercialTokens.bottomNavigationHorizontalMargin, 0);
+    expect(FluviAICommercialTokens.bottomNavigationRadius, 0);
     expect(FluviAICommercialTokens.bottomNavigationQuickAddWidth, 52);
-    expect(FluviAICommercialTokens.bottomNavigationQuickAddVisualHeight, 46);
-    expect(FluviAICommercialTokens.bottomNavigationQuickAddRadius, 16);
-    expect(FluviAICommercialTokens.bottomNavigationIconSize, 19);
+    expect(FluviAICommercialTokens.bottomNavigationQuickAddVisualHeight, 40);
+    expect(FluviAICommercialTokens.bottomNavigationQuickAddRadius, 12);
+    expect(FluviAICommercialTokens.bottomNavigationIconSize, 18);
     expect(FluviAICommercialTokens.bottomNavigationLabelSize, 11);
     expect(
       FluviAICommercialTokens.bottomNavigationBackground,
@@ -62,44 +62,49 @@ void main() {
       expect(find.text('Acasă'), findsOneWidget);
       expect(find.text('Hartă'), findsOneWidget);
       expect(find.text('Activitate'), findsOneWidget);
-      expect(find.text('Utilități'), findsOneWidget);
+      expect(find.text('Fluvi'), findsOneWidget);
+      expect(find.text('Utilități'), findsNothing);
 
       expect(
         tester.getSize(find.byKey(const ValueKey('main-bottom-navigation'))),
-        const Size(358, 60),
+        const Size(390, 56),
       );
       final navigationSurface = tester.widget<Material>(
         find.byKey(const ValueKey('bottom-navigation-surface')),
       );
-      expect(navigationSurface.clipBehavior, Clip.antiAlias);
-      expect(navigationSurface.shape, isA<RoundedRectangleBorder>());
-      final navigationShape =
-          navigationSurface.shape! as RoundedRectangleBorder;
-      expect(
-        navigationShape.borderRadius,
-        BorderRadius.circular(FluviAICommercialTokens.bottomNavigationRadius),
-      );
+      expect(navigationSurface.clipBehavior, Clip.none);
+      expect(navigationSurface.shape, isA<Border>());
+      final navigationShape = navigationSurface.shape! as Border;
+      expect(navigationShape.top.style, BorderStyle.solid);
+      expect(navigationShape.left.style, BorderStyle.none);
+      expect(navigationShape.right.style, BorderStyle.none);
+      expect(navigationShape.bottom.style, BorderStyle.none);
       expect(
         tester.getSize(find.byKey(const ValueKey('bottom-nav-quick-add'))),
-        const Size(52, 60),
+        const Size(52, 56),
       );
       expect(
         tester.getSize(
           find.byKey(const ValueKey('bottom-nav-quick-add-visual')),
         ),
-        const Size(46, 46),
+        const Size(40, 40),
       );
 
       for (final key in const [
         'bottom-nav-home',
         'bottom-nav-map',
         'bottom-nav-activity',
-        'bottom-nav-utilities',
+        'bottom-nav-fluvi',
       ]) {
         final size = tester.getSize(find.byKey(ValueKey(key)));
-        expect(size.height, 60);
+        expect(size.height, 56);
         expect(size.width, greaterThanOrEqualTo(60));
       }
+
+      expect(
+        tester.getSize(find.byKey(const ValueKey('bottom-nav-quick-add'))),
+        const Size(52, 56),
+      );
 
       await tester.tap(find.byKey(const ValueKey('bottom-nav-map')));
       await tester.pump();

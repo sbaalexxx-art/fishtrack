@@ -54,12 +54,127 @@ void main() {
 
       expect(
         formatHomeWaterHistoryWindowLabel(readings, isRo: true),
-        '144h · 2 măsurători',
+        '6 zile · 2 măsurători',
       );
       expect(
         formatHomeWaterHistoryWindowLabel(readings, isRo: false),
-        '144h · 2 readings',
+        '6 days · 2 readings',
       );
+    });
+
+    test(
+      'axis ticks are bounded, unique by day, and retain interval edges',
+      () {
+        final start = DateTime.utc(2026, 8, 10, 6);
+        final readings = <WaterLevel>[
+          for (var day = 0; day < 10; day++) ...[
+            WaterLevel(
+              stationId: 'station',
+              value: 100 + day.toDouble(),
+              timestamp: start.add(Duration(days: day)),
+              trend: WaterTrend.rising,
+            ),
+            WaterLevel(
+              stationId: 'station',
+              value: 100.5 + day,
+              timestamp: start.add(Duration(days: day, hours: 6)),
+              trend: WaterTrend.rising,
+            ),
+          ],
+        ];
+
+        final narrow = selectHomeWaterChartAxisTicks(readings, chartWidth: 300);
+        final wide = selectHomeWaterChartAxisTicks(readings, chartWidth: 358);
+
+        expect(narrow, hasLength(4));
+        expect(wide, hasLength(5));
+        expect(wide.map((tick) => tick.label).toSet(), hasLength(wide.length));
+        expect(wide.first.timestamp, readings.first.timestamp);
+        expect(wide.last.timestamp, readings.last.timestamp);
+        expect(readings, hasLength(20));
+      },
+    );
+
+    test('axis labels clamp fully inside both chart edges', () {
+      expect(
+        homeWaterChartAxisLabelLeft(
+          chartWidth: 300,
+          labelWidth: 40,
+          normalizedPosition: 0,
+        ),
+        0,
+      );
+      expect(
+        homeWaterChartAxisLabelLeft(
+          chartWidth: 300,
+          labelWidth: 40,
+          normalizedPosition: 1,
+        ),
+        260,
+      );
+    });
+
+    testWidgets('rendered date ticks stay inside and do not overlap', (
+      tester,
+    ) async {
+      final start = DateTime.utc(2026, 8, 10, 6);
+      final readings = <WaterLevel>[
+        for (var day = 0; day < 10; day++)
+          WaterLevel(
+            stationId: 'station',
+            value: 100 + day.toDouble(),
+            timestamp: start.add(Duration(days: day)),
+            trend: WaterTrend.rising,
+            sourceName: 'AFDJ',
+          ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 358,
+                height: 140,
+                child: HomeWaterHistoryLineChart(
+                  readings: readings,
+                  color: Colors.blue,
+                  unit: 'cm',
+                  localeCode: 'ro',
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final chartRect = tester.getRect(find.byType(HomeWaterHistoryLineChart));
+      final labels = find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            widget.key is ValueKey<String> &&
+            (widget.key! as ValueKey<String>).value.startsWith(
+              'home-water-axis-',
+            ),
+      );
+      expect(labels, findsNWidgets(5));
+      for (final element in labels.evaluate()) {
+        expect((element.widget as Text).style!.fontSize, 9.5);
+      }
+      final rects =
+          labels
+              .evaluate()
+              .map((element) => tester.getRect(find.byWidget(element.widget)))
+              .toList()
+            ..sort((a, b) => a.left.compareTo(b.left));
+      expect(rects.first.left, greaterThanOrEqualTo(chartRect.left));
+      expect(rects.last.right, lessThanOrEqualTo(chartRect.right));
+      for (var index = 1; index < rects.length; index++) {
+        expect(rects[index].left, greaterThanOrEqualTo(rects[index - 1].right));
+      }
+      expect(tester.takeException(), isNull);
     });
 
     test('trend uses distinct semantic colours', () {

@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:fishtrack/widgets/weather/weather_visuals.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -19,7 +21,7 @@ void main() {
     expect(source, isNot(contains('EVOLUȚIE REALĂ')));
   });
 
-  test('Weather living identity is shared between Home and Hub', () {
+  test('Home shares the real-data living Weather atmosphere', () {
     final home = File(
       'lib/features/commercial_home/presentation/commercial_home_page.dart',
     ).readAsStringSync();
@@ -28,11 +30,41 @@ void main() {
       'lib/widgets/weather/weather_visuals.dart',
     ).readAsStringSync();
 
+    expect(home, contains('weatherVisualKind('));
+    expect(home, contains('weatherVisualIcon('));
+    expect(home, contains('weatherVisualAccent('));
     expect(home, contains('WeatherAtmosphereBackdrop('));
     expect(hub, contains('WeatherAtmosphereBackdrop('));
-    expect(home, contains('weatherAtmosphereGradient('));
+    expect(home, contains('homeWeatherAtmosphereGradient('));
     expect(hub, contains('weatherAtmosphereGradient('));
     expect(visuals, contains('class WeatherAtmosphereBackdrop'));
+  });
+
+  test('canonical conditions resolve every compact Home atmosphere state', () {
+    expect(weatherVisualKind('Clear sky'), WeatherVisualKind.clear);
+    expect(weatherVisualKind('Partly cloudy'), WeatherVisualKind.partlyCloudy);
+    expect(weatherVisualKind('Overcast'), WeatherVisualKind.overcast);
+    expect(weatherVisualKind('Fog'), WeatherVisualKind.fog);
+    expect(weatherVisualKind('Rain showers'), WeatherVisualKind.rain);
+    expect(weatherVisualKind('Snow'), WeatherVisualKind.snow);
+    expect(weatherVisualKind('Thunderstorm'), WeatherVisualKind.storm);
+  });
+
+  test('Home clear DAY and NIGHT atmospheres are visibly distinct', () {
+    final day = homeWeatherAtmosphereGradient(
+      WeatherVisualKind.clear,
+      isDaylight: true,
+      brightness: Brightness.dark,
+    );
+    final night = homeWeatherAtmosphereGradient(
+      WeatherVisualKind.clear,
+      isDaylight: false,
+      brightness: Brightness.dark,
+    );
+
+    expect(day, isNot(night));
+    expect(day.first, const Color(0xFF123B59));
+    expect(night.first, const Color(0xFF071426));
   });
 
   test('only factual Weather metrics are selectable graph controls', () {

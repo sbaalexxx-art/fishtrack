@@ -164,20 +164,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('production Home and Full Map use the shared draggable control', () {
-    final home = File(
-      'lib/features/commercial_home/presentation/commercial_home_page.dart',
-    ).readAsStringSync();
-    final map = File('lib/screens/map_page.dart').readAsStringSync();
-    final settings = File(
-      'lib/features/figma_complete/presentation/figma_account_pages.dart',
-    ).readAsStringSync();
-    expect(home, contains('AskFluviPlacementScope.home'));
-    expect(home, contains("ValueKey('home-ask-fluvi')"));
-    expect(map, contains('AskFluviPlacementScope.fullMap'));
-    expect(map, contains("ValueKey('map-ask-fluvi')"));
-    expect(settings, contains('AskFluviPlacementStore.resetAll()'));
-  });
+  test(
+    'Home uses integrated contextual Ask while Full Map stays draggable',
+    () {
+      final home = File(
+        'lib/features/commercial_home/presentation/commercial_home_page.dart',
+      ).readAsStringSync();
+      final map = File('lib/screens/map_page.dart').readAsStringSync();
+      final settings = File(
+        'lib/features/figma_complete/presentation/figma_account_pages.dart',
+      ).readAsStringSync();
+      expect(home, contains("ValueKey('home-ask-fluvi')"));
+      expect(home, contains('canonicalFluviContextProvider'));
+      expect(home, contains('AppDestination.askFluvi'));
+      expect(home, isNot(contains('AskFluviPlacementScope.home')));
+      expect(home, isNot(contains('DraggableAskFluviControl(')));
+      expect(map, contains('AskFluviPlacementScope.fullMap'));
+      expect(map, contains("ValueKey('map-ask-fluvi')"));
+      expect(settings, contains('AskFluviPlacementStore.resetAll()'));
+    },
+  );
 
   group('Ask Fluvi placement', () {
     test('clamps, avoids obstacles, snaps, and normalizes safely', () {

@@ -1123,13 +1123,16 @@ class _FigmaNotificationCenterPageState
 
   @override
   Widget build(BuildContext context) {
+    final isRomanian =
+        Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
+    final colors = FluviAIThemeColors.of(context);
     return FigmaCanonicalScaffold(
       key: const ValueKey('figma-notification-center'),
-      title: 'Notificări',
-      eyebrow: 'CENTRU',
+      title: isRomanian ? 'Notificări' : 'Notifications',
+      eyebrow: isRomanian ? 'CENTRU' : 'CENTER',
       action: FigmaRoundButton(
         icon: Icons.tune_rounded,
-        tooltip: 'Preferințe',
+        tooltip: isRomanian ? 'Preferințe' : 'Preferences',
         onPressed: () =>
             AppNavigator.open(context, AppDestination.notificationPreferences),
       ),
@@ -1141,17 +1144,23 @@ class _FigmaNotificationCenterPageState
           if (snapshot.hasError && notifications.isEmpty) {
             return FigmaTruthfulEmpty(
               icon: Icons.cloud_off_rounded,
-              title: 'Notificările nu pot fi încărcate',
-              message:
-                  'Verifică conexiunea. Ultimele notificări salvate reapar automat când serviciul revine.',
+              title: isRomanian
+                  ? 'Notificările nu pot fi încărcate'
+                  : 'Notifications cannot be loaded',
+              message: isRomanian
+                  ? 'Verifică conexiunea. Ultimele notificări salvate reapar automat când serviciul revine.'
+                  : 'Check the connection. Saved notifications return automatically when the service is available.',
             );
           }
           if (notifications.isEmpty) {
             return FigmaTruthfulEmpty(
               icon: Icons.notifications_none_rounded,
-              title: 'Nicio notificare disponibilă',
-              message:
-                  'Alertele pentru ape, rapoarte, capturi și zone urmărite vor apărea aici.',
+              title: isRomanian
+                  ? 'Nicio notificare disponibilă'
+                  : 'No notifications available',
+              message: isRomanian
+                  ? 'Alertele pentru ape, rapoarte, capturi și zone urmărite vor apărea aici.'
+                  : 'Alerts for waters, reports, catches and followed areas will appear here.',
               actionLabel: context.l10n.notificationEmptyAction,
               onAction: () => AppNavigator.open(
                 context,
@@ -1163,74 +1172,89 @@ class _FigmaNotificationCenterPageState
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
             itemCount: notifications.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => Divider(
+              key: const ValueKey('notification-row-divider'),
+              height: 1,
+              color: colors.borderSoft,
+            ),
             itemBuilder: (context, index) {
               final item = notifications[index];
-              return FigmaSurface(
-                onTap: () => _open(item),
-                accent: _notificationAccent(item.priority),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: _notificationAccent(
-                          item.priority,
-                        ).withValues(alpha: .12),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(
-                        _notificationIcon(item.type),
-                        color: _notificationAccent(item.priority),
-                        size: 21,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+              final accent = _notificationAccent(item.priority);
+              return Material(
+                key: ValueKey('notification-row-${item.id}'),
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _open(item),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 34,
+                          height: 34,
+                          child: Icon(
+                            _notificationIcon(item.type),
+                            color: accent,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  item.title,
-                                  style: TextStyle(
-                                    color: FigmaFluviTokens.white,
-                                    fontSize: 13,
-                                    fontWeight: item.isRead
-                                        ? FontWeight.w700
-                                        : FontWeight.w900,
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.title,
+                                      style: TextStyle(
+                                        color: colors.textPrimary,
+                                        fontSize: 13,
+                                        fontWeight: item.isRead
+                                            ? FontWeight.w700
+                                            : FontWeight.w900,
+                                      ),
+                                    ),
                                   ),
+                                  if (!item.isRead)
+                                    Container(
+                                      width: 7,
+                                      height: 7,
+                                      decoration: const BoxDecoration(
+                                        color: FigmaFluviTokens.cyan,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                item.message,
+                                style: TextStyle(
+                                  color: colors.textSecondary,
+                                  fontSize: 10.5,
+                                  height: 1.3,
                                 ),
                               ),
-                              if (!item.isRead)
-                                Container(
-                                  width: 7,
-                                  height: 7,
-                                  decoration: const BoxDecoration(
-                                    color: FigmaFluviTokens.cyan,
-                                    shape: BoxShape.circle,
-                                  ),
+                              const SizedBox(height: 7),
+                              Text(
+                                _notificationAge(
+                                  item.createdAt,
+                                  isRomanian: isRomanian,
                                 ),
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: colors.textMuted,
+                                ),
+                              ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(item.message, style: figmaBody(size: 10.5)),
-                          const SizedBox(height: 7),
-                          Text(
-                            _notificationAge(item.createdAt),
-                            style: figmaBody(
-                              size: 9,
-                              color: FigmaFluviTokens.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               );
             },
@@ -1265,12 +1289,27 @@ class _FigmaNotificationCenterPageState
         NotificationPriority.critical => FigmaFluviTokens.red,
       };
 
-  static String _notificationAge(DateTime createdAt) {
+  static String _notificationAge(
+    DateTime createdAt, {
+    required bool isRomanian,
+  }) {
     final delta = DateTime.now().difference(createdAt.toLocal());
-    if (delta.isNegative || delta.inMinutes < 1) return 'acum';
-    if (delta.inHours < 1) return 'acum ${delta.inMinutes} min';
-    if (delta.inDays < 1) return 'acum ${delta.inHours} h';
-    if (delta.inDays < 7) return 'acum ${delta.inDays} zile';
+    if (delta.isNegative || delta.inMinutes < 1) {
+      return isRomanian ? 'acum' : 'now';
+    }
+    if (delta.inHours < 1) {
+      return isRomanian
+          ? 'acum ${delta.inMinutes} min'
+          : '${delta.inMinutes} min ago';
+    }
+    if (delta.inDays < 1) {
+      return isRomanian ? 'acum ${delta.inHours} h' : '${delta.inHours} h ago';
+    }
+    if (delta.inDays < 7) {
+      return isRomanian
+          ? 'acum ${delta.inDays} zile'
+          : '${delta.inDays} days ago';
+    }
     final local = createdAt.toLocal();
     return '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}.${local.year}';
   }

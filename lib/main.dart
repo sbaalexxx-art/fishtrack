@@ -24,8 +24,11 @@ import 'services/firebase_push_service.dart';
 
 const _mapboxAccessToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations(const [
+    DeviceOrientation.portraitUp,
+  ]);
   _installInternalDiagnostics();
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);

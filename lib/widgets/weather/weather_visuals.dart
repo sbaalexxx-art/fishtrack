@@ -161,6 +161,54 @@ List<Color> weatherAtmosphereGradient(
   };
 }
 
+/// Compact Home atmosphere tuned for data legibility rather than illustration.
+///
+/// The palette remains entirely derived from canonical condition, daylight and
+/// active theme state. It intentionally uses clearer sky chroma in dark mode so
+/// the edge-to-edge surface does not collapse into a neutral grey panel.
+List<Color> homeWeatherAtmosphereGradient(
+  WeatherVisualKind kind, {
+  required bool isDaylight,
+  required Brightness brightness,
+}) {
+  if (!isDaylight) {
+    return switch (kind) {
+      WeatherVisualKind.storm => const [Color(0xFF15132A), Color(0xFF30284E)],
+      WeatherVisualKind.rain ||
+      WeatherVisualKind.drizzle => const [Color(0xFF091D30), Color(0xFF12415A)],
+      WeatherVisualKind.snow => const [Color(0xFF14283A), Color(0xFF304B5C)],
+      WeatherVisualKind.fog => const [Color(0xFF122538), Color(0xFF344956)],
+      _ => const [Color(0xFF071426), Color(0xFF103451)],
+    };
+  }
+
+  if (brightness == Brightness.dark) {
+    return switch (kind) {
+      WeatherVisualKind.clear => const [Color(0xFF123B59), Color(0xFF2A6877)],
+      WeatherVisualKind.partlyCloudy => const [
+        Color(0xFF173A50),
+        Color(0xFF385F6C),
+      ],
+      WeatherVisualKind.overcast => const [
+        Color(0xFF263A45),
+        Color(0xFF465B64),
+      ],
+      WeatherVisualKind.fog => const [Color(0xFF30454B), Color(0xFF5A686B)],
+      WeatherVisualKind.rain ||
+      WeatherVisualKind.drizzle => const [Color(0xFF102E43), Color(0xFF1E5870)],
+      WeatherVisualKind.snow => const [Color(0xFF304A58), Color(0xFF58727E)],
+      WeatherVisualKind.storm => const [Color(0xFF211D38), Color(0xFF4B3E69)],
+      WeatherVisualKind.unknown => const [Color(0xFF1B3949), Color(0xFF3B5964)],
+    };
+  }
+
+  return weatherAtmosphereGradient(
+    kind,
+    isDaylight: isDaylight,
+    brightness: brightness,
+  );
+}
+
 class WeatherSparkline extends StatelessWidget {
   const WeatherSparkline({
     super.key,
@@ -447,12 +495,14 @@ class WeatherAtmosphereBackdrop extends StatelessWidget {
     required this.isDaylight,
     required this.foreground,
     this.compact = false,
+    this.intensity = 1,
   });
 
   final WeatherVisualKind kind;
   final bool isDaylight;
   final Color foreground;
   final bool compact;
+  final double intensity;
 
   @override
   Widget build(BuildContext context) {
@@ -467,6 +517,7 @@ class WeatherAtmosphereBackdrop extends StatelessWidget {
             isDaylight: isDaylight,
             foreground: foreground,
             compact: compact,
+            intensity: intensity,
             progress: progress,
           ),
         ),
@@ -481,6 +532,7 @@ class _WeatherAtmospherePainter extends CustomPainter {
     required this.isDaylight,
     required this.foreground,
     required this.compact,
+    required this.intensity,
     required this.progress,
   });
 
@@ -488,14 +540,16 @@ class _WeatherAtmospherePainter extends CustomPainter {
   final bool isDaylight;
   final Color foreground;
   final bool compact;
+  final double intensity;
   final double progress;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
 
-    final opacity = progress.clamp(0.0, 1.0).toDouble();
-    final scale = compact ? .72 : 1.0;
+    final opacity =
+        progress.clamp(0.0, 1.0).toDouble() * intensity.clamp(0.0, 1.0);
+    final scale = compact ? .56 : 1.0;
     final celestialCenter = Offset(
       size.width * (compact ? .82 : .79),
       size.height * (compact ? .28 : .27),
@@ -674,6 +728,7 @@ class _WeatherAtmospherePainter extends CustomPainter {
       oldDelegate.isDaylight != isDaylight ||
       oldDelegate.foreground != foreground ||
       oldDelegate.compact != compact ||
+      oldDelegate.intensity != intensity ||
       oldDelegate.progress != progress;
 }
 

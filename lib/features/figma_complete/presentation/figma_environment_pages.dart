@@ -11,6 +11,7 @@ import '../../../core/navigation/app_destination.dart';
 import '../../../core/navigation/app_navigator.dart';
 import '../../../core/navigation/map_entry.dart';
 import '../../../core/navigation/water_entry.dart';
+import '../../../core/theme/fluviai_commercial_tokens.dart';
 import '../../../core/water/water_history_analysis.dart';
 import '../../../models/station.dart';
 import '../../../models/water_asset.dart';
@@ -361,10 +362,10 @@ class _ReviewPanel extends StatelessWidget {
 }
 
 class _MonoLabel extends StatelessWidget {
-  const _MonoLabel(this.text, {this.color = FigmaFluviTokens.textSecondary});
+  const _MonoLabel(this.text, {this.color});
 
   final String text;
-  final Color color;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) => Text(
@@ -373,7 +374,7 @@ class _MonoLabel extends StatelessWidget {
     overflow: TextOverflow.ellipsis,
     style: TextStyle(
       fontFamily: 'IBM Plex Mono',
-      color: color,
+      color: color ?? FluviAIThemeColors.of(context).textSecondary,
       fontSize: 9,
       height: 1.2,
       fontWeight: FontWeight.w500,
@@ -937,58 +938,53 @@ class _ScoreFactorCard extends StatelessWidget {
   final _ScoreFactor factor;
 
   @override
-  Widget build(BuildContext context) => _ReviewPanel(
-    height: _responsivePanelHeight(context, 72, 128),
-    radius: 16,
-    background: const Color(0xFF0B1115),
-    padding: const EdgeInsets.symmetric(horizontal: 13),
-    child: Row(
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: factor.color.withValues(alpha: .08),
-            border: Border.all(color: factor.color),
+  Widget build(BuildContext context) {
+    final colors = FluviAIThemeColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: factor.color.withValues(alpha: .08),
+              border: Border.all(color: factor.color),
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.circle, size: 6, color: factor.color),
           ),
-          alignment: Alignment.center,
-          child: Icon(Icons.circle, size: 6, color: factor.color),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                factor.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: FigmaFluviTokens.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  factor.label,
+                  maxLines: 2,
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                factor.detail,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: FigmaFluviTokens.textSecondary,
-                  fontSize: 10.5,
+                const SizedBox(height: 6),
+                Text(
+                  factor.detail,
+                  maxLines: 2,
+                  style: TextStyle(color: colors.textSecondary, fontSize: 10.5),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        _TinyStatusPill(label: factor.pill, color: factor.color, width: 82),
-      ],
-    ),
-  );
+          const SizedBox(width: 8),
+          _TinyStatusPill(label: factor.pill, color: factor.color, width: 82),
+        ],
+      ),
+    );
+  }
 }
 
 class FigmaWaterHubPage extends StatefulWidget {
@@ -997,11 +993,13 @@ class FigmaWaterHubPage extends StatefulWidget {
     this.initialStation,
     this.dataSource,
     this.entryMode = WaterHubEntryMode.overview,
+    this.initialSection,
   });
 
   final Station? initialStation;
   final CommercialHomeDataSource? dataSource;
   final WaterHubEntryMode entryMode;
+  final WaterHubSection? initialSection;
 
   @override
   State<FigmaWaterHubPage> createState() => _FigmaWaterHubPageState();
@@ -1020,7 +1018,17 @@ class _FigmaWaterHubPageState extends State<FigmaWaterHubPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.entryMode == WaterHubEntryMode.selectStation) {
+    final initialCategory = switch (widget.initialSection) {
+      WaterHubSection.danube => _WaterHubCategory.danube,
+      WaterHubSection.dams => _WaterHubCategory.hydropower,
+      WaterHubSection.rivers => _WaterHubCategory.rivers,
+      null => null,
+    };
+    if (initialCategory != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _selectCategory(initialCategory);
+      });
+    } else if (widget.entryMode == WaterHubEntryMode.selectStation) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _openStationSelector();
       });
@@ -2458,18 +2466,19 @@ class FigmaFluviHubPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isRomanian =
+        Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
+    final colors = FluviAIThemeColors.of(context);
     return FigmaCanonicalScaffold(
       key: const ValueKey('figma-fluvi-hub'),
       eyebrow: context.l10n.fluviIntelligence,
       title: 'FluviScore',
       subtitle: _stationContext(null, initialStation),
-      action: const _TinyStatusPill(
-        label: 'EXPLICABIL',
+      action: _TinyStatusPill(
+        label: isRomanian ? 'EXPLICABIL' : 'EXPLAINABLE',
         color: FigmaFluviTokens.cyan,
-        width: 88,
+        width: isRomanian ? 88 : 102,
       ),
-      scaffoldColor: const Color(0xFF05080A),
-      background: const BoxDecoration(color: Color(0xFF05080A)),
       padding: EdgeInsets.zero,
       child: FigmaRuntimeSnapshotBuilder(
         station: initialStation,
@@ -2483,7 +2492,7 @@ class FigmaFluviHubPage extends StatelessWidget {
           final confidence = hasScore ? score!.confidence : 0;
           final recommendation = hasScore
               ? _localizedScoreText(context, score!.recommendation)
-              : 'Nu sunt suficiente date';
+              : (isRomanian ? 'Nu sunt suficiente date' : 'Not enough data');
           final positive = score?.positiveFactors ?? const <String>[];
           final negative = score?.negativeFactors ?? const <String>[];
           final missing = score?.missingFactors ?? const <String>[];
@@ -2491,23 +2500,29 @@ class FigmaFluviHubPage extends StatelessWidget {
             for (final item in positive.take(2))
               _ScoreFactor(
                 label: _localizedScoreText(context, item),
-                detail: 'Semnal real favorabil',
+                detail: isRomanian
+                    ? 'Semnal real favorabil'
+                    : 'Real favorable signal',
                 color: FigmaFluviTokens.green,
-                pill: 'POZITIV',
+                pill: isRomanian ? 'POZITIV' : 'POSITIVE',
               ),
             for (final item in negative.take(2))
               _ScoreFactor(
                 label: _localizedScoreText(context, item),
-                detail: 'Semnal real nefavorabil',
+                detail: isRomanian
+                    ? 'Semnal real nefavorabil'
+                    : 'Real unfavorable signal',
                 color: FigmaFluviTokens.amber,
-                pill: 'RISC',
+                pill: isRomanian ? 'RISC' : 'RISK',
               ),
             for (final item in missing.take(2))
               _ScoreFactor(
                 label: _localizedScoreText(context, item),
-                detail: 'Intrare lipsă · scorul nu este completat artificial',
+                detail: isRomanian
+                    ? 'Intrare lipsă · scorul nu este completat artificial'
+                    : 'Missing input · the score is not filled artificially',
                 color: FigmaFluviTokens.red,
-                pill: 'DATE PUȚINE',
+                pill: isRomanian ? 'DATE PUȚINE' : 'LOW DATA',
               ),
           ].take(4).toList(growable: false);
           final confidenceColor = confidence >= 75
@@ -2545,22 +2560,30 @@ class FigmaFluviHubPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                _ReviewPanel(
-                  height: _responsivePanelHeight(context, 167, 300),
-                  radius: 20,
-                  background: const Color(0xFF0B1115),
+                Container(
+                  key: const ValueKey('fluvi-score-functional-surface'),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    border: Border.all(color: colors.borderSoft),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          const Expanded(
-                            child: _MonoLabel('CONDIȚII DE PESCUIT ACUM'),
+                          Expanded(
+                            child: _MonoLabel(
+                              isRomanian
+                                  ? 'CONDIȚII DE PESCUIT ACUM'
+                                  : 'FISHING CONDITIONS NOW',
+                            ),
                           ),
                           _TinyStatusPill(
                             label: hasScore
-                                ? 'ÎNCREDERE $confidence%'
-                                : 'DATE PUȚINE',
+                                ? '${isRomanian ? 'ÎNCREDERE' : 'CONFIDENCE'} $confidence%'
+                                : (isRomanian ? 'DATE PUȚINE' : 'LOW DATA'),
                             color: confidenceColor,
                           ),
                         ],
@@ -2572,8 +2595,8 @@ class FigmaFluviHubPage extends StatelessWidget {
                           children: [
                             Text(
                               scoreValue,
-                              style: const TextStyle(
-                                color: FigmaFluviTokens.white,
+                              style: TextStyle(
+                                color: colors.textPrimary,
                                 fontSize: 54,
                                 height: .95,
                                 fontWeight: FontWeight.w600,
@@ -2600,8 +2623,8 @@ class FigmaFluviHubPage extends StatelessWidget {
                           children: [
                             Text(
                               scoreValue,
-                              style: const TextStyle(
-                                color: FigmaFluviTokens.white,
+                              style: TextStyle(
+                                color: colors.textPrimary,
                                 fontSize: 54,
                                 height: .95,
                                 fontWeight: FontWeight.w600,
@@ -2620,15 +2643,14 @@ class FigmaFluviHubPage extends StatelessWidget {
                             ),
                           ],
                         ),
-                      const Spacer(),
+                      const SizedBox(height: 12),
                       Text(
                         recommendation,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
                         style: TextStyle(
                           color: hasScore
                               ? FigmaFluviTokens.green
-                              : FigmaFluviTokens.textSecondary,
+                              : colors.textSecondary,
                           fontSize: 20,
                           fontWeight: FontWeight.w600,
                         ),
@@ -2636,12 +2658,15 @@ class FigmaFluviHubPage extends StatelessWidget {
                       const SizedBox(height: 5),
                       Text(
                         hasScore
-                            ? 'Scor calculat din intrările disponibile acum.'
-                            : 'Fluvi nu inventează scorul când lipsesc intrările.',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: FigmaFluviTokens.textSecondary,
+                            ? (isRomanian
+                                  ? 'Scor calculat din intrările disponibile acum.'
+                                  : 'Score calculated from the inputs available now.')
+                            : (isRomanian
+                                  ? 'Fluvi nu inventează scorul când lipsesc intrările.'
+                                  : 'Fluvi does not invent a score when inputs are missing.'),
+                        maxLines: 2,
+                        style: TextStyle(
+                          color: colors.textSecondary,
                           fontSize: 10,
                         ),
                       ),
@@ -2649,17 +2674,19 @@ class FigmaFluviHubPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const _MonoLabel('DE CE ACEST SCOR'),
+                _MonoLabel(isRomanian ? 'DE CE ACEST SCOR' : 'WHY THIS SCORE'),
                 const SizedBox(height: 10),
                 if (factors.isEmpty)
-                  const _ReviewPanel(
-                    height: 88,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     child: Center(
                       child: Text(
-                        'Nu există încă factori explicabili disponibili.',
+                        isRomanian
+                            ? 'Nu există încă factori explicabili disponibili.'
+                            : 'No explainable factors are available yet.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: FigmaFluviTokens.textSecondary,
+                          color: colors.textSecondary,
                           fontSize: 11,
                         ),
                       ),
@@ -2667,34 +2694,37 @@ class FigmaFluviHubPage extends StatelessWidget {
                   )
                 else
                   for (var index = 0; index < factors.length; index++) ...[
-                    if (index > 0) const SizedBox(height: 8),
+                    if (index > 0) Divider(height: 1, color: colors.borderSoft),
                     _ScoreFactorCard(factor: factors[index]),
                   ],
                 const SizedBox(height: 16),
-                _ReviewPanel(
-                  height: _responsivePanelHeight(context, 82, 150),
-                  radius: 16,
-                  background: const Color(0xFF070E11),
+                Container(
+                  padding: const EdgeInsets.only(top: 14),
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: colors.borderSoft)),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Proveniența scorului',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: FigmaFluviTokens.white,
+                        isRomanian
+                            ? 'Proveniența scorului'
+                            : 'Score provenance',
+                        maxLines: 2,
+                        style: TextStyle(
+                          color: colors.textPrimary,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 5),
-                      const Text(
-                        'Scor determinist · limită 0–100\nModelul IA nu calculează scorul numeric.',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      Text(
+                        isRomanian
+                            ? 'Scor determinist · limită 0–100\nModelul IA nu calculează scorul numeric.'
+                            : 'Deterministic score · 0–100 limit\nThe AI model does not calculate the numeric score.',
+                        maxLines: 3,
                         style: TextStyle(
-                          color: FigmaFluviTokens.textSecondary,
+                          color: colors.textSecondary,
                           fontSize: 11,
                           height: 1.25,
                         ),
@@ -2707,7 +2737,9 @@ class FigmaFluviHubPage extends StatelessWidget {
                   actions: [
                     _ContextHubAction(
                       keyName: 'batch3-fluvi-open-water',
-                      label: 'Inteligență hidrologică',
+                      label: isRomanian
+                          ? 'Inteligență hidrologică'
+                          : 'Water intelligence',
                       icon: Icons.water_rounded,
                       onPressed: () => AppNavigator.open<void>(
                         context,
@@ -2717,7 +2749,9 @@ class FigmaFluviHubPage extends StatelessWidget {
                     ),
                     _ContextHubAction(
                       keyName: 'batch3-fluvi-open-weather',
-                      label: 'Vreme și solunar',
+                      label: isRomanian
+                          ? 'Vreme și solunar'
+                          : 'Weather & solunar',
                       icon: Icons.cloud_outlined,
                       onPressed: () => AppNavigator.open<void>(
                         context,
@@ -2727,7 +2761,7 @@ class FigmaFluviHubPage extends StatelessWidget {
                     ),
                     _ContextHubAction(
                       keyName: 'batch3-fluvi-open-map',
-                      label: 'Hartă completă',
+                      label: isRomanian ? 'Hartă completă' : 'Full map',
                       icon: Icons.map_outlined,
                       onPressed: station == null
                           ? null

@@ -113,8 +113,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     Navigator.of(tester.element(weatherRoute)).pop();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
     final scoreCard = find.byKey(const ValueKey('commercial-score-card'));
     await tester.ensureVisible(scoreCard);
     await tester.pump();
@@ -134,7 +133,7 @@ void main() {
   });
 
   testWidgets(
-    'Utilities Hub opens GPS-owned Weather without station substitution',
+    'Utilities Solunar deep link stays GPS-owned without station substitution',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(390, 844);
@@ -169,11 +168,11 @@ void main() {
 
       await tester.enterText(
         find.byKey(const ValueKey('utilities-search-field')),
-        'Vreme pentru pescuit',
+        'Solunar',
       );
       await tester.pump();
       final weatherUtility = find.byKey(
-        const ValueKey('utility-search-weather.forecast'),
+        const ValueKey('utility-search-weather.solunar'),
       );
       await tester.ensureVisible(weatherUtility);
       await tester.pump();
@@ -192,7 +191,9 @@ void main() {
         matching: find.byType(WeatherPage),
       );
       expect(weatherFinder, findsOneWidget);
-      expect(tester.widget<WeatherPage>(weatherFinder).initialWeather, isNull);
+      final weatherPage = tester.widget<WeatherPage>(weatherFinder);
+      expect(weatherPage.initialWeather, isNull);
+      expect(weatherPage.initialSection, WeatherPageSection.solunar);
     },
   );
 

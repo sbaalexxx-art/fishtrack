@@ -9,6 +9,7 @@ import 'package:fishtrack/core/theme/theme_controller.dart';
 import 'package:fishtrack/core/theme/app_theme.dart';
 import 'package:fishtrack/features/commercial_home/data/commercial_home_data_source.dart';
 import 'package:fishtrack/features/commercial_home/presentation/commercial_home_page.dart';
+import 'package:fishtrack/features/shell/presentation/utilities_hub_page.dart';
 import 'package:fishtrack/l10n/app_localizations.dart';
 import 'package:fishtrack/models/station.dart';
 import 'package:fishtrack/screens/developer_mode_page.dart';
@@ -57,16 +58,35 @@ void main() {
     },
   );
 
-  testWidgets('active shell opens the approved map-first Bento Home', (
+  testWidgets('More opens the canonical complete Utilities Hub', (
+    tester,
+  ) async {
+    await _pumpShell(tester, const Size(412, 915), realUtilities: true);
+
+    await _openMoreDrawer(tester);
+    final utilities = await _revealMoreEntry(tester, 'utilities');
+    await tester.ensureVisible(utilities);
+    await tester.pump();
+    await tester.tap(utilities);
+    await _pumpNavigation(tester);
+
+    expect(_findDestination(AppDestination.utilities), findsOneWidget);
+    expect(find.byType(FluviAIUtilitiesHubPage), findsOneWidget);
+    expect(find.byKey(const ValueKey('bottom-nav-fluvi')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('active shell opens the approved continuous Home', (
     tester,
   ) async {
     await _pumpShell(tester, const Size(390, 844));
 
     expect(find.byKey(const ValueKey('canonical-home')), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('commercial-home-map-hero')),
+      find.byKey(const ValueKey('home-continuous-canvas')),
       findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('commercial-home-map')), findsNothing);
     expect(
       find.byKey(const ValueKey('main-bottom-navigation')),
       findsOneWidget,
@@ -75,13 +95,23 @@ void main() {
       Theme.of(tester.element(find.byType(CommercialHomePage))).brightness,
       tester.platformDispatcher.platformBrightness,
     );
-    final reportRect = tester.getRect(
-      find.byKey(const ValueKey('commercial-reports-card')),
+    final waterRect = tester.getRect(
+      find.byKey(const ValueKey('commercial-water-card')),
     );
     final navigationRect = tester.getRect(
       find.byKey(const ValueKey('main-bottom-navigation')),
     );
-    expect(reportRect.bottom, lessThanOrEqualTo(navigationRect.top));
+    expect(waterRect.top, lessThan(navigationRect.top));
+
+    await tester.drag(
+      find.byType(SingleChildScrollView).first,
+      const Offset(0, -5000),
+    );
+    await tester.pumpAndSettle();
+    final lastContentRect = tester.getRect(
+      find.byKey(const ValueKey('home-ask-fluvi')),
+    );
+    expect(lastContentRect.bottom, lessThan(navigationRect.top));
     expect(tester.takeException(), isNull);
   });
 
@@ -89,7 +119,7 @@ void main() {
     await _pumpShell(tester, const Size(915, 412));
     expect(find.byKey(const ValueKey('home-more-menu-action')), findsNothing);
     expect(
-      find.byKey(const ValueKey('commercial-home-map-hero')),
+      find.byKey(const ValueKey('home-continuous-canvas')),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -196,7 +226,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('every More entry opens its runtime destination and returns', (
+  testWidgets('every canonical More child opens its destination and returns', (
     tester,
   ) async {
     await _pumpShell(tester, const Size(412, 915));
@@ -210,25 +240,13 @@ void main() {
       ('favorites', AppDestination.favorites),
       ('journal', AppDestination.journal),
       ('premium', AppDestination.premium),
-      ('search', AppDestination.search),
-      ('water', AppDestination.water),
-      ('weather', AppDestination.weather),
-      ('fluvi', AppDestination.fluvi),
-      ('askFluvi', AppDestination.askFluvi),
-      ('toolkit', AppDestination.toolkit),
-      ('permit', AppDestination.permit),
       ('regulations', AppDestination.regulations),
-      ('safety', AppDestination.safety),
       ('settings', AppDestination.settings),
-      ('appearance', AppDestination.settings),
-      ('language-region', AppDestination.settings),
       ('privacy', AppDestination.privacy),
       ('terms', AppDestination.terms),
       ('licences', AppDestination.licences),
       ('legal', AppDestination.legal),
-      ('help-faq', AppDestination.support),
-      ('send-feedback', AppDestination.support),
-      ('contact-us', AppDestination.support),
+      ('support', AppDestination.support),
       ('about', AppDestination.about),
     ];
 
@@ -258,6 +276,103 @@ void main() {
     }
   });
 
+  testWidgets(
+    'Saved waters and places opens the canonical Favorites destination',
+    (tester) async {
+      await _pumpShell(tester, const Size(412, 915));
+
+      await _openMoreDrawer(tester);
+      final entry = await _revealMoreEntry(tester, 'favorites');
+      await tester.ensureVisible(entry);
+      await tester.tap(entry);
+      await _pumpNavigation(tester);
+
+      expect(_findDestination(AppDestination.favorites), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('figma-favorites-page')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('utilities-hub-page')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Utilities Hydro Pulse Back restores the Utilities caller', (
+    tester,
+  ) async {
+    await _pumpShell(tester, const Size(412, 915), realUtilities: true);
+    final context = _shellContext(tester);
+    final container = ProviderScope.containerOf(context, listen: false);
+    container
+        .read(fluviAccessTierProvider.notifier)
+        .setTier(FluviAccessTier.premium);
+
+    await AppNavigator.open<void>(context, AppDestination.utilities);
+    await _pumpNavigation(tester);
+    expect(find.byKey(const ValueKey('utilities-hub-page')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('utility-water.hydro-pulse')));
+    await _pumpNavigation(tester);
+    expect(find.text('Map runtime'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await _pumpNavigation(tester);
+    expect(find.byKey(const ValueKey('utilities-hub-page')), findsOneWidget);
+    expect(find.text('Map runtime'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('programmatic main-tab launch preserves a non-Home caller', (
+    tester,
+  ) async {
+    await _pumpShell(tester, const Size(412, 915), realUtilities: true);
+    final context = _shellContext(tester);
+
+    await AppNavigator.open<void>(context, AppDestination.utilities);
+    await _pumpNavigation(tester);
+    await AppNavigator.open<void>(context, AppDestination.activity);
+    await _pumpNavigation(tester);
+    expect(find.text('Community runtime'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await _pumpNavigation(tester);
+    expect(find.byKey(const ValueKey('utilities-hub-page')), findsOneWidget);
+    expect(find.text('Community runtime'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Global Search dismisses its autofocus IME before route Back', (
+    tester,
+  ) async {
+    await _pumpShell(tester, const Size(412, 915), realUtilities: true);
+    final context = _shellContext(tester);
+
+    await AppNavigator.open<void>(context, AppDestination.utilities);
+    await _pumpNavigation(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('utilities-section-discoveryAndAssistance')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('utility-map.search')));
+    await _pumpNavigation(tester);
+
+    final searchField = find.byKey(const ValueKey('figma-global-search-field'));
+    expect(searchField, findsOneWidget);
+    expect(FocusManager.instance.primaryFocus?.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    tester.testTextInput.hide();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    expect(searchField, findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await _pumpNavigation(tester);
+    expect(find.byKey(const ValueKey('utilities-hub-page')), findsOneWidget);
+    expect(searchField, findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('bottom navigation and Quick Add execute every action', (
     tester,
   ) async {
@@ -266,7 +381,7 @@ void main() {
     for (final (key, destination) in const [
       ('bottom-nav-map', AppDestination.map),
       ('bottom-nav-activity', AppDestination.activity),
-      ('bottom-nav-utilities', AppDestination.utilities),
+      ('bottom-nav-fluvi', AppDestination.fluvi),
       ('bottom-nav-home', AppDestination.home),
     ]) {
       await tester.tap(find.byKey(ValueKey(key)));
@@ -356,7 +471,7 @@ void main() {
     expect(find.byKey(const ValueKey('bottom-nav-map')), findsNothing);
     expect(find.byKey(const ValueKey('bottom-nav-quick-add')), findsNothing);
     expect(find.byKey(const ValueKey('bottom-nav-activity')), findsNothing);
-    expect(find.byKey(const ValueKey('bottom-nav-utilities')), findsNothing);
+    expect(find.byKey(const ValueKey('bottom-nav-fluvi')), findsNothing);
     expect(
       find.byKey(const ValueKey('figma-back-button-target')),
       findsOneWidget,
@@ -607,7 +722,11 @@ void main() {
   });
 }
 
-Future<void> _pumpShell(WidgetTester tester, Size size) async {
+Future<void> _pumpShell(
+  WidgetTester tester,
+  Size size, {
+  bool realUtilities = false,
+}) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
   addTearDown(tester.view.resetPhysicalSize);
@@ -638,9 +757,9 @@ Future<void> _pumpShell(WidgetTester tester, Size size) async {
                 communityPageOverride: const _ShellStub(
                   label: 'Community runtime',
                 ),
-                favoritesPageOverride: const _ShellStub(
-                  label: 'Favorites runtime',
-                ),
+                favoritesPageOverride: realUtilities
+                    ? null
+                    : const _ShellStub(label: 'Favorites runtime'),
               ),
             ),
           ),
@@ -691,14 +810,19 @@ Future<Finder> _revealMoreEntry(WidgetTester tester, String keySuffix) async {
   final entry = find.byKey(ValueKey('more-$keySuffix'));
   if (entry.evaluate().isNotEmpty) return entry;
 
-  final scrollable = find.byKey(const ValueKey('home-more-scroll'));
-  expect(scrollable, findsOneWidget);
-
-  for (var attempt = 0; attempt < 40; attempt++) {
-    await tester.drag(scrollable, const Offset(0, -180));
-    await tester.pump();
-    if (entry.evaluate().isNotEmpty) return entry;
-  }
+  final familyIndex = switch (keySuffix) {
+    'favorites' || 'myCatches' || 'journal' || 'myReports' => 0,
+    'utilities' || 'alerts' || 'notificationPreferences' => 1,
+    'regulations' => 2,
+    'profile' || 'accountSecurity' || 'premium' || 'settings' => 3,
+    'support' || 'privacy' || 'terms' || 'licences' || 'legal' || 'about' => 4,
+    _ => throw StateError('No Foundation 1A family for more-$keySuffix'),
+  };
+  final family = find.byKey(ValueKey('burger-family-$familyIndex'));
+  expect(family, findsOneWidget);
+  await tester.ensureVisible(family);
+  await tester.tap(family);
+  await tester.pumpAndSettle();
 
   return entry;
 }

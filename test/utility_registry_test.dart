@@ -39,7 +39,7 @@ void main() {
     expect(represented, FluviUtilityFamily.values.toSet());
   });
 
-  test('six Explore product families cover every utility exactly once', () {
+  test('three visible categories expose five distinct tools exactly once', () {
     final grouped = FluviExploreCatalog.grouped(
       FluviUtilityRegistry.definitions,
     );
@@ -48,13 +48,14 @@ void main() {
         ...grouped[section] ?? const <FluviUtilityDefinition>[],
     ];
 
-    expect(FluviExploreCatalog.sectionOrder, hasLength(6));
+    expect(FluviExploreCatalog.sectionOrder, hasLength(3));
     expect(grouped.keys, FluviExploreCatalog.sectionOrder.toSet());
-    expect(groupedItems, hasLength(34));
+    expect(groupedItems, hasLength(5));
     expect(
       groupedItems.map((utility) => utility.id).toSet(),
-      FluviUtilityRegistry.definitions.map((utility) => utility.id).toSet(),
+      FluviExploreCatalog.visibleUtilityIds,
     );
+    expect(FluviUtilityRegistry.definitions, hasLength(34));
   });
 
   test('search works in Romanian and English without changing routes', () {
@@ -68,4 +69,35 @@ void main() {
     expect(english.map((item) => item.id), contains('water.hydro-pulse'));
     expect(romanian.single.destination, english.single.destination);
   });
+
+  test(
+    'visible search excludes canonical launchers and unavailable entries',
+    () {
+      final allVisible = FluviExploreCatalog.searchVisible(
+        '',
+        isRomanian: false,
+      );
+
+      expect(allVisible.map((item) => item.id).toSet(), {
+        'water.hydro-pulse',
+        'water.stations',
+        'weather.solunar',
+        'map.search',
+        'fluvi.ask',
+      });
+      expect(
+        allVisible.map((item) => item.id),
+        isNot(
+          containsAll(<String>[
+            'water.overview',
+            'map.full',
+            'weather.forecast',
+            'fluvi.score',
+            'community.feed',
+            'fluvi.vision',
+          ]),
+        ),
+      );
+    },
+  );
 }

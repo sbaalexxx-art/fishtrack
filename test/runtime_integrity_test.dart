@@ -34,6 +34,38 @@ void main() {
 
     expect(map, isNot(contains('bottomNavigationBar:')));
   });
+
+  test(
+    'bottom Map tab lazily builds the canonical non-placeholder MapPage',
+    () {
+      final shell = source('lib/screens/main_navigation.dart');
+      final navigation = source(
+        'lib/widgets/navigation/fluviai_navigation.dart',
+      );
+
+      expect(navigation, contains("ValueKey('bottom-nav-map')"));
+      expect(navigation, contains('onTap: () => onSelect(1)'));
+      expect(shell, contains('_pages[1] = KeyedSubtree('));
+      expect(
+        shell,
+        contains('AppNavigator.destinationKey(AppDestination.map)'),
+      );
+      expect(shell, contains('MapPage('));
+      expect(shell, contains('IndexedStack(index: index, children: _pages)'));
+    },
+  );
+
+  test('release keeps the generated Mapbox runtime token resource', () {
+    final gradle = source('android/app/build.gradle.kts');
+    final keep = source('android/app/src/main/res/raw/fluviai_mapbox_keep.xml');
+
+    expect(gradle, contains('environmentVariable("MAPBOX_ACCESS_TOKEN")'));
+    expect(
+      gradle,
+      contains('resValue("string", "mapbox_access_token", mapboxAccessToken)'),
+    );
+    expect(keep, contains('tools:keep="@string/mapbox_access_token"'));
+  });
   test('water chart follows the approved minimal visual contract', () {
     final water = source('lib/screens/water_level_page.dart');
     expect(water, contains('isCurved: segment.usesBezier'));

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:fishtrack/core/context/environmental_context.dart';
 import 'package:fishtrack/core/context/selected_context.dart';
+import 'package:fishtrack/core/theme/fluviai_commercial_tokens.dart';
 import 'package:fishtrack/features/figma_complete/presentation/figma_community_pages.dart';
 import 'package:fishtrack/models/station.dart';
 import 'package:fishtrack/services/community_service.dart';
@@ -160,9 +161,12 @@ void main() {
       tester
           .getSize(find.byKey(const ValueKey('main-bottom-navigation')))
           .height,
-      60,
+      FluviAICommercialTokens.bottomNavigationVisualHeight,
     );
-    expect(tester.getSize(find.byType(FluviAIBottomNavigationBar)).height, 94);
+    expect(
+      tester.getSize(find.byType(FluviAIBottomNavigationBar)).height,
+      FluviAICommercialTokens.bottomNavigationVisualHeight + 34,
+    );
   });
 
   test(

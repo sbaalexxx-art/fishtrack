@@ -20,6 +20,7 @@ void main() {
     );
 
     expect(score.hasEnoughData, isTrue);
+    expect(score.score, 72.5);
     expect(score.confidence, 25);
     expect(
       score.missingFactors,
@@ -182,7 +183,9 @@ CommunityPost _report(
   reportCategory: ReportCategory.fishActivity,
   latitude: latitude,
   longitude: longitude,
-  expiresAt: now.add(const Duration(hours: 8)),
+  // This fixture validates locality, not wall-clock expiry. Keep it active so
+  // the contract remains deterministic when the suite runs later in the day.
+  expiresAt: now.add(const Duration(days: 3650)),
 );
 
 CommunityPost _catch(

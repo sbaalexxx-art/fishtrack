@@ -45,6 +45,9 @@ abstract final class FigmaDestinationRouter {
       entryMode: arguments is WaterHubRequest
           ? arguments.entryMode
           : WaterHubEntryMode.overview,
+      initialSection: arguments is WaterHubRequest
+          ? arguments.initialSection
+          : null,
       dataSource: dataSource,
     ),
     AppDestination.station => FigmaStationPage(
@@ -62,6 +65,7 @@ abstract final class FigmaDestinationRouter {
       child: FigmaHydropowerPage(label: arguments is String ? arguments : null),
     ),
     AppDestination.weather => WeatherPage(
+      initialSection: arguments is WeatherPageSection ? arguments : null,
       initialWeather: arguments is WeatherHomeResult ? arguments : null,
     ),
     AppDestination.fluvi => FigmaFluviHubPage(

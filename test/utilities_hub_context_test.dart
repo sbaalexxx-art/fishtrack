@@ -1,4 +1,6 @@
 import 'package:fishtrack/features/shell/presentation/utilities_hub_page.dart';
+import 'package:fishtrack/core/utility/fluviai_explore_catalog.dart';
+import 'package:fishtrack/core/utility/fluviai_utility_registry.dart';
 import 'package:fishtrack/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +14,7 @@ void main() {
     SharedPreferences.setMockInitialValues(const {});
   });
 
-  testWidgets('Explore exposes six families and searches the full registry', (
+  testWidgets('Utilities exposes three categories and searches useful tools', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -28,37 +30,32 @@ void main() {
     await tester.pump();
 
     expect(
-      find.byKey(const ValueKey('utility-water.overview')),
+      find.byKey(const ValueKey('utility-water.hydro-pulse')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('utilities-notifications-action')),
+      find.byKey(const ValueKey('utility-water.stations')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('utilities-category-strip')),
+      find.byKey(const ValueKey('utilities-section-waterTools')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('utilities-filter-conditionsAndWater')),
+      find.byKey(const ValueKey('utilities-section-weatherAndLight')),
       findsOneWidget,
     );
-    await tester.drag(
-      find.byKey(const ValueKey('utilities-category-strip')),
-      const Offset(-600, 0),
-    );
-    await tester.pump();
     expect(
-      find.byKey(const ValueKey('utilities-filter-accountAndApp')),
+      find.byKey(const ValueKey('utilities-section-discoveryAndAssistance')),
       findsOneWidget,
     );
 
     for (final (query, id) in const [
       ('Pulsul apei', 'water.hydro-pulse'),
-      ('Jurnal de pescuit', 'journal.sessions'),
-      ('Apele mele', 'favorites.my-waters'),
-      ('Permise', 'rules.permits'),
-      ('Profil', 'account.profile'),
+      ('Stații hidrometrice', 'water.stations'),
+      ('Solunar', 'weather.solunar'),
+      ('Căutare globală', 'map.search'),
+      ('Întreabă Fluvi', 'fluvi.ask'),
     ]) {
       await tester.enterText(
         find.byKey(const ValueKey('utilities-search-field')),
@@ -68,6 +65,44 @@ void main() {
 
       expect(find.byKey(ValueKey('utility-search-$id')), findsOneWidget);
     }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('inventory stays 34 while only five distinct tools are visible', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          locale: const Locale('ro'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          home: FluviAIUtilitiesHubPage(onSelectMainTab: (_) {}),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(FluviUtilityRegistry.definitions, hasLength(34));
+    expect(FluviExploreCatalog.visibleDefinitions, hasLength(5));
+
+    final search = find.byKey(const ValueKey('utilities-search-field'));
+    for (final utility in FluviExploreCatalog.visibleDefinitions) {
+      await tester.enterText(search, utility.titleRo);
+      await tester.pump();
+      expect(
+        find.byKey(ValueKey('utility-search-${utility.id}')),
+        findsOneWidget,
+        reason: '${utility.id} is not reachable through the deduplicated Hub',
+      );
+    }
+
+    await tester.enterText(search, 'Fluvi Vision');
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('utility-search-fluvi.vision')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 }

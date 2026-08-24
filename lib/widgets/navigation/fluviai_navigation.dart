@@ -22,26 +22,13 @@ class FluviAIBottomNavigationBar extends StatelessWidget {
         Localizations.localeOf(context).languageCode.toLowerCase() == 'ro';
     final colors = FluviAIThemeColors.of(context);
 
-    final navigationShape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(
-        FluviAICommercialTokens.bottomNavigationRadius,
-      ),
-      side: BorderSide(color: colors.navigationBorder),
-    );
-
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(
-        FluviAICommercialTokens.bottomNavigationHorizontalMargin,
-        0,
-        FluviAICommercialTokens.bottomNavigationHorizontalMargin,
-        6,
-      ),
       child: Material(
         key: const ValueKey('bottom-navigation-surface'),
         color: colors.navigationBackground,
-        shape: navigationShape,
-        clipBehavior: Clip.antiAlias,
+        shape: Border(top: BorderSide(color: colors.navigationBorder)),
+        clipBehavior: Clip.none,
         child: SizedBox(
           key: const ValueKey('main-bottom-navigation'),
           height: FluviAICommercialTokens.bottomNavigationVisualHeight,
@@ -90,7 +77,7 @@ class FluviAIBottomNavigationBar extends StatelessWidget {
                               .bottomNavigationQuickAddVisualHeight,
                           child: Icon(
                             Icons.add_rounded,
-                            size: 22,
+                            size: 19,
                             color: Theme.of(context).colorScheme.onPrimary,
                           ),
                         ),
@@ -110,9 +97,9 @@ class FluviAIBottomNavigationBar extends StatelessWidget {
               ),
               Expanded(
                 child: _FluviAINavItem(
-                  key: const ValueKey('bottom-nav-utilities'),
-                  icon: Icons.grid_view_rounded,
-                  label: isRomanian ? 'Utilități' : 'Utilities',
+                  key: const ValueKey('bottom-nav-fluvi'),
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'Fluvi',
                   selected: selectedIndex == 3,
                   onTap: () => onSelect(3),
                 ),
@@ -146,7 +133,7 @@ class _FluviAINavItem extends StatelessWidget {
         ? (Theme.of(context).brightness == Brightness.dark
               ? FluviAICommercialTokens.brandFocus
               : FluviAICommercialTokens.accentDeep)
-        : colors.navigationInactive;
+        : colors.navigationInactive.withValues(alpha: .74);
 
     return Semantics(
       button: true,
@@ -160,7 +147,7 @@ class _FluviAINavItem extends StatelessWidget {
             onTap: onTap,
             borderRadius: BorderRadius.circular(14),
             child: Padding(
-              padding: const EdgeInsets.only(top: 7),
+              padding: const EdgeInsets.only(top: 6),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
@@ -169,7 +156,7 @@ class _FluviAINavItem extends StatelessWidget {
                     size: FluviAICommercialTokens.bottomNavigationIconSize,
                     color: foreground,
                   ),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 5),
                   Text(
                     label,
                     maxLines: 1,
@@ -182,7 +169,7 @@ class _FluviAINavItem extends StatelessWidget {
                       fontSize:
                           FluviAICommercialTokens.bottomNavigationLabelSize,
                       height: 14 / 11,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
                   ),
                 ],

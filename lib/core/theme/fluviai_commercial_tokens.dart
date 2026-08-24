@@ -34,6 +34,7 @@ abstract final class FluviAICommercialTokens {
 
   static const waterRising = Color(0xFF43D9CC);
   static const waterStable = Color(0xFF00E676);
+  static const fluviScoreActive = Color(0xFF00C96B);
   static const waterFalling = Color(0xFFFA4F4F);
   static const warning = Color(0xFFF0BD55);
   static const premium = Color(0xFFF0BD55);
@@ -53,14 +54,15 @@ abstract final class FluviAICommercialTokens {
 
   static const minimumTouchTarget = 48.0;
 
-  // Approved Bento shell navigation contract (Figma 329:111 / 445:10-14).
-  static const bottomNavigationVisualHeight = 60.0;
-  static const bottomNavigationHorizontalMargin = 16.0;
-  static const bottomNavigationRadius = 20.0;
+  // Structural shell navigation contract. The dock owns the complete bottom
+  // edge; it is not a floating card inside the application canvas.
+  static const bottomNavigationVisualHeight = 56.0;
+  static const bottomNavigationHorizontalMargin = 0.0;
+  static const bottomNavigationRadius = 0.0;
   static const bottomNavigationQuickAddWidth = 52.0;
-  static const bottomNavigationQuickAddVisualHeight = 46.0;
-  static const bottomNavigationQuickAddRadius = 16.0;
-  static const bottomNavigationIconSize = 19.0;
+  static const bottomNavigationQuickAddVisualHeight = 40.0;
+  static const bottomNavigationQuickAddRadius = 12.0;
+  static const bottomNavigationIconSize = 18.0;
   static const bottomNavigationLabelSize = 11.0;
 
   static const bottomNavigationBackground = Color(0xFF071015);

@@ -50,7 +50,7 @@ void main() {
     expect(home, isNot(contains("fontFamily: 'monospace'")));
     expect(
       home,
-      contains('fontFamily: FluviAICommercialTokens.monoFontFamily'),
+      isNot(contains('fontFamily: FluviAICommercialTokens.monoFontFamily')),
     );
   });
   test(
