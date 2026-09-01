@@ -5,6 +5,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -24,6 +25,8 @@ class FirebasePushSnapshot {
     required this.authorizationStatus,
     required this.hasToken,
     required this.registeredWithSupabase,
+    this.deliveryAvailable,
+    this.channelEnabled,
     this.lastRegistrationError,
   });
 
@@ -31,6 +34,8 @@ class FirebasePushSnapshot {
   final String authorizationStatus;
   final bool hasToken;
   final bool registeredWithSupabase;
+  final bool? deliveryAvailable;
+  final bool? channelEnabled;
   final String? lastRegistrationError;
 }
 
@@ -40,6 +45,9 @@ class FirebasePushService {
   FirebasePushService._();
 
   static final FirebasePushService instance = FirebasePushService._();
+  static const MethodChannel _nativeNotifications = MethodChannel(
+    'fluviai.notifications/native',
+  );
 
   final StreamController<RemoteMessage> _openedMessages =
       StreamController<RemoteMessage>.broadcast();
@@ -51,6 +59,8 @@ class FirebasePushService {
   bool _initialized = false;
   bool _registeredWithSupabase = false;
   String _authorizationStatus = 'notDetermined';
+  bool? _deliveryAvailable;
+  bool? _channelEnabled;
   String? _token;
   String? _lastRegistrationError;
   RemoteMessage? _pendingOpenedMessage;
@@ -69,6 +79,8 @@ class FirebasePushService {
     authorizationStatus: _authorizationStatus,
     hasToken: _token?.isNotEmpty == true,
     registeredWithSupabase: _registeredWithSupabase,
+    deliveryAvailable: _deliveryAvailable,
+    channelEnabled: _channelEnabled,
     lastRegistrationError: _lastRegistrationError,
   );
 
@@ -85,13 +97,14 @@ class FirebasePushService {
       );
       _authorizationStatus = settings.authorizationStatus.name;
       await FirebaseMessaging.instance.setAutoInitEnabled(true);
+      await _refreshNativeDeliveryState();
       _token = await FirebaseMessaging.instance.getToken();
       await _registerCurrentToken();
 
       _tokenSubscription = FirebaseMessaging.instance.onTokenRefresh.listen(
         (token) {
           _token = token;
-          unawaited(_registerCurrentToken());
+          unawaited(_refreshCapabilityAndRegister());
         },
         onError: (Object error, StackTrace stackTrace) {
           DiagnosticsService.instance.recordError(
@@ -104,46 +117,26 @@ class FirebasePushService {
       );
 
       _foregroundSubscription = FirebaseMessaging.onMessage.listen((message) {
-        DiagnosticsService.instance.record(
-          category: DiagnosticCategory.notifications,
-          operation: 'fcm_foreground',
-          message: 'Foreground FCM message received',
-          metadata: <String, Object?>{
-            'message_id': message.messageId ?? '—',
-            'event_type':
-                message.data['type'] ?? message.data['event_type'] ?? '—',
-          },
-        );
-        unawaited(
-          FirebaseObservabilityService.instance.logEvent(
-            'push_received_foreground',
-            parameters: <String, Object>{
-              'event_type':
-                  (message.data['type'] ??
-                          message.data['event_type'] ??
-                          'unknown')
-                      .toString(),
-            },
-          ),
-        );
+        unawaited(_handleForegroundMessage(message));
       });
 
       _openSubscription = FirebaseMessaging.onMessageOpenedApp.listen(
         _handleOpenedMessage,
       );
 
-      _authSubscription = Supabase.instance.client.auth.onAuthStateChange
-          .listen((state) {
-            final userId = state.session?.user.id;
-            unawaited(
-              FirebaseObservabilityService.instance.setUserIdentifier(userId),
-            );
-            if (state.session == null) {
-              _registeredWithSupabase = false;
-              return;
-            }
-            unawaited(_registerCurrentToken());
-          });
+      _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
+        (state) {
+          final userId = state.session?.user.id;
+          unawaited(
+            FirebaseObservabilityService.instance.setUserIdentifier(userId),
+          );
+          if (state.session == null) {
+            _registeredWithSupabase = false;
+            return;
+          }
+          unawaited(_refreshCapabilityAndRegister());
+        },
+      );
 
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
@@ -158,6 +151,8 @@ class FirebasePushService {
           'permission': _authorizationStatus,
           'has_token': _token?.isNotEmpty == true,
           'registered': _registeredWithSupabase,
+          'delivery_available': _deliveryAvailable,
+          'channel_enabled': _channelEnabled,
         },
       );
     } on Object catch (error, stackTrace) {
@@ -173,8 +168,118 @@ class FirebasePushService {
 
   Future<void> refreshAndRegisterToken() async {
     if (Firebase.apps.isEmpty) return;
+    await _refreshNativeDeliveryState();
     _token = await FirebaseMessaging.instance.getToken();
     await _registerCurrentToken();
+  }
+
+  Future<void> _refreshCapabilityAndRegister() async {
+    await _refreshNativeDeliveryState();
+    await _registerCurrentToken();
+  }
+
+  Future<void> _refreshNativeDeliveryState() async {
+    if (!Platform.isAndroid) {
+      _channelEnabled = null;
+      _deliveryAvailable =
+          _authorizationStatus == 'authorized' ||
+          _authorizationStatus == 'provisional';
+      return;
+    }
+
+    try {
+      final state = await _nativeNotifications.invokeMapMethod<String, dynamic>(
+        'notificationState',
+      );
+      _channelEnabled = state?['channelEnabled'] == true;
+      _deliveryAvailable = state?['deliveryAvailable'] == true;
+      if (_deliveryAvailable != true) {
+        DiagnosticsService.instance.record(
+          category: DiagnosticCategory.notifications,
+          operation: 'notification_delivery_blocked',
+          message: 'Android notification delivery is blocked by app or channel settings',
+          metadata: <String, Object?>{
+            'permission': _authorizationStatus,
+            'app_enabled': state?['appEnabled'],
+            'channel_enabled': _channelEnabled,
+          },
+        );
+      }
+    } on MissingPluginException {
+      _channelEnabled = null;
+      _deliveryAvailable = _authorizationStatus == 'authorized';
+    } on PlatformException catch (error, stackTrace) {
+      _channelEnabled = null;
+      _deliveryAvailable = null;
+      DiagnosticsService.instance.recordError(
+        category: DiagnosticCategory.notifications,
+        operation: 'notification_state',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    final eventType =
+        message.data['type'] ?? message.data['event_type'] ?? 'unknown';
+    DiagnosticsService.instance.record(
+      category: DiagnosticCategory.notifications,
+      operation: 'fcm_foreground',
+      message: 'Foreground FCM message received',
+      metadata: <String, Object?>{
+        'message_id': message.messageId ?? '—',
+        'event_type': eventType,
+      },
+    );
+    unawaited(
+      FirebaseObservabilityService.instance.logEvent(
+        'push_received_foreground',
+        parameters: <String, Object>{'event_type': eventType.toString()},
+      ),
+    );
+
+    if (!Platform.isAndroid) return;
+    await _refreshNativeDeliveryState();
+    final notification = message.notification;
+    final title = notification?.title ?? message.data['title']?.toString() ?? '';
+    final body = notification?.body ?? message.data['body']?.toString() ?? '';
+    final messageKey =
+        message.messageId ??
+        message.data['notification_id']?.toString() ??
+        '${DateTime.now().microsecondsSinceEpoch}';
+    final notificationId = messageKey.hashCode & 0x7fffffff;
+
+    try {
+      final displayed = await _nativeNotifications.invokeMethod<bool>(
+        'showForegroundNotification',
+        <String, Object>{
+          'id': notificationId,
+          'title': title,
+          'body': body,
+        },
+      );
+      DiagnosticsService.instance.record(
+        category: DiagnosticCategory.notifications,
+        operation: 'fcm_foreground_display',
+        message: displayed == true
+            ? 'Foreground notification displayed'
+            : 'Foreground notification could not be displayed',
+        metadata: <String, Object?>{
+          'message_id': message.messageId ?? '—',
+          'event_type': eventType,
+          'delivery_available': _deliveryAvailable,
+          'channel_enabled': _channelEnabled,
+        },
+      );
+    } on Object catch (error, stackTrace) {
+      DiagnosticsService.instance.recordError(
+        category: DiagnosticCategory.notifications,
+        operation: 'fcm_foreground_display',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   Future<void> _registerCurrentToken() async {
@@ -198,7 +303,7 @@ class FirebasePushService {
       }
 
       await Supabase.instance.client.rpc(
-        'register_notification_device_v1',
+        'register_notification_device_v2',
         params: <String, Object?>{
           'p_platform': Platform.isAndroid ? 'android' : 'ios',
           'p_fcm_token': token,
@@ -207,6 +312,9 @@ class FirebasePushService {
           'p_locale': Platform.localeName,
           'p_latitude': null,
           'p_longitude': null,
+          'p_push_authorization_status': _authorizationStatus,
+          'p_notification_channel_enabled': _channelEnabled,
+          'p_notification_delivery_available': _deliveryAvailable,
         },
       );
       stopwatch.stop();
@@ -215,11 +323,14 @@ class FirebasePushService {
       DiagnosticsService.instance.record(
         category: DiagnosticCategory.notifications,
         operation: 'fcm_register_device',
-        message: 'FCM token registered with Supabase',
+        message: 'FCM token and delivery capability registered with Supabase',
         duration: stopwatch.elapsed,
         metadata: <String, Object?>{
           'platform': Platform.isAndroid ? 'android' : 'ios',
           'app_version': package.version,
+          'permission': _authorizationStatus,
+          'delivery_available': _deliveryAvailable,
+          'channel_enabled': _channelEnabled,
         },
       );
     } on Object catch (error, stackTrace) {
