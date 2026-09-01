@@ -26,6 +26,8 @@ dependencies:
   supabase_flutter: ^2.9.1
   geolocator: ^14.0.2
   image_picker: ^1.2.3
+  flutter_image_compress: ^2.5.1
+  crypto: ^3.0.7
   mapbox_maps_flutter: ^2.25.1
   shared_preferences: ^2.5.5
   geocoding: 5.0.0

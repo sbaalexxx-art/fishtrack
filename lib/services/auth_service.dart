@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'media_processing_service.dart';
+
 class AuthException implements Exception {
   const AuthException(this.message);
 
@@ -10,11 +12,16 @@ class AuthException implements Exception {
 }
 
 class AuthService {
-  const AuthService({SupabaseClient? client}) : _client = client;
+  const AuthService({
+    SupabaseClient? client,
+    MediaProcessingService mediaProcessor = const MediaProcessingService(),
+  }) : _client = client,
+       _mediaProcessor = mediaProcessor;
 
   static const _avatarBucket = 'avatars';
 
   final SupabaseClient? _client;
+  final MediaProcessingService _mediaProcessor;
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
   Session? get currentSession => _supabase.auth.currentSession;
@@ -59,9 +66,15 @@ class AuthService {
   Future<String> uploadAvatar(String imagePath) async {
     final user = currentUser;
     if (user == null) throw const AuthException('Your session has expired.');
-    final image = File(imagePath);
-    if (!await image.exists()) {
-      throw const AuthException('The selected image is no longer available.');
+
+    late final ProcessedMedia media;
+    try {
+      media = await _mediaProcessor.processFile(
+        path: imagePath,
+        purpose: MediaPurpose.avatar,
+      );
+    } on MediaProcessingException catch (error) {
+      throw AuthException(error.message);
     }
 
     return _guard(() async {
@@ -69,7 +82,23 @@ class AuthService {
       final path = '${user.id}/$objectName';
       await _supabase.storage
           .from(_avatarBucket)
-          .upload(path, image, fileOptions: const FileOptions(upsert: true))
+          .uploadBinary(
+            path,
+            media.bytes,
+            fileOptions: FileOptions(
+              cacheControl: '31536000',
+              contentType: ProcessedMedia.contentType,
+              upsert: true,
+              metadata: {
+                'sha256': media.sha256Hex,
+                'original_bytes': media.originalBytes,
+                'processed_bytes': media.outputBytes,
+                'dimension_limit': media.dimensionLimit,
+                'quality': media.quality,
+                'exif_preserved': false,
+              },
+            ),
+          )
           .timeout(const Duration(seconds: 45));
       final publicUrl = _supabase.storage
           .from(_avatarBucket)
