@@ -1,0 +1,42 @@
+name: Push Delivery Samsung Gate
+
+on:
+  push:
+    branches:
+      - fix/push-delivery-samsung
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.4'
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Dart format gate
+        run: dart format --output=none --set-exit-if-changed lib/services/firebase_push_service.dart
+      - name: Analyze push service
+        run: flutter analyze lib/services/firebase_push_service.dart
+      - name: Notification regressions
+        run: |
+          flutter test test/notification_service_test.dart
+          flutter test test/notification_preferences_service_test.dart
+      - name: Android debug compile
+        run: flutter build apk --debug
+      - name: Contract assertions
+        run: |
+          grep -F 'fluviai_alerts' android/app/src/main/AndroidManifest.xml
+          grep -F 'fluviai.notifications/native' android/app/src/main/kotlin/com/example/fishtrack/MainActivity.kt
+          grep -F 'showForegroundNotification' lib/services/firebase_push_service.dart
+          grep -F 'register_notification_device_v2' lib/services/firebase_push_service.dart
