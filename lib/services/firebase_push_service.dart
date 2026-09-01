@@ -124,19 +124,18 @@ class FirebasePushService {
         _handleOpenedMessage,
       );
 
-      _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
-        (state) {
-          final userId = state.session?.user.id;
-          unawaited(
-            FirebaseObservabilityService.instance.setUserIdentifier(userId),
-          );
-          if (state.session == null) {
-            _registeredWithSupabase = false;
-            return;
-          }
-          unawaited(_refreshCapabilityAndRegister());
-        },
-      );
+      _authSubscription = Supabase.instance.client.auth.onAuthStateChange
+          .listen((state) {
+            final userId = state.session?.user.id;
+            unawaited(
+              FirebaseObservabilityService.instance.setUserIdentifier(userId),
+            );
+            if (state.session == null) {
+              _registeredWithSupabase = false;
+              return;
+            }
+            unawaited(_refreshCapabilityAndRegister());
+          });
 
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
@@ -197,7 +196,8 @@ class FirebasePushService {
         DiagnosticsService.instance.record(
           category: DiagnosticCategory.notifications,
           operation: 'notification_delivery_blocked',
-          message: 'Android notification delivery is blocked by app or channel settings',
+          message:
+              'Android notification delivery is blocked by app or channel settings',
           metadata: <String, Object?>{
             'permission': _authorizationStatus,
             'app_enabled': state?['appEnabled'],
@@ -242,7 +242,8 @@ class FirebasePushService {
     if (!Platform.isAndroid) return;
     await _refreshNativeDeliveryState();
     final notification = message.notification;
-    final title = notification?.title ?? message.data['title']?.toString() ?? '';
+    final title =
+        notification?.title ?? message.data['title']?.toString() ?? '';
     final body = notification?.body ?? message.data['body']?.toString() ?? '';
     final messageKey =
         message.messageId ??
@@ -253,11 +254,7 @@ class FirebasePushService {
     try {
       final displayed = await _nativeNotifications.invokeMethod<bool>(
         'showForegroundNotification',
-        <String, Object>{
-          'id': notificationId,
-          'title': title,
-          'body': body,
-        },
+        <String, Object>{'id': notificationId, 'title': title, 'body': body},
       );
       DiagnosticsService.instance.record(
         category: DiagnosticCategory.notifications,
